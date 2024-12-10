@@ -31,8 +31,23 @@ class [[nodiscard]] basic_db_leaf_deleter;
 // Internal ART key in binary-comparable format
 template <typename KeyType>
 struct [[nodiscard]] basic_art_key final {
+
+  // Convert an external key into an internal key supporting
+  // lexicographic comparison.  This is only intended for key types
+  // for which simple conversions are possible.  For complex keys,
+  // including multiple key components or Unicode data, the
+  // application should use a gsl::space<std::byte> which already
+  // supports lexicographic comparison.
   [[nodiscard, gnu::const]] static UNODB_DETAIL_CONSTEXPR_NOT_MSVC KeyType
   make_binary_comparable(KeyType key) noexcept;
+
+  // Convert an internal key into an external key. This is only
+  // intended for key types for which simple conversions are possible.
+  // For complex keys, including multiple key components or Unicode
+  // data, the application should use a gsl::space<std::byte> which
+  // already supports lexicographic comparison.
+  [[nodiscard, gnu::const]] static UNODB_DETAIL_CONSTEXPR_NOT_MSVC KeyType
+  make_external(KeyType key) noexcept;
 
   constexpr basic_art_key() noexcept = default;
 
@@ -53,6 +68,12 @@ struct [[nodiscard]] basic_art_key final {
   [[nodiscard, gnu::pure]] constexpr explicit operator KeyType()
       const noexcept {
     return key;
+  }
+
+  // return the decoded form of the key.
+  [[nodiscard, gnu::pure]] constexpr KeyType decode()
+      const noexcept {
+    return make_external(key);
   }
 
   constexpr void shift_right(const std::size_t num_bytes) noexcept {
@@ -152,6 +173,9 @@ class basic_db_inode_deleter {
   Db &db;
 };
 
+// basic_node_ptr is a tagged pointer.  You have to know statically
+// the target type, then call node_ptr_var.ptr<target_type *>.ptr() to
+// get target_type.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
 template <class Header>
 class [[nodiscard]] basic_node_ptr {
