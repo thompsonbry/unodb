@@ -25,16 +25,16 @@ namespace unodb {
 
 // LCOV_EXCL_START
 inline void spin_wait_loop_body() noexcept {
-#ifdef UNODB_DETAIL_THREAD_SANITIZER
-  std::this_thread::yield();
-#elif defined(UNODB_DETAIL_X86_64)
-  // Dear reader, please don't make fun of this just yet
-  _mm_pause();
-#elif defined(__aarch64__)
-  __asm__ __volatile__("yield\n");
-#else
-#error Needs porting
-#endif
+// #ifdef UNODB_DETAIL_THREAD_SANITIZER
+//   std::this_thread::yield();
+// #elif defined(UNODB_DETAIL_X86_64)
+//   // Dear reader, please don't make fun of this just yet
+//   _mm_pause();
+// #elif defined(__aarch64__)
+//   __asm__ __volatile__("yield\n");
+// #else
+// #error Needs porting
+// #endif
 }
 // LCOV_EXCL_STOP
 

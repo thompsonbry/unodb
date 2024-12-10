@@ -52,6 +52,16 @@ basic_art_key<std::uint64_t>::make_binary_comparable(std::uint64_t k) noexcept {
 #endif
 }
 
+template <>
+[[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
+basic_art_key<std::uint64_t>::make_external(std::uint64_t k) noexcept {
+#ifdef UNODB_DETAIL_LITTLE_ENDIAN
+  return bswap(k);
+#else
+#error Needs implementing
+#endif
+}
+
 #ifdef UNODB_DETAIL_X86_64
 
 // Idea from https://stackoverflow.com/a/32945715/80458
@@ -90,6 +100,9 @@ class [[nodiscard]] basic_leaf final : public Header {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+  // return the binary comparable key stored in the leaf (TODO This
+  // should be changed to a method comparing a caller's key suffix
+  // against the key suffix stored in the leaf).
   [[nodiscard, gnu::pure]] constexpr auto get_key() const noexcept {
     return key;
   }
@@ -146,6 +159,8 @@ template <class Header, class Db>
       new (leaf_mem) leaf_type{k, v}, basic_db_leaf_deleter<Header, Db>{db}};
 }
 
+// basic_inode_def is a metaprogramming construct to list all concrete
+// inode types for a particular flavor.
 template <class INode, class Node4, class Node16, class Node48, class Node256>
 struct basic_inode_def final {
   using inode = INode;
@@ -184,6 +199,9 @@ inline void basic_db_inode_deleter<INode, Db>::operator()(
   db.template decrement_inode_count<INode>();
 }
 
+// The basic_art_policy encapsulates differences between plain and OLC
+// ART, such as extra header field, and node access critical section
+// type.
 template <class Db, template <class> class CriticalSectionPolicy, class NodePtr,
           class INodeDefs, template <class> class INodeReclamator,
           template <class, class> class LeafReclamator>
@@ -527,6 +545,17 @@ class fake_inode final {
   fake_inode() = delete;
 };
 
+// A template class extending the common header and defining some
+// methods common to all internal node types.  The common header type
+// is specific to the thread-safety policy.  In particular, for the
+// OLC implementation, the common header includes the lock and version
+// tag metadata.
+//
+// Note: basic_inode_impl contains generic inode code, key prefix,
+// children count, and dispatch for add/remove/find towards specific
+// types. basic_inode has several template args giving it a capacity,
+// so it can implement is_full / is_min etc, and is immediate parent
+// for 4 16 ... classes.
 template <class ArtPolicy>
 class basic_inode_impl : public ArtPolicy::header_type {
  public:
@@ -646,6 +675,72 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
+  // Dispatch logic for first(), returns the pointer to the left-most
+  // child in the lexicographic ordering.
+  //
+  // Note: It should be safe to assume that first() will never return
+  // null. first and last may observe nodes in a middle of an update,
+  // adding/removing child, and the algorithm will restart, but even
+  // nodes in a middle of update will have something for first/last.
+  // Further, when nodes are consumed for promotion/demotion to the
+  // next size class, they are not overwitten and they are marked for
+  // GC with their last valid contents.
+  [[nodiscard]] constexpr node_ptr first(node_type type) noexcept {
+    UNODB_DETAIL_ASSERT(type != node_type::LEAF);
+    // Because of the parallel updates, the callees below may work on
+    // inconsistent nodes and must not assert, just produce results, which are
+    // OK to be incorrect/inconsistent as the node state will be checked before
+    // acting on them.
+    switch (type) {
+      case node_type::I4:
+        return static_cast<inode4_type *>(this)->first();
+      case node_type::I16:
+        return static_cast<inode16_type *>(this)->first();
+      case node_type::I48:
+        return static_cast<inode48_type *>(this)->first();
+      case node_type::I256:
+        return static_cast<inode256_type *>(this)->first();
+      // LCOV_EXCL_START
+      case node_type::LEAF:
+        UNODB_DETAIL_CANNOT_HAPPEN();
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+    // LCOV_EXCL_STOP
+  }
+    
+  // Dispatch logic for last(), returns the pointer to the right-most
+  // child in the lexicographic ordering.
+  //
+  // Note: It should be safe to assume that last() will never return
+  // null. first and last may observe nodes in a middle of an update,
+  // adding/removing child, and the algorithm will restart, but even
+  // nodes in a middle of update will have something for first/last.
+  // Further, when nodes are consumed for promotion/demotion to the
+  // next size class, they are not overwitten and they are marked for
+  // GC with their last valid contents.
+  [[nodiscard]] constexpr node_ptr last(node_type type) noexcept {
+    UNODB_DETAIL_ASSERT(type != node_type::LEAF);
+    // Because of the parallel updates, the callees below may work on
+    // inconsistent nodes and must not assert, just produce results, which are
+    // OK to be incorrect/inconsistent as the node state will be checked before
+    // acting on them.
+    switch (type) {
+      case node_type::I4:
+        return static_cast<inode4_type *>(this)->last();
+      case node_type::I16:
+        return static_cast<inode16_type *>(this)->last();
+      case node_type::I48:
+        return static_cast<inode48_type *>(this)->last();
+      case node_type::I256:
+        return static_cast<inode256_type *>(this)->last();
+      // LCOV_EXCL_START
+      case node_type::LEAF:
+        UNODB_DETAIL_CANNOT_HAPPEN();
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+    // LCOV_EXCL_STOP
+  }
+    
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   constexpr basic_inode_impl(unsigned children_count_, art_key k1,
@@ -704,6 +799,9 @@ class basic_inode_impl : public ArtPolicy::header_type {
   friend class basic_inode_256;
 };
 
+// The class basic_inode is the last common ancestor (both for
+// templates and inheritance) for all inode types for both OLC and
+// regular.
 template <class ArtPolicy, unsigned MinSize, unsigned Capacity,
           node_type NodeType, class SmallerDerived, class LargerDerived,
           class Derived>
@@ -780,6 +878,11 @@ using basic_inode_4_parent =
                 typename ArtPolicy::inode16_type,
                 typename ArtPolicy::inode4_type>;
 
+// An internal node with up to 4 children.  There is an array of (4)
+// bytes for the keys and keys are maintained in lexicographic order.
+// There is a corresponding array of (4) child pointers.  Each key
+// position is an index into the corresponding child pointer position,
+// so the child pointers are also dense.
 template <class ArtPolicy>
 class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   using parent_class = basic_inode_4_parent<ArtPolicy>;
@@ -1044,6 +1147,15 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+  [[nodiscard]] constexpr node_ptr first() noexcept {
+      return children[0];
+  }
+
+  [[nodiscard]] constexpr node_ptr last() noexcept {
+      auto count = this->children_count.load();
+      return children[ count - 1 ];
+  }
+    
   constexpr void delete_subtree(db &db_instance) noexcept {
     const auto children_count_ = this->children_count.load();
     for (std::uint8_t i = 0; i < children_count_; ++i) {
@@ -1141,6 +1253,11 @@ using basic_inode_16_parent = basic_inode<
     ArtPolicy, 5, 16, node_type::I16, typename ArtPolicy::inode4_type,
     typename ArtPolicy::inode48_type, typename ArtPolicy::inode16_type>;
 
+// An internal node used to store data for nodes having 5-16 child
+// pointers (if there are fewer child pointers, a basic_inode_4 is
+// used instead).  Like the basic_inode_4, the keys are maintained in
+// lexicographic order and the child pointers are 1:1 with the key
+// positions, hence dense.
 template <class ArtPolicy>
 class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   using parent_class = basic_inode_16_parent<ArtPolicy>;
@@ -1354,6 +1471,15 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+  [[nodiscard]] constexpr node_ptr first() noexcept {
+    return children[0];
+  }
+
+  [[nodiscard]] constexpr node_ptr last() noexcept {
+    auto count = this->children_count.load();
+    return children[ count - 1 ];
+  }
+  
   constexpr void delete_subtree(db &db_instance) noexcept {
     const auto children_count_ = this->children_count.load();
     for (std::uint8_t i = 0; i < children_count_; ++i)
@@ -1441,6 +1567,11 @@ using basic_inode_48_parent = basic_inode<
     ArtPolicy, 17, 48, node_type::I48, typename ArtPolicy::inode16_type,
     typename ArtPolicy::inode256_type, typename ArtPolicy::inode48_type>;
 
+// An internal node that is used for nodes having between 17 and 48
+// children.  The keys[] is 256 bytes and is directly indexed by the
+// byte value of the current byte of the search key.  The values
+// stored in the keys[] are index positions in the child pointer
+// array.  Thus, neither keys[] nor the child pointer[] are dense.
 template <class ArtPolicy>
 class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
   using parent_class = basic_inode_48_parent<ArtPolicy>;
@@ -1680,6 +1811,16 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+  // FIXME IMPLEMENT.  We need to return the first non-nullptr in the children[].
+  [[nodiscard]] constexpr node_ptr first() noexcept {
+    return nullptr;
+  }
+    
+  // FIXME IMPLEMENT.  We need to return the last non-nullptr in the children[].
+  [[nodiscard]] constexpr node_ptr last() noexcept {
+    return nullptr;
+  }
+  
   constexpr void delete_subtree(db &db_instance) noexcept {
 #ifndef NDEBUG
     const auto children_count_ = this->children_count.load();
@@ -1842,6 +1983,10 @@ using basic_inode_256_parent =
                 typename ArtPolicy::inode48_type, fake_inode,
                 typename ArtPolicy::inode256_type>;
 
+// An internal node used to store data for nodes having between 49 and
+// 256 child pointers.  There is no keys[].  Instead, the current byte
+// of the search key is used as a direct index into the child
+// pointer[].
 template <class ArtPolicy>
 class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
   using parent_class = basic_inode_256_parent<ArtPolicy>;
@@ -1928,6 +2073,9 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+  [[nodiscard]] constexpr node_ptr first() noexcept {return nullptr;} // FIXME IMPLEMENT  
+  [[nodiscard]] constexpr node_ptr last() noexcept {return nullptr;} // FIXME IMPLEMENT  
+  
   template <typename Function>
   constexpr void for_each_child(Function func) const
       noexcept(noexcept(func(0, node_ptr{nullptr}))) {

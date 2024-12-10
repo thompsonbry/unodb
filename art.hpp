@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <iosfwd>  // IWYU pragma: keep
 #include <optional>
+#include <stack>
 
 #include "art_common.hpp"
 #include "art_internal.hpp"
@@ -35,7 +36,83 @@ struct impl_helpers;
 
 }  // namespace detail
 
+// Basic iterator for the non-thread-safe ART implementation.
+class db; // forward declaration
+template <typename Db>
+class it_t {   
+public:
+
+    // Construct an iterator which is not positioned on any leaf in the index.
+    it_t(const Db& db):db_(db) {}
+    
+    // Return true iff the iterator is positioned on some entry and false otherwise.
+    bool valid() const noexcept {
+        // Note: The assumption here is that the stack is either empty
+        // or is a valid path to a leaf.  Intermediate states exist
+        // when traversing the tree to a leaf, but should not be
+        // exposed to the caller.  (That is, the iterator should never
+        // have a partial path on the stack when control is returned
+        // to the caller.)
+        return ! stack_.empty();
+    }
+    
+    // Advance the iterator to next entry in the index and return
+    // true.  Return false if the iterator is not positioned on a leaf
+    // or if there is no next entry.  An attempt to position the
+    // iterator after the last leaf does not change the state of the
+    // iterator.
+    bool next() noexcept;
+    
+    // Advance the iterator to next entry in the index and returns
+    // true.  Returns false if the iterator is not positioned on a
+    // leaf or if there is no next entry.  
+    bool first() noexcept;
+
+    // Position the iterator on the least leaf in the index.
+    bool last() noexcept;
+
+    // Position the iterator on the previous leaf in the index and return
+    // false if the iterator is not positioned on a leaf or if there is no
+    // previous leaf.  An attempt to position the iterator before the first
+    // leaf does not change the state of the iterator.
+    //
+    bool prior() noexcept;
+    
+    // Position the iterator on the first entry which orders GTE the
+    // search_key. Returns true iff the search_key exists (exact
+    // match) or if the iterator was positioned to an entry in the
+    // index (!exact) and returns false otherwise.  If the iterator is
+    // not positioned by this method, then the iterator is invalidated
+    // (as if it were newly constructed).
+    bool find(key search_key, bool exact = false) noexcept;
+    
+    // Iff the iterator is positioned on an index entry, then returns
+    // a const pointer to a decoded copy of the key associated with
+    // that index entry.  Otherwise returns nullptr.
+    //
+    // Note: std::optional does not allow reference types, hence going
+    // with pointer to buffer return semantics.
+    const key* get_key() noexcept;
+
+    // Iff the iterator is positioned on an index entry, then returns
+    // the value associated with that index entry.
+    std::optional<const value_view> get_val() const noexcept;
+    
+private:
+
+    // invalidate the iterator.
+    void invalidate() noexcept {
+        while(!stack_.empty()) stack_.pop(); // clear the stack
+    }
+    
+    const Db& db_;                    // tree to be visited : TODO Assumes iterator can not modify the tree (simplying assumption).
+    std::stack<detail::node_ptr> stack_ {}; // a stack reflecting the parent path from the root of the tree to the current leaf.
+    key key_ {};                      // a buffer into which visited keys are materialized by get_key()
+    
+}; // class it_t<>
+    
 class db final {
+ friend class it_t<db>; // iterator is a friend.
  public:
   using get_result = std::optional<value_view>;
 
@@ -62,6 +139,9 @@ class db final {
   [[nodiscard]] bool insert(key insert_key, value_view v);
 
   [[nodiscard]] bool remove(key remove_key);
+
+  // return an iterator for the tree.
+  [[nodiscard]] it_t<db> iterator() const {return it_t(*this);}
 
   void clear() noexcept;
 

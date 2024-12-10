@@ -455,4 +455,93 @@ void db::dump(std::ostream &os) const {
   art_policy::dump_node(os, root);
 }
 
+///
+/// iterator
+///
+
+// TODO How to lift out these simple methods to a header file?
+
+template <>
+const key* it_t<db>::get_key() noexcept {
+    // TODO Eventually this will need to use the stack to reconstruct
+    // the key from the path from the root to this leaf.  Right now it
+    // is relying on the fact that simple fixed width keys are stored
+    // directly in the leaves.
+    if ( ! valid() ) return nullptr; // not positioned on anything.
+    const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
+    key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
+    return &key_; // return pointer to the internal key buffer.
+}
+    
+// Iff the iterator is positioned on an index entry, then returns
+// the value associated with that index entry.
+template <>
+std::optional<const value_view> it_t<db>::get_val() const noexcept {
+    if ( ! valid() ) return {}; // not positioned on anything.
+    const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
+    return leaf->get_value_view();
+}
+
+// Traverse to the left-most leaf. The stack is cleared and
+// re-populated as we step down along the path to the leaf.
+template <> bool it_t<db>::first() noexcept {
+
+  invalidate();
+  auto node{ db_.root };
+  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
+
+  while (true) {
+    stack_.push( node );
+    const auto node_type = node.type();
+    
+    if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
+
+    // recursive descent.
+    auto *const inode{node.ptr<::inode *>()};
+    node = inode->first( node_type );
+    UNODB_DETAIL_ASSERT( node != nullptr );
+  }
+  
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Traverse to the right-most leaf. The stack is cleared and
+// re-populated as we step down along the path to the leaf.
+template <> bool it_t<db>::last() noexcept {
+
+  invalidate();
+  auto node{ db_.root };
+  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
+
+  while (true) {
+    stack_.push( node );
+    const auto node_type = node.type();
+    
+    if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
+
+    // recursive descent.
+    auto *const inode{node.ptr<::inode *>()};
+    node = inode->last( node_type );
+    UNODB_DETAIL_ASSERT( node != nullptr );
+  }
+  
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Position the iterator on the next leaf in the index.  Return false
+// if the iterator is not positioned on any leaf.
+template <> bool it_t<db>::next() noexcept {
+    return false;
+}
+
+// Position the iterator on the prior leaf in the index.  Return false
+// if the iterator is not positioned on any leaf.
+template <> bool it_t<db>::prior() noexcept {
+    return false;
+}
+
+template <> bool it_t<db>::find(key search_key, bool exact) noexcept {
+    return false;
+}
+    
 }  // namespace unodb
