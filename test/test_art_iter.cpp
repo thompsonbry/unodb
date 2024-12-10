@@ -53,9 +53,8 @@ UNODB_START_TYPED_TESTS()
 //
 
 // A unit test for an iterator on an empty tree.
-TYPED_TEST(ARTIteratorTest, SingleNodeTreeEmptyValue) {
+TYPED_TEST(ARTIteratorTest, EmptyTree) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({1});
   verifier.check_absent_keys({0});
   const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   auto it = db.iterator(); // obtain iterator.
@@ -64,13 +63,79 @@ TYPED_TEST(ARTIteratorTest, SingleNodeTreeEmptyValue) {
   UNODB_DETAIL_ASSERT( ! it.get_val() );
   UNODB_DETAIL_ASSERT( ! it.next() );
   UNODB_DETAIL_ASSERT( ! it.find(0, true/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.find(0, true/*exact*/) );
   UNODB_DETAIL_ASSERT( ! it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
   UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
   UNODB_DETAIL_ASSERT( ! it.valid() );
   UNODB_DETAIL_ASSERT( ! it.first() );
   UNODB_DETAIL_ASSERT( ! it.valid() );
   UNODB_DETAIL_ASSERT( ! it.last() );
   UNODB_DETAIL_ASSERT( ! it.valid() );
+}
+
+// FIXME Unit test the first() and last() methods for the various node
+// types so we can then rely on their correct behavior here.  That
+// simplifies the test coverage required to ensure that first(),
+// last(), etc. work for any tree structure.
+TYPED_TEST(ARTIteratorTest, SingleLeafTree) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.check_absent_keys({1});
+  verifier.insert( 1, unodb::test::test_values[1] );
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  auto it = db.iterator(); // obtain iterator.
+  UNODB_DETAIL_ASSERT( ! it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.get_key() );
+  UNODB_DETAIL_ASSERT( ! it.get_val() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  //
+  UNODB_DETAIL_ASSERT( it.first() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val().value() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  //
+  UNODB_DETAIL_ASSERT( it.last() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val().value() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  // search for [0], not found.
+  UNODB_DETAIL_ASSERT( ! it.find(0, true/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.valid() );
+  // search for [0], positions on the first key GTE [0], which is [1].
+  UNODB_DETAIL_ASSERT( ! it.find(0, false/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  // search for [1], found.
+  UNODB_DETAIL_ASSERT( ! it.find(1, true/*exact*/) );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  // search for first key GTE [1], found.
+  UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_DETAIL_ASSERT( ! it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
 }
 
 // TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeNonemptyValue) {

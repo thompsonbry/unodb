@@ -482,15 +482,15 @@ void db::dump(std::ostream &os) const {
 // TODO How to lift out these simple methods to a header file?
 
 template <>
-const key* it_t<db>::get_key() noexcept {
+std::optional<const key> it_t<db>::get_key() noexcept {
     // TODO Eventually this will need to use the stack to reconstruct
     // the key from the path from the root to this leaf.  Right now it
     // is relying on the fact that simple fixed width keys are stored
     // directly in the leaves.
-    if ( ! valid() ) return nullptr; // not positioned on anything.
+    if ( ! valid() ) return {}; // not positioned on anything.
     const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
     key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-    return &key_; // return pointer to the internal key buffer.
+    return key_; // return pointer to the internal key buffer.
 }
     
 // Iff the iterator is positioned on an index entry, then returns

@@ -92,7 +92,7 @@ public:
     //
     // Note: std::optional does not allow reference types, hence going
     // with pointer to buffer return semantics.
-    const key* get_key() noexcept;
+    std::optional<const key> get_key() noexcept;
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
