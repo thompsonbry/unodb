@@ -1472,7 +1472,7 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   [[nodiscard]] constexpr node_ptr first() noexcept {
-    return children[0];
+    return children[ 0 ];
   }
 
   [[nodiscard]] constexpr node_ptr last() noexcept {
@@ -1811,14 +1811,26 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  // FIXME IMPLEMENT.  We need to return the first non-nullptr in the children[].
+  // N48: Return the child pointer for the first key in the
+  // lexicographic ordering that is mapped to some child.
   [[nodiscard]] constexpr node_ptr first() noexcept {
-    return nullptr;
+     for( uint64_t i=0; i<basic_inode_48::capacity; i++ ) {
+       if ( child_indexes[ i ] != empty_child ) {
+          return children.pointer_array[ i ];
+       }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 17 keys.
   }
     
-  // FIXME IMPLEMENT.  We need to return the last non-nullptr in the children[].
+  // Return the child pointer for the last key in the lexicographic
+  // ordering that is mapped to some child.
   [[nodiscard]] constexpr node_ptr last() noexcept {
-    return nullptr;
+     for( uint64_t i=basic_inode_48::capacity; i>0; i-- ) {
+       if ( child_indexes[ i-1 ] != empty_child ) {
+          return children.pointer_array[ i-1 ];
+       }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 17 keys.
   }
   
   constexpr void delete_subtree(db &db_instance) noexcept {
@@ -2073,8 +2085,27 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  [[nodiscard]] constexpr node_ptr first() noexcept {return nullptr;} // FIXME IMPLEMENT  
-  [[nodiscard]] constexpr node_ptr last() noexcept {return nullptr;} // FIXME IMPLEMENT  
+  // N256: Return the first mapped child.  The children[] is always in
+  // order since it is directly indexed by a byte from the key.
+  [[nodiscard]] constexpr node_ptr first() noexcept {
+    for( uint64_t i=0; i<basic_inode_256::capacity; i++ ) {
+      if ( children[ i ] != nullptr ) {
+        return children[ i ];
+      }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 49 keys.
+  }
+    
+  // Return the first mapped child.  The children[] is always in order
+  // since it is directly indexed by a byte from the key.
+  [[nodiscard]] constexpr node_ptr last() noexcept {
+    for( uint64_t i=basic_inode_256::capacity; i>0; i-- ) {
+      if ( children[ i - 1 ] != nullptr ) {
+        return children[ i - 1 ];
+      }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 49 keys.
+  }
   
   template <typename Function>
   constexpr void for_each_child(Function func) const
