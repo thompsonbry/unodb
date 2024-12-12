@@ -479,20 +479,16 @@ void db::dump(std::ostream &os) const {
 /// iterator
 ///
 
-// TODO How to lift out these simple methods to a header file?
-
+// TODO Lift out these simple methods to a header file.
 template <>
 std::optional<const key> it_t<db>::get_key() noexcept {
   // TODO Eventually this will need to use the stack to reconstruct
   // the key from the path from the root to this leaf.  Right now it
   // is relying on the fact that simple fixed width keys are stored
   // directly in the leaves.
-  std::cerr<<"get_key()"<<std::endl;
   if ( ! valid() ) return {}; // not positioned on anything.
-  std::cerr<<"get_key() - iterator is valid."<<std::endl;
   const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
   key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-  std::cerr<<"get_key() - key is decoded"<<std::endl;
   return key_; // return pointer to the internal key buffer.
 }
     
@@ -576,8 +572,50 @@ template <> bool it_t<db>::prior() noexcept {
   return false;
 }
 
+// The find() logic is quite similar to ::get().  It is nearly the
+// same code for the case where EQ semantics are used, but the
+// iterator is positioned instead of returning the value for the key.
+// The GTE and LTE cases would correspond to where get() is willing to
+// return {} (leaf does not match, child pointer does not exist for
+// key), but in this case the iterator is positioned before (LTE) or
+// after (GTE) the missing key.
 template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
-  return false;
+  
+  if ( dir != find_enum::EQ ) return {}; // FIXME Support LTE, GTE
+
+  invalidate();
+  auto node{ db_.root };
+  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
+  const detail::art_key k{search_key};
+  auto remaining_key{k};
+
+  while (true) {
+    stack_.push( node );
+    const auto node_type = node.type();
+    if (node_type == node_type::LEAF) {
+      const auto *const leaf{node.ptr<::leaf *>()};
+      if (leaf->matches(k)) return true;  // This path handles EQ/LTE/GTE.
+      // FIXME handle LT and GT here.
+      return false;
+    }
+
+    UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
+
+    auto *const inode{node.ptr<::inode *>()};
+    const auto &key_prefix{inode->get_key_prefix()};
+    const auto key_prefix_length{key_prefix.length()};
+    if (key_prefix.get_shared_length(remaining_key) < key_prefix_length) {
+      return false; // FIXME Handle LTE here.
+    }
+    remaining_key.shift_right(key_prefix_length);
+    const auto *const child{
+        inode->find_child(node_type, remaining_key[0]).second};
+    if (child == nullptr) return false;  // FIXME handle LT and GT here.
+
+    node = *child;
+    remaining_key.shift_right(1);
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
 }
     
 }  // namespace unodb

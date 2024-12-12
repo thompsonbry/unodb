@@ -40,83 +40,78 @@ struct impl_helpers;
 // search. You can use these enumerations to setup for a forward or
 // reverse scan.
 enum find_enum {
-    EQ,  // the search must position the iterator on an exact match for the search key in the tree.
-    GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
-    LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
+  EQ,  // the search must position the iterator on an exact match for the search key in the tree.
+  GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
+  LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
 };
     
 // Basic iterator for the non-thread-safe ART implementation.
 class db; // forward declaration
 template <typename Db>
 class it_t {   
-public:
+ public:
 
-    // Construct an iterator which is not positioned on any leaf in the index.
-    it_t(const Db& db):db_(db) {}
+  // Construct an iterator which is not positioned on any leaf in the index.
+  it_t(const Db& db):db_(db) {}
     
-    // Return true iff the iterator is positioned on some entry and false otherwise.
-    bool valid() const noexcept {
-        // Note: The assumption here is that the stack is either empty
-        // or is a valid path to a leaf.  Intermediate states exist
-        // when traversing the tree to a leaf, but should not be
-        // exposed to the caller.  (That is, the iterator should never
-        // have a partial path on the stack when control is returned
-        // to the caller.)
-        return ! stack_.empty();
-    }
+  // Return true iff the iterator is positioned on some entry and false otherwise.
+  bool valid() const noexcept {
+    // Note: A valid iterator must have a path to a leaf.
+    return !stack_.empty() && ( stack_.top().type() == node_type::LEAF );
+  }
     
-    // Advance the iterator to next entry in the index and return
-    // true.  Return false if the iterator is not positioned on a leaf
-    // or if there is no next entry.  An attempt to position the
-    // iterator after the last leaf does not change the state of the
-    // iterator.
-    bool next() noexcept;
+  // Advance the iterator to next entry in the index and return
+  // true.  Return false if the iterator is not positioned on a leaf
+  // or if there is no next entry.  An attempt to position the
+  // iterator after the last leaf does not change the state of the
+  // iterator.
+  bool next() noexcept;
     
-    // Advance the iterator to next entry in the index and returns
-    // true.  Returns false if the iterator is not positioned on a
-    // leaf or if there is no next entry.  
-    bool first() noexcept;
+  // Advance the iterator to next entry in the index and returns
+  // true.  Returns false if the iterator is not positioned on a
+  // leaf or if there is no next entry.  
+  bool first() noexcept;
 
-    // Position the iterator on the least leaf in the index.
-    bool last() noexcept;
+  // Position the iterator on the least leaf in the index.
+  bool last() noexcept;
 
-    // Position the iterator on the previous leaf in the index and return
-    // false if the iterator is not positioned on a leaf or if there is no
-    // previous leaf.  An attempt to position the iterator before the first
-    // leaf does not change the state of the iterator.
-    //
-    bool prior() noexcept;
+  // Position the iterator on the previous leaf in the index and return
+  // false if the iterator is not positioned on a leaf or if there is no
+  // previous leaf.  An attempt to position the iterator before the first
+  // leaf does not change the state of the iterator.
+  //
+  bool prior() noexcept;
     
-    // Position the iterator on the first entry which orders GTE the
-    // search_key. Returns true iff the search_key exists (exact
-    // match) or if the iterator was positioned to an entry in the
-    // index (!exact) and returns false otherwise.  If the iterator is
-    // not positioned by this method, then the iterator is invalidated
-    // (as if it were newly constructed).
-    bool find(key search_key, find_enum dir) noexcept;
+  // Position the iterator on the first entry which orders GTE the
+  // search_key. Returns true iff the search_key exists (exact
+  // match) or if the iterator was positioned to an entry in the
+  // index (!exact) and returns false otherwise.  If the iterator is
+  // not positioned by this method, then the iterator is invalidated
+  // (as if it were newly constructed).
+  bool find(key search_key, find_enum dir) noexcept;
     
-    // Iff the iterator is positioned on an index entry, then returns
-    // a const pointer to a decoded copy of the key associated with
-    // that index entry.  Otherwise returns nullptr.
-    //
-    // Note: std::optional does not allow reference types, hence going
-    // with pointer to buffer return semantics.
-    std::optional<const key> get_key() noexcept;
+  // Iff the iterator is positioned on an index entry, then returns
+  // a const pointer to a decoded copy of the key associated with
+  // that index entry.  Otherwise returns nullptr.
+  //
+  // Note: std::optional does not allow reference types, hence going
+  // with pointer to buffer return semantics.
+  std::optional<const key> get_key() noexcept;
 
-    // Iff the iterator is positioned on an index entry, then returns
-    // the value associated with that index entry.
-    std::optional<const value_view> get_val() const noexcept;
+  // Iff the iterator is positioned on an index entry, then returns
+  // the value associated with that index entry.
+  std::optional<const value_view> get_val() const noexcept;
     
-private:
+ private:
 
-    // invalidate the iterator.
-    void invalidate() noexcept {
-        while(!stack_.empty()) stack_.pop(); // clear the stack
-    }
+  // invalidate the iterator.
+  void invalidate() noexcept {
+    while(!stack_.empty()) stack_.pop(); // clear the stack
+  }
     
-    const Db& db_;                    // tree to be visited : TODO Assumes iterator can not modify the tree (simplying assumption).
-    std::stack<detail::node_ptr> stack_ {}; // a stack reflecting the parent path from the root of the tree to the current leaf.
-    key key_ {};                      // a buffer into which visited keys are materialized by get_key()
+  const Db& db_;                    // tree to be visited : TODO Assumes iterator can not modify the tree (simplying assumption).
+  std::stack<detail::node_ptr> stack_ {}; // a stack reflecting the parent path from the root of the tree to the current leaf.
+  key key_ {};                      // a buffer into which visited keys are materialized by get_key()
     
 }; // class it_t<>
     
