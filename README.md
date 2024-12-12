@@ -122,8 +122,11 @@ All the declarations live in the `unodb` namespace, which is omitted in the
 descriptions below.
 
 The only currently supported key type is `std::uint64_t`, aliased as `key`. To
-add new key types, instantiate `art_key` type with the desired type, and
-specialize `art_key::make_binary_comparable` according to the ART paper.
+add a new simple key type, instantiate `art_key` type with the desired type, and
+specialize `art_key::make_binary_comparable` according to the ART paper. Compound
+keys or Unicode data should be handled by specifying gsl::span<std::byte> as the
+key type.  In this case, the application must provide a span suitably encoded for
+lexicographic comparisons (that is, one which is already binary compatible).
 
 Values are treated opaquely. For `unodb::db`, they are passed as non-owning
 objects of `value_view` (a `gsl::span<std::byte>`), and insertion copies them
