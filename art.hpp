@@ -36,6 +36,15 @@ struct impl_helpers;
 
 }  // namespace detail
 
+// A typesafe enumeration for how the iterator will match keys during
+// search. You can use these enumerations to setup for a forward or
+// reverse scan.
+enum find_enum {
+    EQ,  // the search must position the iterator on an exact match for the search key in the tree.
+    GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
+    LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
+};
+    
 // Basic iterator for the non-thread-safe ART implementation.
 class db; // forward declaration
 template <typename Db>
@@ -84,7 +93,7 @@ public:
     // index (!exact) and returns false otherwise.  If the iterator is
     // not positioned by this method, then the iterator is invalidated
     // (as if it were newly constructed).
-    bool find(key search_key, bool exact = false) noexcept;
+    bool find(key search_key, find_enum dir) noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
     // a const pointer to a decoded copy of the key associated with

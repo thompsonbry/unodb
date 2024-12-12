@@ -62,11 +62,13 @@ TYPED_TEST(ARTIteratorTest, EmptyTree) {
   UNODB_DETAIL_ASSERT( ! it.get_key() );
   UNODB_DETAIL_ASSERT( ! it.get_val() );
   UNODB_DETAIL_ASSERT( ! it.next() );
-  UNODB_DETAIL_ASSERT( ! it.find(0, true/*exact*/) );
-  UNODB_DETAIL_ASSERT( ! it.find(0, true/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.find(0, unodb::find_enum::LTE) );
+  UNODB_DETAIL_ASSERT( ! it.find(0, unodb::find_enum::EQ) );
+  UNODB_DETAIL_ASSERT( ! it.find(0, unodb::find_enum::GTE) );
   UNODB_DETAIL_ASSERT( ! it.valid() );
-  UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
-  UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.find(1, unodb::find_enum::LTE) );
+  UNODB_DETAIL_ASSERT( ! it.find(1, unodb::find_enum::EQ) );
+  UNODB_DETAIL_ASSERT( ! it.find(1, unodb::find_enum::GTE) );
   UNODB_DETAIL_ASSERT( ! it.valid() );
   UNODB_DETAIL_ASSERT( ! it.first() );
   UNODB_DETAIL_ASSERT( ! it.valid() );
@@ -84,20 +86,26 @@ TYPED_TEST(ARTIteratorTest, SingleLeafTree) {
   verifier.insert( 1, unodb::test::test_values[1] );
   const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   auto it = db.iterator(); // obtain iterator.
+  // check when iterator is not positioned on any leaf.
+  std::cerr<<"Check of initial invalid iterator"<<std::endl;
   UNODB_DETAIL_ASSERT( ! it.valid() );
   UNODB_DETAIL_ASSERT( ! it.get_key() );
   UNODB_DETAIL_ASSERT( ! it.get_val() );
   UNODB_DETAIL_ASSERT( ! it.next() );
-  //
+  // position the iterator on the first leaf and check behavior.
+  std::cerr<<"Positioning iterator on first leaf"<<std::endl;
   UNODB_DETAIL_ASSERT( it.first() );
   UNODB_DETAIL_ASSERT( it.valid() );
+  std::cerr<<"Checking key"<<std::endl;
   UNODB_ASSERT_EQ( 1, it.get_key().value() );
+  std::cerr<<"Checking val"<<std::endl;
   UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val().value() );
   UNODB_DETAIL_ASSERT( ! it.next() );
   UNODB_DETAIL_ASSERT( it.valid() );
   UNODB_DETAIL_ASSERT( ! it.prior() );
   UNODB_DETAIL_ASSERT( it.valid() );
-  //
+  // position the iterator on the last leaf and check behavior.
+  std::cerr<<"Positioning iterator on last leaf"<<std::endl;
   UNODB_DETAIL_ASSERT( it.last() );
   UNODB_DETAIL_ASSERT( it.valid() );
   UNODB_ASSERT_EQ( 1, it.get_key().value() );
@@ -106,36 +114,145 @@ TYPED_TEST(ARTIteratorTest, SingleLeafTree) {
   UNODB_DETAIL_ASSERT( it.valid() );
   UNODB_DETAIL_ASSERT( ! it.prior() );
   UNODB_DETAIL_ASSERT( it.valid() );
-  // search for [0], not found.
-  UNODB_DETAIL_ASSERT( ! it.find(0, true/*exact*/) );
+  // // exact search for [0], not found.
+  // std::cerr<<"Exact search for [0] - not found"<<std::endl;
+  // UNODB_DETAIL_ASSERT( ! it.find(0, find_enum::EQ) );
+  // UNODB_DETAIL_ASSERT( ! it.valid() );
+  // // prefix search for [0], positions on the first key GTE [0], which is [1].
+  // std::cerr<<"Prefix search for [0] - found"<<std::endl;
+  // UNODB_DETAIL_ASSERT( ! it.find(0, find_enum );
+  // UNODB_DETAIL_ASSERT( ! it.valid() );
+  // UNODB_ASSERT_EQ( 1, it.get_key() );
+  // UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  // UNODB_DETAIL_ASSERT( ! it.next() );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+  // UNODB_DETAIL_ASSERT( ! it.prior() );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+  // // exact search for [1], found.
+  // std::cerr<<"Exact search for [1] - found"<<std::endl;
+  // UNODB_DETAIL_ASSERT( ! it.find(1, true/*exact*/) );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+  // UNODB_ASSERT_EQ( 1, it.get_key() );
+  // UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  // UNODB_DETAIL_ASSERT( ! it.next() );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+  // UNODB_DETAIL_ASSERT( ! it.prior() );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+  // // prefix search for first key GTE [1], found.
+  // std::cerr<<"Prefix search for [1] - found"<<std::endl;
+  // UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
+  // UNODB_DETAIL_ASSERT( ! it.valid() );
+  // UNODB_ASSERT_EQ( 1, it.get_key() );
+  // UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  // UNODB_DETAIL_ASSERT( ! it.next() );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+  // UNODB_DETAIL_ASSERT( ! it.prior() );
+  // UNODB_DETAIL_ASSERT( it.valid() );
+}
+
+TYPED_TEST(ARTIteratorTest, ThreeLeafTreeForwardScan) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  auto it = db.iterator(); // obtain iterator.
+  // check when iterator is not positioned on any leaf.
+  std::cerr<<"Check of initial invalid iterator"<<std::endl;
   UNODB_DETAIL_ASSERT( ! it.valid() );
-  // search for [0], positions on the first key GTE [0], which is [1].
-  UNODB_DETAIL_ASSERT( ! it.find(0, false/*exact*/) );
+  UNODB_DETAIL_ASSERT( ! it.get_key() );
+  UNODB_DETAIL_ASSERT( ! it.get_val() );
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  // position the iterator on the first leaf and do forward scan. 
+  std::cerr<<"Positioning iterator on first leaf"<<std::endl;
+  UNODB_DETAIL_ASSERT( it.first() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 0, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[0], it.get_val().value() );
+  // next()
+  UNODB_DETAIL_ASSERT( it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val().value() );
+  // next()
+  UNODB_DETAIL_ASSERT( it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 2, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[2], it.get_val().value() );
+  // next() - nothing left.
+  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_DETAIL_ASSERT( it.valid() );  // iterator remains valid.
+}
+
+// Unit test for a reverse scan starting from the last leaf in the
+// index.
+TYPED_TEST(ARTIteratorTest, ThreeLeafTreeReverse) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  auto it = db.iterator(); // obtain iterator.
+  // check when iterator is not positioned on any leaf.
+  std::cerr<<"Check of initial invalid iterator"<<std::endl;
   UNODB_DETAIL_ASSERT( ! it.valid() );
-  UNODB_ASSERT_EQ( 1, it.get_key() );
-  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
+  UNODB_DETAIL_ASSERT( ! it.get_key() );
+  UNODB_DETAIL_ASSERT( ! it.get_val() );
   UNODB_DETAIL_ASSERT( ! it.next() );
+  // position the iterator on the last leaf and do reverse scan. 
+  std::cerr<<"Positioning iterator on last leaf"<<std::endl;
+  UNODB_DETAIL_ASSERT( it.last() );
   UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 2, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[2], it.get_val().value() );
+  // prior()
+  UNODB_DETAIL_ASSERT( it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 1, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val().value() );
+  // prior()
+  UNODB_DETAIL_ASSERT( it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );
+  UNODB_ASSERT_EQ( 0, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[0], it.get_val().value() );
+  // prior() - nothing left.
   UNODB_DETAIL_ASSERT( ! it.prior() );
+  UNODB_DETAIL_ASSERT( it.valid() );  // iterator remains valid.
+}
+
+TYPED_TEST(ARTIteratorTest, ThreeLeafTreeFindEQ) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  auto it = db.iterator(); // obtain iterator.
+  // find [0]
+  UNODB_DETAIL_ASSERT( it.find( 1, unodb::find_enum::EQ ) );
   UNODB_DETAIL_ASSERT( it.valid() );
-  // search for [1], found.
-  UNODB_DETAIL_ASSERT( ! it.find(1, true/*exact*/) );
+  UNODB_ASSERT_EQ( 0, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[0], it.get_val().value() );
+  // find [1]
+  UNODB_DETAIL_ASSERT( it.find( 1, unodb::find_enum::EQ ) );
   UNODB_DETAIL_ASSERT( it.valid() );
-  UNODB_ASSERT_EQ( 1, it.get_key() );
-  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
-  UNODB_DETAIL_ASSERT( ! it.next() );
+  UNODB_ASSERT_EQ( 1, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val().value() );
+  // find [2]
+  UNODB_DETAIL_ASSERT( it.find( 2, unodb::find_enum::EQ ) );
   UNODB_DETAIL_ASSERT( it.valid() );
-  UNODB_DETAIL_ASSERT( ! it.prior() );
-  UNODB_DETAIL_ASSERT( it.valid() );
-  // search for first key GTE [1], found.
-  UNODB_DETAIL_ASSERT( ! it.find(1, false/*exact*/) );
+  UNODB_ASSERT_EQ( 2, it.get_key().value() );
+  UNODB_ASSERT_EQ( unodb::test::test_values[2], it.get_val().value() );
+  // find [3] - fails.
+  UNODB_DETAIL_ASSERT( it.find( 3, unodb::find_enum::EQ ) );
   UNODB_DETAIL_ASSERT( ! it.valid() );
-  UNODB_ASSERT_EQ( 1, it.get_key() );
-  UNODB_ASSERT_EQ( unodb::test::test_values[1], it.get_val() );
-  UNODB_DETAIL_ASSERT( ! it.next() );
-  UNODB_DETAIL_ASSERT( it.valid() );
-  UNODB_DETAIL_ASSERT( ! it.prior() );
-  UNODB_DETAIL_ASSERT( it.valid() );
+}
+
+TYPED_TEST(ARTIteratorTest, ThreeLeafTreeFindLTE) {
+  FAIL()<<"Write test for find(LTE)";
+}
+
+TYPED_TEST(ARTIteratorTest, ThreeLeafTreeFindGTE) {
+  FAIL()<<"Write test for find(GTE)";
 }
 
 // TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeNonemptyValue) {

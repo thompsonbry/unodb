@@ -463,23 +463,26 @@ void db::dump(std::ostream &os) const {
 
 template <>
 std::optional<const key> it_t<db>::get_key() noexcept {
-    // TODO Eventually this will need to use the stack to reconstruct
-    // the key from the path from the root to this leaf.  Right now it
-    // is relying on the fact that simple fixed width keys are stored
-    // directly in the leaves.
-    if ( ! valid() ) return {}; // not positioned on anything.
-    const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
-    key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-    return key_; // return pointer to the internal key buffer.
+  // TODO Eventually this will need to use the stack to reconstruct
+  // the key from the path from the root to this leaf.  Right now it
+  // is relying on the fact that simple fixed width keys are stored
+  // directly in the leaves.
+  std::cerr<<"get_key()"<<std::endl;
+  if ( ! valid() ) return {}; // not positioned on anything.
+  std::cerr<<"get_key() - iterator is valid."<<std::endl;
+  const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
+  key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
+  std::cerr<<"get_key() - key is decoded"<<std::endl;
+  return key_; // return pointer to the internal key buffer.
 }
     
 // Iff the iterator is positioned on an index entry, then returns
 // the value associated with that index entry.
 template <>
 std::optional<const value_view> it_t<db>::get_val() const noexcept {
-    if ( ! valid() ) return {}; // not positioned on anything.
-    const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
-    return leaf->get_value_view();
+  if ( ! valid() ) return {}; // not positioned on anything.
+  const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
+  return leaf->get_value_view();
 }
 
 // Traverse to the left-most leaf. The stack is cleared and
@@ -531,17 +534,30 @@ template <> bool it_t<db>::last() noexcept {
 // Position the iterator on the next leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
 template <> bool it_t<db>::next() noexcept {
-    return false;
+  auto node{ db_.root };
+  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
+  // FIXME HERE
+  //
+  // The basic strategy is to look at the leaf on the top of stack.
+  // We then look at the parent of that leaf on the stack.  We then
+  // ask the parent for the next child pointer in lexicographic order
+  // (how this is done depends on the node type). Finally, we pop the
+  // old leaf off of the stack and push the new leaf onto the stack.
+  //
+  // Note: If we pop the leaf first, then we are perhaps at more risk
+  // of invalidating the iterator.  But we could also handle that by
+  // restarting from the successor of the current key using find.
+  return false;
 }
 
 // Position the iterator on the prior leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
 template <> bool it_t<db>::prior() noexcept {
-    return false;
+  return false;
 }
 
-template <> bool it_t<db>::find(key search_key, bool exact) noexcept {
-    return false;
+template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
+  return false;
 }
     
 }  // namespace unodb
