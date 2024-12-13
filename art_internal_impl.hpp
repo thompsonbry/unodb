@@ -685,7 +685,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // Further, when nodes are consumed for promotion/demotion to the
   // next size class, they are not overwitten and they are marked for
   // GC with their last valid contents.
-  [[nodiscard]] constexpr node_ptr first(node_type type) noexcept {
+  [[nodiscard]] constexpr find_result first(node_type type) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
     // Because of the parallel updates, the callees below may work on
     // inconsistent nodes and must not assert, just produce results, which are
@@ -718,7 +718,9 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // Further, when nodes are consumed for promotion/demotion to the
   // next size class, they are not overwitten and they are marked for
   // GC with their last valid contents.
-  [[nodiscard]] constexpr node_ptr last(node_type type) noexcept {
+  //
+  // @param type The node_type
+  [[nodiscard]] constexpr find_result last(node_type type) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
     // Because of the parallel updates, the callees below may work on
     // inconsistent nodes and must not assert, just produce results, which are
@@ -1147,17 +1149,19 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  [[nodiscard]] constexpr node_ptr first() noexcept {
-      return children[0];
+  // N4
+  [[nodiscard]] constexpr find_result first() noexcept {
+    return find_result( 0, &children[0] );
   }
 
-  [[nodiscard]] constexpr node_ptr last() noexcept {
-      auto count = this->children_count.load();
-      return children[ count - 1 ];
+  // N4
+  [[nodiscard]] constexpr find_result last() noexcept {
+    const std::uint8_t child_index = this->children_count.load() - 1;
+    return find_result( child_index, &children[ child_index ] );
   }
     
   constexpr void delete_subtree(db &db_instance) noexcept {
-    const auto children_count_ = this->children_count.load();
+    const std::uint8_t children_count_ = this->children_count.load();
     for (std::uint8_t i = 0; i < children_count_; ++i) {
       ArtPolicy::delete_subtree(children[i], db_instance);
     }
@@ -1471,13 +1475,15 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  [[nodiscard]] constexpr node_ptr first() noexcept {
-    return children[ 0 ];
+  // N16
+  [[nodiscard]] constexpr find_result first() noexcept {
+    return find_result( 0, &children[ 0 ] );
   }
 
-  [[nodiscard]] constexpr node_ptr last() noexcept {
-    auto count = this->children_count.load();
-    return children[ count - 1 ];
+  // N16
+  [[nodiscard]] constexpr find_result last() noexcept {
+    const auto child_index = this->children_count.load() - 1;
+    return find_result( child_index, &children[ child_index ] );
   }
   
   constexpr void delete_subtree(db &db_instance) noexcept {
@@ -1813,22 +1819,23 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
 
   // N48: Return the child pointer for the first key in the
   // lexicographic ordering that is mapped to some child.
-  [[nodiscard]] constexpr node_ptr first() noexcept {
-     for( uint64_t i=0; i<basic_inode_48::capacity; i++ ) {
-       if ( child_indexes[ i ] != empty_child ) {
-          return children.pointer_array[ i ];
-       }
+  [[nodiscard]] constexpr typename basic_inode_48::find_result first() noexcept {
+    for( uint64_t i=0; i<basic_inode_48::capacity; i++ ) {
+      if ( child_indexes[ i ] != empty_child ) {
+        return typename basic_inode_48::find_result( i, &(children.pointer_array[ i ]) );
+      }
     }
     UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 17 keys.
   }
     
-  // Return the child pointer for the last key in the lexicographic
-  // ordering that is mapped to some child.
-  [[nodiscard]] constexpr node_ptr last() noexcept {
-     for( uint64_t i=basic_inode_48::capacity; i>0; i-- ) {
-       if ( child_indexes[ i-1 ] != empty_child ) {
-          return children.pointer_array[ i-1 ];
-       }
+  // N48: Return the child pointer for the last key in the
+  // lexicographic ordering that is mapped to some child.
+  [[nodiscard]] constexpr typename basic_inode_48::find_result last() noexcept {
+    for( uint64_t i=basic_inode_48::capacity; i>0; i-- ) {
+      if ( child_indexes[ i - 1 ] != empty_child ) {
+        const auto child_index = static_cast<std::uint8_t>( i - 1 ); // downcast is safe since in [0:47].
+        return typename basic_inode_48::find_result( child_index, &(children.pointer_array[ child_index ]) );
+      }
     }
     UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 17 keys.
   }
@@ -2087,21 +2094,23 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
 
   // N256: Return the first mapped child.  The children[] is always in
   // order since it is directly indexed by a byte from the key.
-  [[nodiscard]] constexpr node_ptr first() noexcept {
+  [[nodiscard]] constexpr typename basic_inode_256::find_result first() noexcept {
     for( uint64_t i=0; i<basic_inode_256::capacity; i++ ) {
       if ( children[ i ] != nullptr ) {
-        return children[ i ];
+        const auto child_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
+        return typename basic_inode_256::find_result( child_index, &children[ i ] );
       }
     }
     UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 49 keys.
   }
     
-  // Return the first mapped child.  The children[] is always in order
-  // since it is directly indexed by a byte from the key.
-  [[nodiscard]] constexpr node_ptr last() noexcept {
+  // N256: Return the first mapped child.  The children[] is always in
+  // order since it is directly indexed by a byte from the key.
+  [[nodiscard]] constexpr typename basic_inode_256::find_result last() noexcept {
     for( uint64_t i=basic_inode_256::capacity; i>0; i-- ) {
       if ( children[ i - 1 ] != nullptr ) {
-        return children[ i - 1 ];
+        const auto child_index = static_cast<std::uint8_t>( i - 1 );  // down cast is safe since in [0:255].
+        return typename basic_inode_256::find_result( child_index, &children[ child_index ] );
       }
     }
     UNODB_DETAIL_CANNOT_HAPPEN(); // because we always have at least 49 keys.
