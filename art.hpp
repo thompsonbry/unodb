@@ -57,7 +57,7 @@ class it_t {
   // Return true iff the iterator is positioned on some entry and false otherwise.
   bool valid() const noexcept {
     // Note: A valid iterator must have a path to a leaf.
-    return !stack_.empty() && ( stack_.top().type() == node_type::LEAF );
+    return !stack_.empty() && ( stack_.top().second.type() == node_type::LEAF );
   }
     
   // Advance the iterator to next entry in the index and return
@@ -110,7 +110,53 @@ class it_t {
   }
     
   const Db& db_;                    // tree to be visited : TODO Assumes iterator can not modify the tree (simplying assumption).
-  std::stack<detail::node_ptr> stack_ {}; // a stack reflecting the parent path from the root of the tree to the current leaf.
+
+  // The first element is the child index in the node, the 2nd is
+  // pointer to the child. If not present, the pointer is nullptr, and
+  // the index is undefined.
+  //
+  // FIXME This is the close to the definition that appears in
+  // art_internal_impl.hpp.  However, there are two gaps for OLC.
+  // First, the critical_section_policy needs to be carried through
+  // into the stack_entry. That type information is not super
+  // accessible so I am leaving it out in the first version of the
+  // iterator (since it also amounts to a NOP except for OLC).
+  // Second, the stack_entry needs to also carry the version tag from
+  // the try_read_lock, which is of type art_policy::read_version.
+  // That version tag is required to validate that a structural
+  // mutation has not invalidated the path from the root, thus
+  // requiring a restart (seaching for the current key from the root
+  // to obtain a valid path).
+  //
+  // std::pair<std::uint8_t, critical_section_policy<node_ptr> *>
+  using stack_entry = std::pair<std::uint8_t, unodb::detail::node_ptr>;
+
+  // A stack reflecting the parent path from the root of the tree to
+  // the current leaf.  A valid iterator is always positioned on a
+  // leaf and always has a leaf on the top of the stack.  If the stack
+  // is empty, the iterator is invalid.  The bottom of the stack is
+  // always the root of the tree.
+  //
+  // The stack is a (child_index, child_ptr) pair.  The child_index is
+  // the index position in the parent at which the child_ptr was
+  // found.  The child_index has no meaning for the root of the tree.
+  // The child_index is used to avoid searching the parent for the
+  // child_ptr when advancing the iterator to the next() or the
+  // prior() leaf in the index.
+  //
+  // Note: When finding the successor (or predecessor) the child_index
+  // needs to be interpreted according to the node type.  For N4 and
+  // N16, you just look at the next slot in the children[] to find the
+  // successor.  For N256, you look at the next non-null slot in the
+  // children[].  N48 is the oddest of the node types.  For N48, you
+  // have to look at the key[], find the next mapped key value greater
+  // than the current one and then look at its entry in the
+  // children[].
+  //
+  // Note: For OLC, the child_index is only valid if the parent
+  // version tag remains valid.
+  std::stack<stack_entry> stack_ {};
+
   key key_ {};                      // a buffer into which visited keys are materialized by get_key()
     
 }; // class it_t<>

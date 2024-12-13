@@ -173,9 +173,9 @@ class basic_db_inode_deleter {
   Db &db;
 };
 
-// basic_node_ptr is a tagged pointer.  You have to know statically
-// the target type, then call node_ptr_var.ptr<target_type *>.ptr() to
-// get target_type.
+// basic_node_ptr is a tagged pointer (the tag is the node type).  You
+// have to know statically the target type, then call
+// node_ptr_var.ptr<target_type *>.ptr() to get target_type.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
 template <class Header>
 class [[nodiscard]] basic_node_ptr {

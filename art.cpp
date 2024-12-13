@@ -487,7 +487,7 @@ std::optional<const key> it_t<db>::get_key() noexcept {
   // is relying on the fact that simple fixed width keys are stored
   // directly in the leaves.
   if ( ! valid() ) return {}; // not positioned on anything.
-  const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
+  const auto *const leaf{stack_.top().second.ptr<::leaf *>()}; // current leaf.
   key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
   return key_; // return pointer to the internal key buffer.
 }
@@ -497,7 +497,7 @@ std::optional<const key> it_t<db>::get_key() noexcept {
 template <>
 std::optional<const value_view> it_t<db>::get_val() const noexcept {
   if ( ! valid() ) return {}; // not positioned on anything.
-  const auto *const leaf{stack_.top().ptr<::leaf *>()}; // current leaf.
+  const auto *const leaf{stack_.top().second.ptr<::leaf *>()}; // current leaf.
   return leaf->get_value_view();
 }
 
@@ -507,17 +507,20 @@ template <> bool it_t<db>::first() noexcept {
 
   invalidate();
   auto node{ db_.root };
+  std::uint8_t child_index {0};  // ignored for the root.
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
 
   while (true) {
-    stack_.push( node );
+    stack_.push( stack_entry( child_index, node ) );
     const auto node_type = node.type();
     
     if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
 
     // recursive descent.
     auto *const inode{node.ptr<::inode *>()};
-    node = inode->first( node_type );
+    auto res = inode->first( node_type );  // a find_result
+    child_index = res.first;
+    node = *(res.second);
     UNODB_DETAIL_ASSERT( node != nullptr );
   }
   
@@ -530,17 +533,20 @@ template <> bool it_t<db>::last() noexcept {
 
   invalidate();
   auto node{ db_.root };
+  std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
 
   while (true) {
-    stack_.push( node );
+    stack_.push( std::pair( child_index, node ) );
     const auto node_type = node.type();
     
     if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
 
     // recursive descent.
     auto *const inode{node.ptr<::inode *>()};
-    node = inode->last( node_type );
+    auto res = inode->last( node_type ); // a find_result
+    child_index = res.first;
+    node = *(res.second);
     UNODB_DETAIL_ASSERT( node != nullptr );
   }
   
@@ -549,6 +555,14 @@ template <> bool it_t<db>::last() noexcept {
 
 // Position the iterator on the next leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
+//
+//
+// TODO It is super easy to write a recursive scan function to scan
+// the entire tree and this would doubtless be quite fast.  However,
+// there might be some challenges with that approach.  First, it is
+// not obvious how to position that iterator for a given prefix.
+// Second, it is not obvious how to restart the iterator from the
+// current key if the OLC mode runs into a version tag modification.
 template <> bool it_t<db>::next() noexcept {
   auto node{ db_.root };
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
@@ -585,12 +599,13 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
 
   invalidate();
   auto node{ db_.root };
+  std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
   const detail::art_key k{search_key};
   auto remaining_key{k};
 
   while (true) {
-    stack_.push( node );
+    stack_.push( std::pair( child_index, node ) );
     const auto node_type = node.type();
     if (node_type == node_type::LEAF) {
       const auto *const leaf{node.ptr<::leaf *>()};
@@ -609,7 +624,8 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
     }
     remaining_key.shift_right(key_prefix_length);
     const auto *const child{
-        inode->find_child(node_type, remaining_key[0]).second};
+        inode->find_child(node_type, remaining_key[0]).second  // FIXME [child_index] must be updated by side-effect here.
+    };
     if (child == nullptr) return false;  // FIXME handle LT and GT here.
 
     node = *child;
