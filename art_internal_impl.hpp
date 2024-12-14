@@ -1496,12 +1496,12 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
 
   // N16
   [[nodiscard]] constexpr find_result last() noexcept {
-    const auto child_index = this->children_count.load() - 1;
+    const uint8_t child_index = this->children_count.load() - 1;
     return find_result( child_index, &children[ child_index ] );
   }
   
   constexpr void delete_subtree(db &db_instance) noexcept {
-    const auto children_count_ = this->children_count.load();
+    const uint8_t children_count_ = this->children_count.load();
     for (std::uint8_t i = 0; i < children_count_; ++i)
       ArtPolicy::delete_subtree(children[i], db_instance);
   }

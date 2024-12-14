@@ -555,14 +555,6 @@ template <> bool it_t<db>::last() noexcept {
 
 // Position the iterator on the next leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
-//
-//
-// TODO It is super easy to write a recursive scan function to scan
-// the entire tree and this would doubtless be quite fast.  However,
-// there might be some challenges with that approach.  First, it is
-// not obvious how to position that iterator for a given prefix.
-// Second, it is not obvious how to restart the iterator from the
-// current key if the OLC mode runs into a version tag modification.
 template <> bool it_t<db>::next() noexcept {
   auto node{ db_.root };
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
@@ -623,12 +615,10 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
       return false; // FIXME Handle LTE here.
     }
     remaining_key.shift_right(key_prefix_length);
-    const auto *const child{
-        inode->find_child(node_type, remaining_key[0]).second  // FIXME [child_index] must be updated by side-effect here.
-    };
-    if (child == nullptr) return false;  // FIXME handle LT and GT here.
-
-    node = *child;
+    auto res = inode->find_child(node_type, remaining_key[0]); 
+    if (res.second == nullptr) return false;  // FIXME handle LT and GT here.
+    child_index = res.first;
+    node = *(res.second);
     remaining_key.shift_right(1);
   }
   UNODB_DETAIL_CANNOT_HAPPEN();

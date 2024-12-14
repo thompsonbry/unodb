@@ -53,12 +53,25 @@ class it_t {
 
   // Construct an iterator which is not positioned on any leaf in the index.
   it_t(const Db& db):db_(db) {}
+
+  // FIXME Write a recursive scan function to scan the entire tree and
+  // this would doubtless be quite fast and could invoke a lambda for
+  // each visited key.  It can likely be done for reverse scan just as
+  // easily.  The iterator could be positioned with using find()
+  // semantics to return a find_result.  For OLC, we can restart the
+  // iterator from the current key by performing a find(GT).  The main
+  // question is how we do detect a version tag modification.
+  //
+  // @param The search key. The scan will begin at the first key GTE
+  // to the search key in the index.
+  //
+  // @param fn A lambda to be invoke for each key visited in the
+  // index.
+  template <typename FN>
+  void scan(key search_key, FN fn) const noexcept;
     
-  // Return true iff the iterator is positioned on some entry and false otherwise.
-  bool valid() const noexcept {
-    // Note: A valid iterator must have a path to a leaf.
-    return !stack_.empty() && ( stack_.top().second.type() == node_type::LEAF );
-  }
+  // Return true iff the iterator is positioned on some leaf and false otherwise.
+  bool valid() const noexcept;
     
   // Advance the iterator to next entry in the index and return
   // true.  Return false if the iterator is not positioned on a leaf
@@ -334,5 +347,7 @@ class db final {
 };
 
 }  // namespace unodb
+
+#include "art_iter.hpp" // header only iterator methods
 
 #endif  // UNODB_DETAIL_ART_HPP
