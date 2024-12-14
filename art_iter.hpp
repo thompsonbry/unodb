@@ -13,9 +13,9 @@ bool it_t<Db>::valid() const noexcept {
 }
 
 
-template <typename FN>
 template <typename Db>
-void it_t<Db> scan(key search_key, FN fn) const noexcept {
+template <typename FN>
+void it_t<Db>::scan(key search_key, FN fn) const noexcept {
 }
 
 }
