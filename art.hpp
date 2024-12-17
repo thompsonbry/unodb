@@ -44,7 +44,19 @@ enum find_enum {
   GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
   LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
 };
-    
+
+//#define RECURSIVE_SCAN
+#ifdef RECURSIVE_SCAN
+// iterator callback function typedef.
+//
+// @param The current key.
+//
+// @param The current value.
+//
+// @return true to halt or false to continue
+typedef bool (*it_functor)(const key, const value_view);
+#endif
+
 // Basic iterator for the non-thread-safe ART implementation.
 class db; // forward declaration
 template <typename Db>
@@ -54,6 +66,7 @@ class it_t {
   // Construct an iterator which is not positioned on any leaf in the index.
   it_t(const Db& db):db_(db) {}
 
+#ifdef RECURSIVE_SCAN
   // FIXME Write a recursive scan function to scan the entire tree and
   // this would doubtless be quite fast and could invoke a lambda for
   // each visited key.  It can likely be done for reverse scan just as
@@ -65,34 +78,38 @@ class it_t {
   // @param The search key. The scan will begin at the first key GTE
   // to the search key in the index.
   //
-  // @param fn A lambda to be invoke for each key visited in the
-  // index.
-  template <typename FN>
-  void scan(key search_key, FN fn) const noexcept;
-    
+  // @param fn A functor to invoke for each visited entry.
+  void scan(key search_key/*, it_functor fn*/) const noexcept;
+#endif
+  
   // Return true iff the iterator is positioned on some leaf and false otherwise.
   bool valid() const noexcept;
     
   // Advance the iterator to next entry in the index and return
-  // true.  Return false if the iterator is not positioned on a leaf
-  // or if there is no next entry.  An attempt to position the
-  // iterator after the last leaf does not change the state of the
-  // iterator.
+  // true.
+  //
+  // @return false if the iterator is not positioned on a leaf or if
+  // there is no next entry.  An attempt to position the iterator
+  // after the last leaf does not change the state of the iterator.
   bool next() noexcept;
     
-  // Advance the iterator to next entry in the index and returns
-  // true.  Returns false if the iterator is not positioned on a
-  // leaf or if there is no next entry.  
-  bool first() noexcept;
-
-  // Position the iterator on the least leaf in the index.
-  bool last() noexcept;
-
-  // Position the iterator on the previous leaf in the index and return
-  // false if the iterator is not positioned on a leaf or if there is no
-  // previous leaf.  An attempt to position the iterator before the first
-  // leaf does not change the state of the iterator.
+  // Position the iterator on the first entry in the index.
   //
+  // @return false if the index is empty.
+  bool begin() noexcept;
+
+  // Position the iterator on after the last leaf in the index.
+  //
+  // @return false if the index is empty.
+  bool end() noexcept;
+
+  // Position the iterator on the previous leaf in the index.  If the
+  // iterator is positioned after the last leaf, then this will
+  // position the iterator on the last leaf.
+  //
+  // @return false if the iterator is not positioned on a leaf or if
+  // there is no previous leaf.  An attempt to position the iterator
+  // before the first leaf does not change the state of the iterator.
   bool prior() noexcept;
     
   // Position the iterator on the first entry which orders GTE the
@@ -121,7 +138,40 @@ class it_t {
   void invalidate() noexcept {
     while(!stack_.empty()) stack_.pop(); // clear the stack
   }
-    
+
+#ifdef RECURSIVE_SCAN
+  static constexpr int CONTINUE = 0;  // iterator will continue.
+  static constexpr int RESTART = -1;  // iterator will restart from the current key.
+  static constexpr int HALT = -2;     // iterator will halt.
+  
+  // Recursive inner implementation for the forward iterator. When
+  // invoked, the iterator seek to the current key and then performs a
+  // forward scan invoking the lambda for each visited leaf.  The scan
+  // invokes itself recursively.  If the scan() returns false, the
+  // scan is restarted for the current key.
+  //
+  // @param node The current node.
+  //
+  // @param level The depth in the tree. This is ZERO (0) when
+  // initially called.  The depth is used when restarting the iterator
+  // on a key since we need to pop up until we are back at level 0.
+  //
+  // @param bkey A buffer containing a materialized copy of the
+  // external key, modified by side-effect.
+  //
+  // @param ckey The current key, modified by side-effect.
+  //
+  // @param rkey The remaining key, which is shortened during
+  // recursive descent based on match bytes.
+  //
+  // @param fn The functor to invoke for each visited leaf.
+  //
+  // @return RESTART iff the iterator should restart from the root of
+  // the tree on the current key; CONTINUE if the iterator should
+  // continue; and HALT if the iterator should halt.
+  int scan(detail::node_ptr node, uint32_t level, unodb::key& bkey, detail::art_key& ckey, detail::art_key rkey/*, it_functor fn*/) const noexcept;
+#endif
+  
   const Db& db_;                    // tree to be visited : TODO Assumes iterator can not modify the tree (simplying assumption).
 
   // The first element is the child index in the node, the 2nd is

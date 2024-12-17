@@ -41,7 +41,10 @@ UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 UNODB_START_TYPED_TESTS()
 
 //
-// FIXME unit tests, etc.
+// FIXME Extend [verifier] to support scans.
+//
+//
+// FIXME unit tests, etc. ==> These should be handled by moving the test logic into the verifier.
 //
 // FIXME unit tests for gsl::span<std::byte>
 //
@@ -51,6 +54,19 @@ UNODB_START_TYPED_TESTS()
 //
 // FIXME Microbenchmark for parallel scaling with and w/o mutation.
 //
+
+// Stuffs some data into an I4 node with some children and attempts to
+// tunnel the private APIs to write unit tests for I4.
+TYPED_TEST(ARTIteratorTest, single_node_iterators) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.check_absent_keys({0});
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  auto it = db.iterator(); // obtain iterator.
+}
+
 
 // A unit test for an iterator on an empty tree.
 TYPED_TEST(ARTIteratorTest, EmptyTree) {
@@ -70,7 +86,7 @@ TYPED_TEST(ARTIteratorTest, EmptyTree) {
   UNODB_EXPECT_TRUE( ! it.find(1, unodb::find_enum::EQ) );
   UNODB_EXPECT_TRUE( ! it.find(1, unodb::find_enum::GTE) );
   UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.first() );
+  UNODB_EXPECT_TRUE( ! it.begin() );
   UNODB_EXPECT_TRUE( ! it.valid() );
   UNODB_EXPECT_TRUE( ! it.last() );
   UNODB_EXPECT_TRUE( ! it.valid() );
@@ -183,6 +199,24 @@ TYPED_TEST(ARTIteratorTest, ThreeLeafTreeForwardScan) {
   UNODB_EXPECT_TRUE( ! it.next() );
   UNODB_EXPECT_TRUE( it.valid() );  // iterator remains valid.
 }
+
+#ifdef RECURSIVE_SCAN
+// FIXME This requires a begin() / end() pattern on each
+// basic_inode_xxx class.  Parking this approach for the moment and
+// continuing with the "cursor" style approach.
+TYPED_TEST(ARTIteratorTest, ThreeLeafTreeForwardScanWithFunctor) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  auto it = db.iterator();
+  unodb::key search_key = 0;
+  // nvisited = 0;
+  it.scan( search_key/*, fn*/ );  // FIXME Search key is ignored!
+  // UNODB_EXPECT_EQ( 3, nvisited );
+}
+#endif
 
 // Unit test for a reverse scan starting from the last leaf in the
 // index.
