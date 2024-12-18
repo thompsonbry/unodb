@@ -124,12 +124,12 @@ class db final {
   //   return result;
   // }
  protected:
-  
   // The element (0) is the key byte, element (1) is child index in
   // the node, element (2) is the pointer to the child or nullptr if
   // the iter_result is invalid (e.g., end()).
   using stack_entry = detail::inode_base::iter_result;
-
+ public:
+  
   // Basic iterator for the non-thread-safe ART implementation.
   //
   // FIXME rename as "iterator".
@@ -293,6 +293,10 @@ class db final {
   // [const] and maybe one that supports "seek()" or "range" during
   // construction.  Consider supporting non-const iterators once it
   // works.
+  //
+  // FIXME Implement a templated scan operator which accepts fromKey
+  // and maybe toKey and a lambda.  That should be the fastest way we
+  // can do a scan.
   [[nodiscard]] it_t iterator() const {return it_t();}
   
 #if 0
