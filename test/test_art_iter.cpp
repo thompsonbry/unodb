@@ -55,18 +55,18 @@ UNODB_START_TYPED_TESTS()
 // FIXME Microbenchmark for parallel scaling with and w/o mutation.
 //
 
-// Stuffs some data into an I4 node with some children and attempts to
-// tunnel the private APIs to write unit tests for I4.
-TYPED_TEST(ARTIteratorTest, single_node_iterators) {
-  unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
-  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
-  verifier.insert( 0, unodb::test::test_values[0] );
-  verifier.insert( 1, unodb::test::test_values[1] );
-  verifier.insert( 2, unodb::test::test_values[2] );
-  auto it = db.iterator(); // obtain iterator.
-}
-
+// TYPED_TEST(ARTIteratorTest, single_node_iterators) {
+//   unodb::test::tree_verifier<TypeParam> verifier;
+//   verifier.check_absent_keys({0});
+//   const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+//   verifier.insert( 0, unodb::test::test_values[0] );
+//   verifier.insert( 1, unodb::test::test_values[1] );
+//   verifier.insert( 2, unodb::test::test_values[2] );
+//   auto it0 = db.begin(); // obtain iterators.
+//   auto it1 = db.end();
+//   UNODB_EXPECT_EQ( it0, it1 );
+//   UNODB_EXPECT_TRUE
+// }
 
 // A unit test for an iterator on an empty tree.
 TYPED_TEST(ARTIteratorTest, EmptyTree) {

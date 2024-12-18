@@ -479,21 +479,15 @@ void db::dump(std::ostream &os) const {
 /// iterator
 ///
 
-template <>
-bool it_t<db>::valid() const noexcept {
-  // Note: A valid iterator must have a path to a leaf.
-  return !stack_.empty() && ( stack_.top().second.type() == node_type::LEAF );
-}
-
 // TODO Lift out these simple methods to a header file.
 template <>
 std::optional<const key> it_t<db>::get_key() noexcept {
-  // TODO Eventually this will need to use the stack to reconstruct
+  // FIXME Eventually this will need to use the stack to reconstruct
   // the key from the path from the root to this leaf.  Right now it
   // is relying on the fact that simple fixed width keys are stored
   // directly in the leaves.
   if ( ! valid() ) return {}; // not positioned on anything.
-  const auto *const leaf{stack_.top().second.ptr<::leaf *>()}; // current leaf.
+  const auto *const leaf{std::get<2>(stack_.top()).ptr<::leaf *>()}; // current leaf.
   key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
   return key_; // return pointer to the internal key buffer.
 }
@@ -503,7 +497,7 @@ std::optional<const key> it_t<db>::get_key() noexcept {
 template <>
 std::optional<const value_view> it_t<db>::get_val() const noexcept {
   if ( ! valid() ) return {}; // not positioned on anything.
-  const auto *const leaf{stack_.top().second.ptr<::leaf *>()}; // current leaf.
+  const auto *const leaf{std::get<2>(stack_.top()).ptr<::leaf *>()}; // current leaf.
   return leaf->get_value_view();
 }
 
@@ -512,12 +506,15 @@ std::optional<const value_view> it_t<db>::get_val() const noexcept {
 template <> bool it_t<db>::begin() noexcept {
 
   invalidate();
+
+  // TODO Could turn these into an iter_result and could use tie.
   auto node{ db_.root };
-  std::uint8_t child_index {0};  // ignored for the root.
+  std::byte k {0xff};           // ignored for the root.
+  std::uint8_t child_index {0}; // ignored for the root.
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
 
   while (true) {
-    stack_.push( stack_entry( child_index, node ) );
+    stack_.push( stack_entry( k, child_index, node ) );
     const auto node_type = node.type();
     
     if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
@@ -525,6 +522,7 @@ template <> bool it_t<db>::begin() noexcept {
     // recursive descent.
     auto *const inode{node.ptr<::inode *>()};
     auto res = inode->begin( node_type );  // a iter_result
+    k = std::get<0>( res );
     child_index = static_cast<std::uint8_t>( std::get<1>( res ) ); // child index is always in [0:255] for begin().
     node = *(std::get<2>( res ));
     UNODB_DETAIL_ASSERT( node != nullptr );
@@ -533,31 +531,26 @@ template <> bool it_t<db>::begin() noexcept {
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
 
-// Traverse to the right-most leaf. The stack is cleared and
-// re-populated as we step down along the path to the leaf.
-template <> bool it_t<db>::end() noexcept {
-
-  invalidate();
-  auto node{ db_.root };
-  std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
-  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
-
-  while (true) {
-    stack_.push( std::pair( child_index, node ) );
-    const auto node_type = node.type();
-    
-    if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
-
-    // recursive descent.
-    auto *const inode{node.ptr<::inode *>()};
-    auto res = inode->end( node_type ); // an iter_result
-    child_index = static_cast<std::uint8_t>( std::get<1>( res ) ); // child index is always in [0:255] for begin().
-    node = *(std::get<2>( res ));
-    UNODB_DETAIL_ASSERT( node != nullptr );
-  }
-  
-  UNODB_DETAIL_CANNOT_HAPPEN();
-}
+// // Traverse to the right-most leaf. The stack is cleared and
+// // re-populated as we step down along the path to the leaf.
+// template <> bool it_t<db>::end() noexcept {
+//   invalidate();
+//   auto node{ db_.root };
+//   std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
+//   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
+//   while (true) {
+//     stack_.push( std::pair( child_index, node ) );
+//     const auto node_type = node.type();
+//     if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
+//     // recursive descent.
+//     auto *const inode{node.ptr<::inode *>()};
+//     auto res = inode->end( node_type ); // an iter_result
+//     child_index = static_cast<std::uint8_t>( std::get<1>( res ) ); // child index is always in [0:255] for begin().
+//     node = *(std::get<2>( res ));
+//     UNODB_DETAIL_ASSERT( node != nullptr );
+//   }  
+//   UNODB_DETAIL_CANNOT_HAPPEN();
+// }
 
 // Position the iterator on the next leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
@@ -565,20 +558,30 @@ template <> bool it_t<db>::next() noexcept {
 
   if ( ! valid() ) return false;  // the iterator is not positioned on anything.
   
-  auto node{ db_.root };
-  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
   // FIXME HERE
   //
-  // The basic strategy is to look at the leaf on the top of stack.
-  // We then look at the parent of that leaf on the stack.  We then
-  // ask the parent for the next child pointer in lexicographic order
-  // (how this is done depends on the node type). Finally, we pop the
-  // old leaf off of the stack and push the new leaf onto the stack.
-  //
-  // Note: If we pop the leaf first, then we are perhaps at more risk
-  // of invalidating the iterator.  But we could also handle that by
-  // restarting from the successor of the current key using find.
-  return false;
+  // Pop the leaf off of the stack.  Then peek at the parent of that
+  // leaf on the stack.  We then ask the parent for the next child
+  // pointer in lexicographic order (how this is done depends on the
+  // node type). Finally, we pop the old leaf off of the stack and
+  // push the new leaf onto the stack.
+  stack_.pop();
+  auto cur = stack_.top();
+  auto node{ std::get<2>( cur ) };
+  //if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false; // Can't happen?
+  const auto node_type = node.type();
+  auto *const inode{node.ptr<::inode *>()};
+  auto nxt = inode->next( node_type, cur ); // next child of that parent.
+  if ( std::get<2>( nxt ) == nullptr ) {
+    // Nothing more for that parent.
+    //
+    // FIXME Pop the next node of the stack and repeat until we get to
+    // the root and then do a recursive descent to the first leaf
+    // under that new parent.
+    return false;
+  }
+  stack_.push( nxt );  // push the next leaf onto the stack.
+  return true;
 }
 
 // Position the iterator on the prior leaf in the index.  Return false
@@ -599,24 +602,26 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
   if ( dir != find_enum::EQ ) return {}; // FIXME Support LTE, GTE
 
   invalidate();
-  auto node{ db_.root };
-  std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
-  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
+  if (UNODB_DETAIL_UNLIKELY(db.root== nullptr)) return false;
+  stack_entry cur { 0xFFU, 0xFFFFU, db.root }; // (key,child_index,root); key and child_index are ignore for the root.
+  // auto node{ db_.root };
+  // std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
   const detail::art_key k{search_key};
   auto remaining_key{k};
 
   while (true) {
-    stack_.push( std::pair( child_index, node ) );
+    stack_.push( cur );
+    auto node = std::get<2>( cur );
     const auto node_type = node.type();
     if (node_type == node_type::LEAF) {
+      // Terminate on a leaf.
       const auto *const leaf{node.ptr<::leaf *>()};
       if (leaf->matches(k)) return true;  // This path handles EQ/LTE/GTE.
       // FIXME handle LT and GT here.
       return false;
     }
-
     UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
-
+    // descent via an internal node.
     auto *const inode{node.ptr<::inode *>()};
     const auto &key_prefix{inode->get_key_prefix()};
     const auto key_prefix_length{key_prefix.length()};
@@ -626,8 +631,9 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
     remaining_key.shift_right(key_prefix_length);
     auto res = inode->find_child(node_type, remaining_key[0]); 
     if (res.second == nullptr) return false;  // FIXME handle LT and GT here.
-    child_index = res.first;
-    node = *(res.second);
+    stack_.push( { remaining_key[0], res.first, res.second } );
+    // child_index = res.first;
+    // node = *(res.second);
     remaining_key.shift_right(1);
   }
   UNODB_DETAIL_CANNOT_HAPPEN();
