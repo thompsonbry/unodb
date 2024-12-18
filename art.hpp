@@ -14,15 +14,25 @@
 
 #include "art_common.hpp"
 #include "art_internal.hpp"
-//#include "art_internal_impl.hpp"  // required for basic_inode_impl
+#include "art_internal_impl.hpp"
 #include "assert.hpp"
+#include "in_fake_critical_section.hpp"
 #include "node_type.hpp"
 
 namespace unodb {
 
 namespace detail {
 
-struct node_header;
+class inode;
+
+class inode_4;
+class inode_16;
+class inode_48;
+class inode_256;
+
+struct [[nodiscard]] node_header {};
+
+static_assert(std::is_empty_v<node_header>);
 
 template <class, template <class> class, class, class, template <class> class,
           template <class, class> class>
@@ -30,10 +40,22 @@ struct basic_art_policy;  // IWYU pragma: keep
 
 using node_ptr = basic_node_ptr<node_header>;
 
-template <class Header, class Db>
-[[nodiscard]] auto make_db_leaf_ptr(art_key, value_view, Db &);
-
 struct impl_helpers;
+
+using inode_defs = unodb::detail::basic_inode_def<inode, inode_4, inode_16,
+                                                  inode_48, inode_256>;
+
+template <class INode>
+using db_inode_deleter =
+    unodb::detail::basic_db_inode_deleter<INode, unodb::db>;
+
+using art_policy = unodb::detail::basic_art_policy<
+    unodb::db, unodb::in_fake_critical_section, unodb::detail::node_ptr,
+    inode_defs, db_inode_deleter, unodb::detail::basic_db_leaf_deleter>;
+
+using inode_base = unodb::detail::basic_inode_impl<art_policy>;
+
+class inode : public inode_base {};
 
 }  // namespace detail
 
@@ -92,7 +114,22 @@ class db final {
   ///
   /// iterator
   ///
+
+  // // FIXME REMOVE THIS.
+  // static std::stack<detail::inode_base::find_result> compile_iterator() {
+  //   detail::inode_base::find_result foo{0, nullptr};
+  //   std::stack<detail::inode_base::find_result> result;
+  //   result.push(foo);
+  //   result.emplace(0, nullptr);
+  //   return result;
+  // }
+ protected:
   
+  // The element (0) is the key byte, element (1) is child index in
+  // the node, element (2) is the pointer to the child or nullptr if
+  // the iter_result is invalid (e.g., end()).
+  using stack_entry = detail::inode_base::iter_result;
+
   // Basic iterator for the non-thread-safe ART implementation.
   //
   // FIXME rename as "iterator".
@@ -121,7 +158,12 @@ class db final {
     // Return true iff the iterator is positioned on some leaf and false otherwise.
     bool valid() const noexcept {
       // Note: A valid iterator must have a path to a leaf.
-      return !stack_.empty() && ( std::get<2>(stack_.top()).type() == node_type::LEAF );
+      if ( stack_.empty() ) return false;
+      auto tmp = std::get<2>( stack_.top() );
+      if ( tmp == nullptr ) return false; // FIXME Look at the types here.
+      auto tmp2 = tmp->load();
+      return tmp2.type() == node_type::LEAF;
+      //return !stack_.empty() && ( std::get<2>(stack_.top()) != nullptr && std::get<2>(stack_.top())->load().type() == node_type::LEAF );
     }
     
     // Advance the iterator to next entry in the index and return
@@ -142,7 +184,7 @@ class db final {
     // @return true
     bool end() noexcept {
       invalidate();
-      stack_.push( end_result );
+      stack_.push( detail::inode_base::end_result );
       return true;
     }
   
@@ -215,26 +257,6 @@ class db final {
     int scan(detail::node_ptr node, uint32_t level, unodb::key& bkey, detail::art_key& ckey, detail::art_key rkey/*, it_functor fn*/) const noexcept;
 #endif
 
-    // The element (0) is the key byte, element (1) is child index in
-    // the node, element (2) is the pointer to the child or nullptr if
-    // the iter_result is invalid (e.g., end()).
-    //
-    // FIXME How to access the type declaration in basic_inode_impl
-    // since that is a template class.  We need that if we need the
-    // critical_section_policy. Right now this drills through the
-    // node_ptr before putting it on the stack.
-    using stack_entry = unodb::detail::basic_inode_impl::iter_result;
-    // using stack_entry = std::tuple
-    //     < std::byte     // key -- TODO Should this be critical_section_policy<std::uint8_t>? Is there any reason to defer dereference?
-    //       , std::uint16_t // child-index (it is wider than std::uint8_t so we can represent the value 256 without overflow).
-    //       , detail::node_ptr // child pointer -- Should this be just node_ptr?  Is there any reason to defer dereference? copy costs?
-    //       //, critical_section_policy<node_ptr> * // child pointer -- Should this be just node_ptr?  Is there any reason to defer dereference? copy costs?
-    //       >;
-
-    // FIXME Should be the constant declared on basic_inode_impl, but the same issue with the template class as the stack_entry typedef.
-    //static constexpr stack_entry end_result{static_cast<std::byte>(0xFFU)/*key*/, 0xFFU/*child_index*/, nullptr/*nullptr*/};
-    static constexpr stack_entry = unodb::detail::basic_inode_impl::end_result;  // FIXME Replace with explicit reference or using.
-
     // A stack reflecting the parent path from the root of the tree to
     // the current leaf.  A valid iterator is always positioned on a
     // leaf and always has a leaf on the top of the stack.  If the stack
@@ -272,7 +294,7 @@ class db final {
   // construction.  Consider supporting non-const iterators once it
   // works.
   [[nodiscard]] it_t iterator() const {return it_t();}
-
+  
 #if 0
   // member typedefs provided through inheriting from std::iterator
   class iterator {
