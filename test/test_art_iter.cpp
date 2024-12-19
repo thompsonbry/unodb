@@ -58,24 +58,25 @@ UNODB_START_TYPED_TESTS()
 TYPED_TEST(ARTIteratorTest, empty_tree) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
-  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   auto b = db.begin(); // obtain iterators.
   auto e = db.end();
   UNODB_EXPECT_TRUE( b == e );
-  UNODB_EXPECT_TRUE( ! it.get_key() );
-  UNODB_EXPECT_TRUE( ! it.get_val() );
+  UNODB_EXPECT_TRUE( ! b.get_key() );
+  UNODB_EXPECT_TRUE( ! b.get_val() );
 }
 
 TYPED_TEST(ARTIteratorTest, single_node_iterators_one_value) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
-  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   auto b = db.begin(); // obtain iterators.
   auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
-  UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0 );
-  UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[0] );
+  UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0 );
+  UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
+  UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
 
 #if 0

@@ -179,7 +179,7 @@ class db final {
       // is relying on the fact that simple fixed width keys are stored
       // directly in the leaves.
       if ( ! valid() ) return {}; // not positioned on anything.
-      const auto *const leaf{std::get<2>( stack_.top() )->load().ptr<detail::leaf *>()}; // current leaf.
+      const auto *const leaf{std::get<CP>( stack_.top() )->load().ptr<detail::leaf *>()}; // current leaf.
       key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
       return key_; // return pointer to the internal key buffer.
     }
@@ -188,17 +188,17 @@ class db final {
     // the value associated with that index entry.
     std::optional<const value_view> get_val() const noexcept {
       if ( ! valid() ) return {}; // not positioned on anything.
-      const auto *const leaf{std::get<2>( stack_.top() )->load().ptr<detail::leaf *>()}; // current leaf.
+      const auto *const leaf{std::get<CP>( stack_.top() )->load().ptr<detail::leaf *>()}; // current leaf.
       return leaf->get_value_view();
     }
 
-    // FIXME Declare constants for get<0,1,2>
     bool operator==(const iterator& other) const noexcept {
-      if ( &db_ != &other.db_ ) return false;                        // different tree?
-      if ( stack_.empty() && ! other.stack_.empty() ) return false;  // one is invalid and the other is not?
-      if ( stack_.empty() ) return true;                             // both empty.
-      return std::get<2>(       stack_.top() )->load().ptr<detail::leaf*>() // pointing at the same leaf?
-          == std::get<2>( other.stack_.top() )->load().ptr<detail::leaf*>()
+      if ( &db_ != &other.db_ ) return false;                          // different tree?
+      if (   stack_.empty() && ! other.stack_.empty() ) return false;  // one stack is empty and the other is not?
+      if ( ! stack_.empty() &&   other.stack_.empty() ) return false;  // ditto
+      if ( stack_.empty() ) return true;                               // both empty.
+      return std::get<CP>(       stack_.top() )->load().ptr<detail::leaf*>() // pointing at the same leaf?
+          == std::get<CP>( other.stack_.top() )->load().ptr<detail::leaf*>()
           ;
     }
     
@@ -216,22 +216,15 @@ class db final {
     // the stack!
     bool valid() const noexcept {
       // Note: A valid iterator must have a path to a leaf.
-      return ( ! stack_.empty() && std::get<2>( stack_.top() )->load().type() == node_type::LEAF );
+      return ( ! stack_.empty() && std::get<CP>( stack_.top() )->load().type() == node_type::LEAF );
     }
 
-    // Return the root node of the tree (will compare equivalent to a nullptr iff the tree is empty).
-    detail::node_ptr& root() const noexcept { return db_.root; } 
-    
    private:
 
-    // The outer db instance.
-    db& db_;
+    static constexpr int KB = 0; // key byte
+    static constexpr int CI = 1; // child_index
+    static constexpr int CP = 2; // child_pointer
     
-    // The element (0) is the key byte, element (1) is child index in
-    // the node, element (2) is the pointer to the child or nullptr if
-    // the iter_result is invalid (e.g., end()).
-    using stack_entry = detail::inode_base::iter_result;
-
     // invalidate the iterator.
     iterator& invalidate() noexcept {
       while ( ! stack_.empty() ) stack_.pop(); // clear the stack
@@ -270,6 +263,14 @@ class db final {
     // continue; and HALT if the iterator should halt.
     int scan(detail::node_ptr node, uint32_t level, unodb::key& bkey, detail::art_key& ckey, detail::art_key rkey/*, it_functor fn*/) const noexcept;
 #endif
+
+    // The element (0) is the key byte, element (1) is child index in
+    // the node, element (2) is the pointer to the child or nullptr if
+    // the iter_result is invalid (e.g., end()).
+    using stack_entry = detail::inode_base::iter_result;
+    
+    // The outer db instance.
+    db& db_;
 
     // A stack reflecting the parent path from the root of the tree to
     // the current leaf.

@@ -456,15 +456,16 @@ void db::dump(std::ostream &os) const {
 // If the tree is empty, then the result is the same as end().
 db::iterator& db::iterator::first() noexcept {
   invalidate();  // clear the stack
-  if (UNODB_DETAIL_UNLIKELY(root() == nullptr)) return *this;  // empty tree.
+  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   stack_entry e { // entry for root node.
     static_cast<std::byte>(0xFFU),
-    static_cast<std::uint16_t>(0XFFFFU),
-    new detail::inode_base::critical_section_policy<detail::node_ptr>( root() ) // FIXME THE ROOT NEEDS TO BE A CRITICAL SECTION POLICY -- THIS IS A MEMORY LEAK!!!!
+    static_cast<std::uint8_t>(0XFFU),
+    new detail::inode_base::critical_section_policy<detail::node_ptr>( db_.root )  // FIXME THIS IS A MEMORY LEAK!!!!  RECOMMEND IS TO REMOVE THE CRITICAL SECTION POLICY FROM [find_result]
+    //detail::inode_base::critical_section_policy<detail::node_ptr>( detail::node_ptr{db.root} )
   };
   while ( true ) {
     stack_.push( e );
-    auto node = std::get<2>( e )->load();
+    auto node { std::get<CP>( e )->load() };
     UNODB_DETAIL_ASSERT( node != nullptr );
     const auto node_type = node.type();
     if ( node_type == node_type::LEAF ) return *this;  // Done when we find the left-most leaf.
@@ -474,8 +475,6 @@ db::iterator& db::iterator::first() noexcept {
   }
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
-
-#if 0
 
 // // Traverse to the right-most leaf. The stack is cleared and
 // // re-populated as we step down along the path to the leaf.
@@ -491,8 +490,8 @@ db::iterator& db::iterator::first() noexcept {
 //     // recursive descent.
 //     auto *const inode{node.ptr<::inode *>()};
 //     auto res = inode->end( node_type ); // an iter_result
-//     child_index = static_cast<std::uint8_t>( std::get<1>( res ) ); // child index is always in [0:255] for begin().
-//     node = *(std::get<2>( res ));
+//     child_index = static_cast<std::uint8_t>( std::get<CI>( res ) ); // child index is always in [0:255] for begin().
+//     node = *(std::get<CP>( res ));
 //     UNODB_DETAIL_ASSERT( node != nullptr );
 //   }  
 //   UNODB_DETAIL_CANNOT_HAPPEN();
@@ -501,7 +500,7 @@ db::iterator& db::iterator::first() noexcept {
 // Position the iterator on the next leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
 db::iterator& db::iterator::next() noexcept {
-  if ( ! valid() ) return false;  // the iterator is not positioned on anything.
+  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
   // Pop the leaf off of the stack.  Then peek at the parent of that
   // leaf on the stack.  We then ask the parent for the next child
   // pointer in lexicographic order (how this is done depends on the
@@ -510,18 +509,18 @@ db::iterator& db::iterator::next() noexcept {
   stack_.pop(); // toss away the entry that points at the current leaf.
   while ( ! stack_.empty() ) {
     auto e = stack_.top();
-    auto node{ std::get<2>( e )->load() };
+    auto node{ std::get<CP>( e )->load() };
     UNODB_DETAIL_ASSERT( node != nullptr );
     auto node_type = node.type();
-    auto *const inode{ node.ptr<detail::inode *>() };
+    auto* inode{ node.ptr<detail::inode *>() };
     auto nxt = inode->next( node_type, e ); // next child of that parent.
-    if ( std::get<2>( nxt ) == nullptr ) {
+    if ( std::get<CP>( nxt ) == nullptr ) {
       stack_.pop();  // Nothing more for that parent.
       continue;
     }
     while ( true ) { // recursive left descent
       stack_.push( e );
-      node = std::get<2>( e )->load();
+      node = std::get<CP>( e )->load();
       UNODB_DETAIL_ASSERT( node != nullptr );
       node_type = node.type();
       if ( node_type == node_type::LEAF ) return *this;  // Done when we find the left-most leaf.
@@ -533,6 +532,8 @@ db::iterator& db::iterator::next() noexcept {
   }
   return *this; // stack is empty, so iterator == end().
 }
+
+#if 0
 
 // Position the iterator on the prior leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
@@ -564,7 +565,7 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
 
   while (true) {
     stack_.push( cur );
-    auto node = std::get<2>( cur );
+    auto node = std::get<CP>( cur );
     const auto node_type = node.type();
     if (node_type == node_type::LEAF) {
       // Terminate on a leaf.

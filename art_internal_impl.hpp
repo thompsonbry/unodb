@@ -602,13 +602,15 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // for N4 and N16 since they use a sparse encoding of the keys.
   //
   // Note: Overflow for the child_index can only occur for N48 and
-  // N256.
+  // N256.  When overflow happens, the child_pointer needs to be set
+  // to [nullptr] since the child_index can not be incremented beyond
+  // 255.
   //
   // FIXME For OLC, we also need the version tag for the parent so
   // this would be a 4-tuple.
   using iter_result = std::tuple
       < std::byte    // key -- TODO Should this be critical_section_policy<std::uint8_t>? Is there any reason to defer dereference?
-      , std::uint16_t  // child-index (it is wider than std::uint8_t so we can represent the value 256 without overflow).
+      , std::uint8_t  // child-index 
       , critical_section_policy<node_ptr> * // child pointer -- Should this be just node_ptr?  Is there any reason to defer dereference? copy costs?
         >;
   
@@ -1255,16 +1257,16 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   // N4 - position on the first child (there is always at least one child for N4).
   [[nodiscard]] constexpr typename basic_inode_4::iter_result begin() noexcept {
     const std::byte key = keys.byte_array[ 0 ].load();
-    return { key, static_cast<uint16_t>(0), &children[ 0 ] };
+    return { key, static_cast<uint8_t>(0), &children[ 0 ] };
   }
 
   [[nodiscard]] constexpr typename basic_inode_4::iter_result next(const typename basic_inode_4::iter_result& cur) noexcept {
     if ( std::get<2>( cur ) == nullptr ) return parent_class::end_result;
     const auto nchildren = this->children_count.load();
-    const auto next_index = std::get<1>( cur ) + 1;  // next child index
+    const std::uint8_t next_index = std::get<1>( cur ) + 1;  // next child index
     if ( next_index >= nchildren ) return parent_class::end_result;
     const std::byte key = keys.byte_array[ next_index ].load();
-    return { key, static_cast<uint16_t>( next_index ), &children[ next_index ] };
+    return { key, static_cast<uint8_t>( next_index ), &children[ next_index ] };
   }
   
   // TODO remove first()/last()
@@ -1604,10 +1606,10 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   [[nodiscard]] constexpr typename basic_inode_16::iter_result next(const typename basic_inode_16::iter_result& cur) noexcept {
     if ( std::get<2>( cur ) == nullptr ) return parent_class::end_result;
     const auto nchildren = this->children_count.load();
-    const auto next_index = std::get<1>( cur ) + 1;  // next child index
+    const std::uint8_t next_index = std::get<1>( cur ) + 1;  // next child index
     if ( next_index >= nchildren ) return parent_class::end_result;
     const std::byte key = keys.byte_array[ next_index ].load();
-    return { key, static_cast<uint16_t>( next_index ), &children[ next_index ] };
+    return { key, static_cast<uint8_t>( next_index ), &children[ next_index ] };
   }
   
   // TODO remove first()/last()
@@ -1962,7 +1964,7 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
     for( uint64_t i=0; i<basic_inode_48::capacity; i++ ) {
       if ( child_indexes[ i ] != empty_child ) {
         const std::byte key = static_cast<std::byte>( i );
-        const std::uint16_t child_index = static_cast<std::uint16_t>( i );
+        const std::uint8_t child_index = static_cast<std::uint8_t>( i );
         return { key, child_index, &(children.pointer_array[ i ]) };
       }
     }
@@ -1971,9 +1973,10 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
     
   [[nodiscard]] constexpr typename basic_inode_48::iter_result next(const typename basic_inode_48::iter_result& cur) noexcept {
     if ( std::get<2>( cur ) == nullptr ) return parent_class::end_result;
-    const auto next_index = std::get<1>( cur ) + 1;  // next child index
+    if ( std::get<1>( cur ) == 255 ) return parent_class::end_result; // increment would overflow. // FIXME Is there a constant for the #of key slots?
+    const std::uint8_t next_index = std::get<1>( cur ) + 1;  // next child index
     // loop over the remaining byte values in lexical order.
-    for( uint16_t i=next_index; i<basic_inode_48::capacity; i++ ) {
+    for( uint8_t i=next_index; i<basic_inode_48::capacity; i++ ) {
       if ( child_indexes[ i ] != empty_child ) {
         return { static_cast<std::byte>(i), i, &(children.pointer_array[ i ]) };
       }
@@ -2262,7 +2265,7 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
   [[nodiscard]] constexpr typename basic_inode_256::iter_result begin() noexcept {
     for( uint64_t i=0; i<basic_inode_256::capacity; i++ ) {
       if ( children[ i ] != nullptr ) {
-        const auto child_index = static_cast<std::uint16_t>( i ); // downcast is safe since in [0:255]
+        const auto child_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
         const std::byte key = static_cast<std::byte>( child_index ); // child_index is the key byte.
         return { key, child_index, &children[ i ] };
       }
@@ -2272,11 +2275,12 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
     
   [[nodiscard]] constexpr typename basic_inode_256::iter_result next(const typename basic_inode_256::iter_result& cur) noexcept {
     if ( std::get<2>( cur ) == nullptr ) return parent_class::end_result;
-    const auto next_index = std::get<1>( cur ) + 1;  // next child index
+    if ( std::get<1>( cur ) == basic_inode_256::capacity ) return parent_class::end_result; // increment would overflow.
+    const std::uint8_t next_index = std::get<1>( cur ) + 1;  // next child index
     // loop over the remaining byte values in lexical order.
     for( uint16_t i=next_index; i<basic_inode_256::capacity; i++ ) {
       if ( children[ i ] != nullptr ) {
-        return { static_cast<std::byte>(i), i, &(children[ i ]) };
+        return { static_cast<std::byte>(i), static_cast<std::uint8_t>(i), &(children[ i ]) };
       }
     }
     return parent_class::end_result;
