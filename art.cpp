@@ -165,13 +165,13 @@ detail::node_ptr *impl_helpers::add_or_choose_subtree(
 
   if (child != nullptr) return child;
 
-  auto leaf = art_policy::make_db_leaf_ptr(k, v, db_instance);
+  auto aleaf = art_policy::make_db_leaf_ptr(k, v, db_instance);
   const auto children_count = inode.get_children_count();
 
   if constexpr (!std::is_same_v<INode, inode_256>) {
     if (UNODB_DETAIL_UNLIKELY(children_count == INode::capacity)) {
       auto larger_node{INode::larger_derived_type::create(
-          db_instance, inode, std::move(leaf), depth)};
+          db_instance, inode, std::move(aleaf), depth)};
       *node_in_parent =
           node_ptr{larger_node.release(), INode::larger_derived_type::type};
 #ifdef UNODB_DETAIL_WITH_STATS
@@ -181,7 +181,7 @@ detail::node_ptr *impl_helpers::add_or_choose_subtree(
       return child;
     }
   }
-  inode.add_to_nonfull(std::move(leaf), depth, children_count);
+  inode.add_to_nonfull(std::move(aleaf), depth, children_count);
   return child;
 }
 
@@ -197,8 +197,8 @@ std::optional<detail::node_ptr *> impl_helpers::remove_or_choose_subtree(
   if (child_ptr_val.type() != node_type::LEAF)
     return unwrap_fake_critical_section(child_ptr);
 
-  const auto *const leaf{child_ptr_val.template ptr<::leaf *>()};
-  if (!leaf->matches(k)) return {};
+  const auto *const aleaf{child_ptr_val.template ptr<::leaf *>()};
+  if (!aleaf->matches(k)) return {};
 
   if (UNODB_DETAIL_UNLIKELY(inode.is_min_size())) {
     if constexpr (std::is_same_v<INode, inode_4>) {
@@ -450,59 +450,32 @@ void db::dump(std::ostream &os) const {
 ///
 /// iterator
 ///
-#if 0
 
-// TODO Lift out these simple methods to a header file.
-template <>
-std::optional<const key> it_t<db>::get_key() noexcept {
-  // FIXME Eventually this will need to use the stack to reconstruct
-  // the key from the path from the root to this leaf.  Right now it
-  // is relying on the fact that simple fixed width keys are stored
-  // directly in the leaves.
-  if ( ! valid() ) return {}; // not positioned on anything.
-  const auto *const leaf{std::get<2>(stack_.top()).ptr<::leaf *>()}; // current leaf.
-  key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-  return key_; // return pointer to the internal key buffer.
-}
-    
-// Iff the iterator is positioned on an index entry, then returns
-// the value associated with that index entry.
-template <>
-std::optional<const value_view> it_t<db>::get_val() const noexcept {
-  if ( ! valid() ) return {}; // not positioned on anything.
-  const auto *const leaf{std::get<2>(stack_.top()).ptr<::leaf *>()}; // current leaf.
-  return leaf->get_value_view();
-}
-
-// Traverse to the left-most leaf. The stack is cleared and
-// re-populated as we step down along the path to the leaf.
-template <> bool it_t<db>::begin() noexcept {
-
-  invalidate();
-
-  // TODO Could turn these into an iter_result and could use tie.
-  auto node{ db_.root };
-  std::byte k {0xff};           // ignored for the root.
-  std::uint8_t child_index {0}; // ignored for the root.
-  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false;
-
-  while (true) {
-    stack_.push( stack_entry( k, child_index, node ) );
-    const auto node_type = node.type();
-    
-    if (node_type == node_type::LEAF) return true;  // Done when we find the left-most leaf.
-
-    // recursive descent.
-    auto *const inode{node.ptr<::inode *>()};
-    auto res = inode->begin( node_type );  // a iter_result
-    k = std::get<0>( res );
-    child_index = static_cast<std::uint8_t>( std::get<1>( res ) ); // child index is always in [0:255] for begin().
-    node = *(std::get<2>( res ));
+// Traverse to the left-most leaf. The stack is cleared first and then
+// re-populated as we step down along the path to the left-most leaf.
+// If the tree is empty, then the result is the same as end().
+db::iterator& db::iterator::first() noexcept {
+  invalidate();  // clear the stack
+  if (UNODB_DETAIL_UNLIKELY(root() == nullptr)) return *this;  // empty tree.
+  stack_entry e { // entry for root node.
+    static_cast<std::byte>(0xFFU),
+    static_cast<std::uint16_t>(0XFFFFU),
+    new detail::inode_base::critical_section_policy<detail::node_ptr>( root() ) // FIXME THE ROOT NEEDS TO BE A CRITICAL SECTION POLICY -- THIS IS A MEMORY LEAK!!!!
+  };
+  while ( true ) {
+    stack_.push( e );
+    auto node = std::get<2>( e )->load();
     UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) return *this;  // Done when we find the left-most leaf.
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    e = inode->begin( node_type );  // first child of the current internal node.
   }
-  
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
+
+#if 0
 
 // // Traverse to the right-most leaf. The stack is cleared and
 // // re-populated as we step down along the path to the leaf.
@@ -527,40 +500,45 @@ template <> bool it_t<db>::begin() noexcept {
 
 // Position the iterator on the next leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
-template <> bool it_t<db>::next() noexcept {
-
+db::iterator& db::iterator::next() noexcept {
   if ( ! valid() ) return false;  // the iterator is not positioned on anything.
-  
-  // FIXME HERE
-  //
   // Pop the leaf off of the stack.  Then peek at the parent of that
   // leaf on the stack.  We then ask the parent for the next child
   // pointer in lexicographic order (how this is done depends on the
   // node type). Finally, we pop the old leaf off of the stack and
   // push the new leaf onto the stack.
-  stack_.pop();
-  auto cur = stack_.top();
-  auto node{ std::get<2>( cur ) };
-  //if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return false; // Can't happen?
-  const auto node_type = node.type();
-  auto *const inode{node.ptr<::inode *>()};
-  auto nxt = inode->next( node_type, cur ); // next child of that parent.
-  if ( std::get<2>( nxt ) == nullptr ) {
-    // Nothing more for that parent.
-    //
-    // FIXME Pop the next node of the stack and repeat until we get to
-    // the root and then do a recursive descent to the first leaf
-    // under that new parent.
-    return false;
+  stack_.pop(); // toss away the entry that points at the current leaf.
+  while ( ! stack_.empty() ) {
+    auto e = stack_.top();
+    auto node{ std::get<2>( e )->load() };
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    auto node_type = node.type();
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto nxt = inode->next( node_type, e ); // next child of that parent.
+    if ( std::get<2>( nxt ) == nullptr ) {
+      stack_.pop();  // Nothing more for that parent.
+      continue;
+    }
+    while ( true ) { // recursive left descent
+      stack_.push( e );
+      node = std::get<2>( e )->load();
+      UNODB_DETAIL_ASSERT( node != nullptr );
+      node_type = node.type();
+      if ( node_type == node_type::LEAF ) return *this;  // Done when we find the left-most leaf.
+      // recursive descent.
+      inode = { node.ptr<detail::inode *>() };
+      e = inode->begin( node_type );  // first child of the current internal node.
+    }
+    return *this;
   }
-  stack_.push( nxt );  // push the next leaf onto the stack.
-  return true;
+  return *this; // stack is empty, so iterator == end().
 }
 
 // Position the iterator on the prior leaf in the index.  Return false
 // if the iterator is not positioned on any leaf.
-template <> bool it_t<db>::prior() noexcept {
-  return false;
+db::iterator& db::iterator::prior() noexcept {
+  UNODB_DETAIL_ASSERT( false );
+  return *this;  // FIXME WRITE THE CODE.
 }
 
 // The find() logic is quite similar to ::get().  It is nearly the
@@ -570,6 +548,8 @@ template <> bool it_t<db>::prior() noexcept {
 // return {} (leaf does not match, child pointer does not exist for
 // key), but in this case the iterator is positioned before (LTE) or
 // after (GTE) the missing key.
+//
+// FIXME REVIEW VERY CAREFULLY!
 template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
   
   if ( dir != find_enum::EQ ) return {}; // FIXME Support LTE, GTE

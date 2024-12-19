@@ -1971,7 +1971,6 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
     
   [[nodiscard]] constexpr typename basic_inode_48::iter_result next(const typename basic_inode_48::iter_result& cur) noexcept {
     if ( std::get<2>( cur ) == nullptr ) return parent_class::end_result;
-    //const auto nchildren = this->children_count.load();
     const auto next_index = std::get<1>( cur ) + 1;  // next child index
     // loop over the remaining byte values in lexical order.
     for( uint16_t i=next_index; i<basic_inode_48::capacity; i++ ) {

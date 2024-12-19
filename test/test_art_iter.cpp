@@ -55,18 +55,28 @@ UNODB_START_TYPED_TESTS()
 // FIXME Microbenchmark for parallel scaling with and w/o mutation.
 //
 
-// TYPED_TEST(ARTIteratorTest, single_node_iterators) {
-//   unodb::test::tree_verifier<TypeParam> verifier;
-//   verifier.check_absent_keys({0});
-//   const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
-//   verifier.insert( 0, unodb::test::test_values[0] );
-//   verifier.insert( 1, unodb::test::test_values[1] );
-//   verifier.insert( 2, unodb::test::test_values[2] );
-//   auto it0 = db.begin(); // obtain iterators.
-//   auto it1 = db.end();
-//   UNODB_EXPECT_EQ( it0, it1 );
-//   UNODB_EXPECT_TRUE
-// }
+TYPED_TEST(ARTIteratorTest, empty_tree) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.check_absent_keys({0});
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  auto b = db.begin(); // obtain iterators.
+  auto e = db.end();
+  UNODB_EXPECT_TRUE( b == e );
+  UNODB_EXPECT_TRUE( ! it.get_key() );
+  UNODB_EXPECT_TRUE( ! it.get_val() );
+}
+
+TYPED_TEST(ARTIteratorTest, single_node_iterators_one_value) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.check_absent_keys({0});
+  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
+  auto b = db.begin(); // obtain iterators.
+  auto e = db.end();
+  UNODB_EXPECT_TRUE( b != e );
+  UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0 );
+  UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[0] );
+}
 
 #if 0
 // A unit test for an iterator on an empty tree.
