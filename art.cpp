@@ -451,6 +451,33 @@ void db::dump(std::ostream &os) const {
 /// iterator
 ///
 
+std::optional<const key> db::iterator::get_key() noexcept {
+  // FIXME Eventually this will need to use the stack to reconstruct
+  // the key from the path from the root to this leaf.  Right now it
+  // is relying on the fact that simple fixed width keys are stored
+  // directly in the leaves.
+  if ( ! valid() ) return {}; // not positioned on anything.
+  const auto& e = stack_.top();
+  const auto& node = std::get<NP>( e );
+  const auto node_type = node.type();
+  auto *const inode{ node.ptr<detail::inode *>() };
+  const auto child = inode->get_child( node_type, std::get<CI>( e ) );
+  const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
+  key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
+  return key_; // return pointer to the internal key buffer.
+}
+
+std::optional<const value_view> db::iterator::get_val() const noexcept { // FIXME Move to header only with get_key().
+  if ( ! valid() ) return {}; // not positioned on anything.
+  const auto& e = stack_.top();
+  const auto& node = std::get<NP>( e );
+  const auto node_type = node.type();
+  auto *const inode{ node.ptr<detail::inode *>() };
+  const auto child = inode->get_child( node_type, std::get<CI>( e ) );
+  const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
+  return leaf->get_value_view();
+}
+
 // Traverse to the left-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the left-most leaf.
 // If the tree is empty, then the result is the same as end().
@@ -458,6 +485,7 @@ db::iterator& db::iterator::first() noexcept {
   invalidate();  // clear the stack
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
+  UNODB_DETAIL_ASSERT( node.type() != node_type::LEAF ); // Root is not a leaf.
   while ( true ) {
     UNODB_DETAIL_ASSERT( node != nullptr );
     const auto node_type = node.type();
@@ -475,7 +503,7 @@ db::iterator& db::iterator::first() noexcept {
 db::iterator& db::iterator::next() noexcept {
   if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
   while ( ! stack_.empty() ) {
-    auto& e = stack_.top();
+    auto e = stack_.top();
     auto node{ std::get<NP>( e ) };
     UNODB_DETAIL_ASSERT( node != nullptr );
     auto node_type = node.type();
@@ -485,18 +513,22 @@ db::iterator& db::iterator::next() noexcept {
       stack_.pop();  // Nothing more for that inode.
       continue;      // We will look for the right sibling of the parent inode.
     }
-    // Recursive left descent.
-    e = nxt.value(); // Overwrite the entry on the top of the stack to update (key, child_index).
-    node = inode->get_child( node_type, std::get<CI>( e ) );  // descend
-    while ( true ) {
-      UNODB_DETAIL_ASSERT( node != nullptr );
-      node_type = node.type();
-      if ( node_type == node_type::LEAF ) return *this;  // done
-      // recursive descent.
-      inode = node.ptr<detail::inode *>();
-      auto tmp = inode->begin( node_type );  // first child of the current internal node.
-      stack_.push( tmp );                    // push the entry on the stack.
-      node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
+    { // Recursive left descent.
+      UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
+      auto e2 = nxt.value();
+      stack_.pop();
+      stack_.push( e2 );
+      node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
+      while ( true ) {
+        UNODB_DETAIL_ASSERT( node != nullptr );
+        node_type = node.type();
+        if ( node_type == node_type::LEAF ) return *this;  // done
+        // recursive descent.
+        inode = node.ptr<detail::inode *>();
+        auto tmp = inode->begin( node_type );  // first child of the current internal node.
+        stack_.push( tmp );                    // push the entry on the stack.
+        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
+      }
     }
     UNODB_DETAIL_CANNOT_HAPPEN();
   }

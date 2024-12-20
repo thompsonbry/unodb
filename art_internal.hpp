@@ -196,6 +196,11 @@ class [[nodiscard]] basic_node_ptr {
                  unodb::node_type type) noexcept
       : tagged_ptr{tag_ptr(ptr, type)} {}
 
+  // constructor casts away [const] for use when the node_ptr will be [const].
+  basic_node_ptr(const header_type *ptr UNODB_DETAIL_LIFETIMEBOUND,
+                 unodb::node_type type) noexcept
+      : tagged_ptr{tag_ptr(const_cast<header_type*>(ptr), type)} {}
+
   basic_node_ptr<Header> &operator=(std::nullptr_t) noexcept {
     tagged_ptr = reinterpret_cast<std::uintptr_t>(nullptr);
     return *this;
@@ -212,6 +217,11 @@ class [[nodiscard]] basic_node_ptr {
   template <class T>
   [[nodiscard, gnu::pure]] auto *ptr() const noexcept {
     return reinterpret_cast<T>(tagged_ptr & ptr_bit_mask);
+  }
+
+  // same raw_val means same type and same ptr.
+  [[nodiscard, gnu::pure]] auto operator==(const basic_node_ptr& other) const noexcept {
+    return tagged_ptr == other.tagged_ptr;
   }
 
   [[nodiscard, gnu::pure]] auto operator==(std::nullptr_t) const noexcept {

@@ -173,35 +173,12 @@ class db final {
     //
     // Note: std::optional does not allow reference types, hence going
     // with pointer to buffer return semantics.
-    std::optional<const key> get_key() noexcept {
-      // FIXME Eventually this will need to use the stack to reconstruct
-      // the key from the path from the root to this leaf.  Right now it
-      // is relying on the fact that simple fixed width keys are stored
-      // directly in the leaves.
-      if ( ! valid() ) return {}; // not positioned on anything.
-      const auto& e = stack_.top();
-      const auto& node = std::get<NP>( e );
-      const auto node_type = node.type();
-      const auto* inode{ node.ptr<detail::inode *>() };
-      const auto& child = inode->get_child( node_type, std::get<CI>( e ) );
-      const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
-      key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-      return key_; // return pointer to the internal key buffer.
-    }
-
+    std::optional<const key> get_key() noexcept;
+    
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
-    std::optional<const value_view> get_val() const noexcept {
-      if ( ! valid() ) return {}; // not positioned on anything.
-      const auto& e = stack_.top();
-      const auto& node = std::get<NP>( e );
-      const auto node_type = node.type();
-      const auto* inode{ node.ptr<detail::inode *>() };
-      const auto& child = inode->get_child( node_type, std::get<CI>( e ) );
-      const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
-      return leaf->get_value_view();
-    }
-
+    std::optional<const value_view> get_val() const noexcept;
+    
     bool operator==(const iterator& other) const noexcept {
       if ( &db_ != &other.db_ ) return false;                     // different tree?
       if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?

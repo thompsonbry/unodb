@@ -61,25 +61,26 @@ TYPED_TEST(ARTIteratorTest, empty_tree) {
   verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   auto b = db.begin(); // obtain iterators.
-  auto e = db.end();
+  const auto e = db.end();
   UNODB_EXPECT_TRUE( b == e );
   UNODB_EXPECT_TRUE( ! b.get_key() );
   UNODB_EXPECT_TRUE( ! b.get_val() );
 }
+#endif
 
+#if 1
 TYPED_TEST(ARTIteratorTest, single_node_iterators_one_value) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   auto b = db.begin(); // obtain iterators.
-  auto e = db.end();
+  const auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
-#endif
 
 TYPED_TEST(ARTIteratorTest, single_node_iterators_two_values) {
   unodb::test::tree_verifier<TypeParam> verifier;
@@ -88,7 +89,7 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_two_values) {
   verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
   auto b = db.begin(); // obtain iterators.
-  auto e = db.end();
+  const auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
@@ -97,6 +98,7 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_two_values) {
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[1] );
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
+#endif
 
 TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_two_deep_right_axis_one_deep) {
   unodb::test::tree_verifier<TypeParam> verifier;
@@ -106,7 +108,7 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_two_dee
   verifier.insert( 0xaa01, unodb::test::test_values[1] );
   verifier.insert( 0xab00, unodb::test::test_values[2] );
   auto b = db.begin(); // obtain iterators.
-  auto e = db.end();
+  const auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0xaa00 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
@@ -127,7 +129,7 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_oen_dee
   verifier.insert( 0xab0c, unodb::test::test_values[1] );
   verifier.insert( 0xab0d, unodb::test::test_values[2] );
   auto b = db.begin(); // obtain iterators.
-  auto e = db.end();
+  const auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0xaa00 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
