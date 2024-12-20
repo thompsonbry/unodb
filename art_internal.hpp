@@ -191,6 +191,7 @@ class [[nodiscard]] basic_node_ptr {
   explicit basic_node_ptr(std::nullptr_t) noexcept
       : tagged_ptr{reinterpret_cast<std::uintptr_t>(nullptr)} {}
 
+  // construct a node pointer given a raw pointer and a node type.
   basic_node_ptr(header_type *ptr UNODB_DETAIL_LIFETIMEBOUND,
                  unodb::node_type type) noexcept
       : tagged_ptr{tag_ptr(ptr, type)} {}

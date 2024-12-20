@@ -179,7 +179,12 @@ class db final {
       // is relying on the fact that simple fixed width keys are stored
       // directly in the leaves.
       if ( ! valid() ) return {}; // not positioned on anything.
-      const auto *const leaf{std::get<CP>( stack_.top() )->load().ptr<detail::leaf *>()}; // current leaf.
+      const auto& e = stack_.top();
+      const auto& node = std::get<NP>( e );
+      const auto node_type = node.type();
+      const auto* inode{ node.ptr<detail::inode *>() };
+      const auto& child = inode->get_child( node_type, std::get<CI>( e ) );
+      const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
       key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
       return key_; // return pointer to the internal key buffer.
     }
@@ -188,42 +193,42 @@ class db final {
     // the value associated with that index entry.
     std::optional<const value_view> get_val() const noexcept {
       if ( ! valid() ) return {}; // not positioned on anything.
-      const auto *const leaf{std::get<CP>( stack_.top() )->load().ptr<detail::leaf *>()}; // current leaf.
+      const auto& e = stack_.top();
+      const auto& node = std::get<NP>( e );
+      const auto node_type = node.type();
+      const auto* inode{ node.ptr<detail::inode *>() };
+      const auto& child = inode->get_child( node_type, std::get<CI>( e ) );
+      const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
       return leaf->get_value_view();
     }
 
     bool operator==(const iterator& other) const noexcept {
-      if ( &db_ != &other.db_ ) return false;                          // different tree?
-      if (   stack_.empty() && ! other.stack_.empty() ) return false;  // one stack is empty and the other is not?
-      if ( ! stack_.empty() &&   other.stack_.empty() ) return false;  // ditto
-      if ( stack_.empty() ) return true;                               // both empty.
-      return std::get<CP>(       stack_.top() )->load().ptr<detail::leaf*>() // pointing at the same leaf?
-          == std::get<CP>( other.stack_.top() )->load().ptr<detail::leaf*>()
-          ;
+      if ( &db_ != &other.db_ ) return false;                     // different tree?
+      if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?
+      if ( stack_.empty() ) return true;                          // both empty.
+      // TODO Is this any different for OLC where there could be two
+      // different tree structures and hence two iterators that point
+      // at the same (key,val) in a leaf but there is a different
+      // inode path?  In that case, this would say that the iterators
+      // are not the same.  Which seems to be the correct answer. (The
+      // main reason to compare iterators is to detect the end().)
+      const auto& a = stack_.top();
+      const auto& b = other.stack_.top();
+      return a == b; // top of stack is same (inode, key, and child_index).
     }
     
     bool operator!=(const iterator& other) const noexcept { return !(*this == other); }
     
    protected:
 
-    // Return true iff the iterator is positioned on some leaf and
-    // false otherwise.
-    //
-    // Note: An empty tree and the end() iterator are both modeled by
-    // an empty stack.  So this is a shortcut for [*this==end].
-    //
-    // Note: DO NOT push anything with a nullptr child reference onto
-    // the stack!
-    bool valid() const noexcept {
-      // Note: A valid iterator must have a path to a leaf.
-      return ( ! stack_.empty() && std::get<CP>( stack_.top() )->load().type() == node_type::LEAF );
-    }
+    // Return true unless the stack is empty.
+    bool valid() const noexcept { return ! stack_.empty(); }
 
    private:
 
-    static constexpr int KB = 0; // key byte
-    static constexpr int CI = 1; // child_index
-    static constexpr int CP = 2; // child_pointer
+    static constexpr int NP = detail::inode_base::NP; // node pointer
+    static constexpr int KB = detail::inode_base::KB; // key byte
+    static constexpr int CI = detail::inode_base::CI; // child_index
     
     // invalidate the iterator.
     iterator& invalidate() noexcept {
@@ -275,7 +280,9 @@ class db final {
     // A stack reflecting the parent path from the root of the tree to
     // the current leaf.
     //
-    // The stack is a (key, child_index, child_ptr) tuple.
+    // The stack is a (node_ptr, key, child_index) tuple.
+    //
+    // FIXME UPDATE DOCUMENTATION!!!!
     //
     // Each entry corresponds to the path for a given internal node.
     // An empty stack corresponds to the end() iterator.  The iterator
@@ -292,7 +299,7 @@ class db final {
     // to avoid having to search the keys of some node types when the
     // child_index does not directly imply the key byte.
     //
-    // The [child_index] is the [std::uint16_t] index position in the
+    // The [child_index] is the [std::uint8_t] index position in the
     // parent at which the [child_ptr] was found.  The [child_index]
     // has no meaning for the root of the tree (aka the bottom of the
     // stack).  The [child_index] is used to avoid searching the
