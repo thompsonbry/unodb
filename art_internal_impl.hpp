@@ -593,7 +593,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // A 3-tuple that is returned by the iterator visitation pattern
   // which represents the path in the tree for an internal node.
   //
-  // Note: The node pointer is the internal node.
+  // Note: The node pointer is either an internal node or a leaf.
   //
   // Note: The key byte is the byte from the key that was consumed as
   // you step down to the child node. This is the same as the child

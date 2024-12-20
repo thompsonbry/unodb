@@ -460,9 +460,8 @@ std::optional<const key> db::iterator::get_key() noexcept {
   const auto& e = stack_.top();
   const auto& node = std::get<NP>( e );
   const auto node_type = node.type();
-  auto *const inode{ node.ptr<detail::inode *>() };
-  const auto child = inode->get_child( node_type, std::get<CI>( e ) );
-  const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
+  UNODB_DETAIL_ASSERT( node_type == node_type::LEAF ); // On a leaf.
+  const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
   key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
   return key_; // return pointer to the internal key buffer.
 }
@@ -472,9 +471,8 @@ std::optional<const value_view> db::iterator::get_val() const noexcept { // FIXM
   const auto& e = stack_.top();
   const auto& node = std::get<NP>( e );
   const auto node_type = node.type();
-  auto *const inode{ node.ptr<detail::inode *>() };
-  const auto child = inode->get_child( node_type, std::get<CI>( e ) );
-  const auto *const leaf{ child.ptr<detail::leaf *>() }; // current leaf.
+  UNODB_DETAIL_ASSERT( node_type == node_type::LEAF ); // On a leaf.
+  const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
   return leaf->get_value_view();
 }
 
@@ -485,11 +483,14 @@ db::iterator& db::iterator::first() noexcept {
   invalidate();  // clear the stack
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
-  UNODB_DETAIL_ASSERT( node.type() != node_type::LEAF ); // Root is not a leaf.
   while ( true ) {
     UNODB_DETAIL_ASSERT( node != nullptr );
     const auto node_type = node.type();
-    if ( node_type == node_type::LEAF ) return *this;  // done
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
     // recursive descent.
     auto *const inode{ node.ptr<detail::inode *>() };
     auto e = inode->begin( node_type );  // first child of the current internal node.
@@ -507,6 +508,10 @@ db::iterator& db::iterator::next() noexcept {
     auto node{ std::get<NP>( e ) };
     UNODB_DETAIL_ASSERT( node != nullptr );
     auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      stack_.pop(); // pop off the leaf
+      continue; // continue (if just a root leaf, we will fall through the loop since the stack will now be empty).
+    }
     auto* inode{ node.ptr<detail::inode *>() };
     auto nxt = inode->next( node_type, std::get<CI>( e ) ); // next child of that parent.
     if ( ! nxt ) {
@@ -522,7 +527,11 @@ db::iterator& db::iterator::next() noexcept {
       while ( true ) {
         UNODB_DETAIL_ASSERT( node != nullptr );
         node_type = node.type();
-        if ( node_type == node_type::LEAF ) return *this;  // done
+        if ( node_type == node_type::LEAF ) {
+          // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+          return *this;  // done
+        }
         // recursive descent.
         inode = node.ptr<detail::inode *>();
         auto tmp = inode->begin( node_type );  // first child of the current internal node.

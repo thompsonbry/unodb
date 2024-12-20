@@ -55,7 +55,6 @@ UNODB_START_TYPED_TESTS()
 // FIXME Microbenchmark for parallel scaling with and w/o mutation.
 //
 
-#if 0
 TYPED_TEST(ARTIteratorTest, empty_tree) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
@@ -66,9 +65,7 @@ TYPED_TEST(ARTIteratorTest, empty_tree) {
   UNODB_EXPECT_TRUE( ! b.get_key() );
   UNODB_EXPECT_TRUE( ! b.get_val() );
 }
-#endif
 
-#if 1
 TYPED_TEST(ARTIteratorTest, single_node_iterators_one_value) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
@@ -98,7 +95,6 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_two_values) {
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[1] );
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
-#endif
 
 TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_two_deep_right_axis_one_deep) {
   unodb::test::tree_verifier<TypeParam> verifier;
