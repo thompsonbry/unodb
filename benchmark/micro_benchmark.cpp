@@ -90,6 +90,8 @@ void sparse_insert_dups_allowed(benchmark::State &state) {
 
 constexpr auto full_scan_multiplier = 50;
 
+// inserts a sequences of keys and a fixed value then runs over the
+// tree fetching the each key.
 template <class Db>
 void dense_full_scan(benchmark::State &state) {
   Db test_db;
@@ -112,6 +114,43 @@ void dense_full_scan(benchmark::State &state) {
 #ifdef UNODB_DETAIL_WITH_STATS
   unodb::benchmark::set_size_counter(state, "size", tree_size);
 #endif  // UNODB_DETAIL_WITH_STATS
+}
+
+// inserts keys and a constant value and then obtains an iterator and
+// scans all entries in the tree, reading both the keys and the
+// values.
+template <class Db>
+void dense_iter_full_fwd_scan(benchmark::State &state) {
+  if constexpr( std::is_same_v<Db, unodb::db> ) {  // FIXME mutex_db, olc_db
+  Db test_db;
+  const auto key_limit = static_cast<unodb::key>(state.range(0));
+
+  for (unodb::key i = 0; i < key_limit; ++i)
+    unodb::benchmark::insert_key(test_db, i,
+                                 unodb::value_view{unodb::benchmark::value100});
+#ifdef UNODB_DETAIL_WITH_STATS
+  const auto tree_size = test_db.get_current_memory_use();
+#endif  // UNODB_DETAIL_WITH_STATS
+
+  for (const auto _ : state) {
+    for (auto i = 0; i < full_scan_multiplier; ++i) {
+      std::uint64_t sum = 0;
+      auto it = test_db.begin();
+      auto end = test_db.end();  // obtain once since not free.
+      while ( it.next() != end ) {  // visit everything.
+        sum += it.get_key().value();
+        sum += static_cast<std::uint64_t>(it.get_val().value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
+      }
+      ::benchmark::DoNotOptimize(sum);  // ensure that the keys were retrieved.
+    }
+  }
+
+  state.SetItemsProcessed(state.iterations() * state.range(0) *
+                          full_scan_multiplier);
+#ifdef UNODB_DETAIL_WITH_STATS
+  unodb::benchmark::set_size_counter(state, "size", tree_size);
+#endif  // UNODB_DETAIL_WITH_STATS
+  }
 }
 
 void dense_tree_sparse_deletes_args(benchmark::internal::Benchmark *b) {
@@ -296,6 +335,11 @@ BENCHMARK_TEMPLATE(dense_full_scan, unodb::mutex_db)
     ->Range(100, 20000000)
     ->Unit(benchmark::kMicrosecond);
 BENCHMARK_TEMPLATE(dense_full_scan, unodb::olc_db)
+    ->Range(100, 20000000)
+    ->Unit(benchmark::kMicrosecond);
+
+// FIXME mutex_db and olc_db too.
+BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::db)
     ->Range(100, 20000000)
     ->Unit(benchmark::kMicrosecond);
 
