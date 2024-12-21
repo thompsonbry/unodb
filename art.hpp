@@ -195,6 +195,9 @@ class db final {
     }
     
     bool operator!=(const iterator& other) const noexcept { return !(*this == other); }
+
+    // Debugging
+    [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const;
     
    protected:
 

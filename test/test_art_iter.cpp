@@ -85,15 +85,19 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_two_values) {
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
+  std::cerr<<"db state::\n"; db.dump(std::cerr);
   auto b = db.begin(); // obtain iterators.
   const auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
+  std::cerr<<"begin()::\n"; b.dump(std::cerr);
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
   UNODB_EXPECT_TRUE( b.next() != e );
+  std::cerr<<"b.next()::\n"; b.dump(std::cerr);
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 1 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[1] );
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
+  std::cerr<<"b.next()::\n"; b.dump(std::cerr);
 }
 
 TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_two_deep_right_axis_one_deep) {

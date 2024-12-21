@@ -451,6 +451,40 @@ void db::dump(std::ostream &os) const {
 /// iterator
 ///
 
+void db::iterator::dump(std::ostream &os) const {
+  // Create a new stack and copy everything there.  Using the new
+  // stack, print out the stack in top-bottom order.  This avoids
+  // modifications to the existing stack for the iterator.
+  std::stack<detail::inode_base::iter_result> tmp {};
+  tmp = stack_;
+  uint64_t level = tmp.size() - 1;
+  while ( ! tmp.empty() ) {
+    const auto& e = tmp.top();
+    const auto np = std::get<NP>( e );
+    const auto kb = std::get<KB>( e );
+    const auto ci = std::get<CI>( e );
+    std::string nt = "???";
+    if(np.type()==node_type::LEAF) nt = "LEAF";
+    if(np.type()==node_type::I4  ) nt = "I4  ";
+    if(np.type()==node_type::I16 ) nt = "I16 ";
+    if(np.type()==node_type::I48 ) nt = "I48 ";
+    if(np.type()==node_type::I256) nt = "I256";
+    os << "stack:: level = " << level;
+    os << ", node at: " << np.template ptr<void *>()
+       << ", tagged ptr = 0x" << std::hex << np.raw_val() << std::dec
+       << ", type = " << nt
+        ;
+    if ( np.type() != node_type::LEAF ) {
+      os << ", key_byte = "<<static_cast<uint64_t>(kb)
+         << ", child_index = "<<static_cast<uint64_t>(ci)
+          ;
+    }
+    os << std::endl;
+    tmp.pop();
+    level--;
+  }
+}
+
 std::optional<const key> db::iterator::get_key() noexcept {
   // FIXME Eventually this will need to use the stack to reconstruct
   // the key from the path from the root to this leaf.  Right now it
