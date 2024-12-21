@@ -475,8 +475,10 @@ void db::iterator::dump(std::ostream &os) const {
        << ", type = " << nt
         ;
     if ( np.type() != node_type::LEAF ) {
+      auto *const inode{ np.ptr<detail::inode *>() };
       os << ", key_byte = "<<static_cast<uint64_t>(kb)
          << ", child_index = "<<static_cast<uint64_t>(ci)
+         << ", # children = "<<static_cast<std::uint64_t>(inode->get_children_count())
           ;
     }
     os << std::endl;

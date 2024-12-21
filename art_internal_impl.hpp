@@ -847,9 +847,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // Represents the find_result when no such child was found.
   static constexpr find_result child_not_found{child_not_found_i, nullptr};
 
-  // Represents the iter_result for end(), which is positioned after
-  // the last child in a node.
-  static constexpr iter_result end_result{};
+  // Represents the std::optional<iter_result> for end(), which is [false].
+  static constexpr iter_result_opt end_result{};
 
   using leaf_type = basic_leaf<header_type>;
 
