@@ -563,7 +563,7 @@ db::iterator& db::iterator::prior() noexcept {
   return *this;  // FIXME WRITE THE CODE.
 }
 
-// The find() logic is quite similar to ::get().  It is nearly the
+// The seek() logic is quite similar to ::get().  It is nearly the
 // same code for the case where EQ semantics are used, but the
 // iterator is positioned instead of returning the value for the key.
 // The GTE and LTE cases would correspond to where get() is willing to
@@ -572,7 +572,7 @@ db::iterator& db::iterator::prior() noexcept {
 // after (GTE) the missing key.
 //
 // FIXME REVIEW VERY CAREFULLY!
-template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
+template <> bool it_t<db>::seek(key search_key, seek_enum dir) noexcept {
   
   if ( dir != find_enum::EQ ) return {}; // FIXME Support LTE, GTE
 
@@ -614,131 +614,6 @@ template <> bool it_t<db>::find(key search_key, find_enum dir) noexcept {
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
 
-#ifdef RECURSIVE_SCAN
-//
-// FIXME This approach runs into problems when attempting to access
-// the keys[] and children[] on the various internal node types.
-// Those are all provide to the specific basic_inode_xxx class.  One
-// way to handle this is to push down an abstraction for begin() and
-// end() inode which delegates based on node type to its concrete
-// implementations. If we do that, then it becomes easy to write
-// first(), last(), and a for-each style loop over the children. The
-// iterator could visit find_result (child_index, child_ptr).  But we
-// also need to know the key for that child, so maybe a find_result3
-// (key-byte, child_index, child_ptr). The problem with this approach
-// is that it requires adding that iterator abstraction to each
-// base_inode_xxx class to get started.
-//
-// FIXME Clarify current key vs recursive descent using the key.
-// Basically, write the iterator to initially do a
-// restart(internal_search_key), then scan.  Once we do OLC, it will
-// restart(internal_current_key), then continue the scan.
-//
-// FIXME Must consume any prefix bytes in the leaf/node and the key
-// byte along which we descend.
-//
-// FIXME This can be moved to art_internal_impl.hpp and realized there
-// with a lambda.  That file is included by art.hpp.
-//
-// FIXME For OLC, must check version tag and restart when changed.
-template <>
-int it_t<db>::scan(detail::node_ptr node, uint32_t level, unodb::key& bkey, detail::art_key& ckey, detail::art_key rkey/*, it_functor fn*/) const noexcept {
-
-  using inode4_type = typename inode_defs::n4;
-  using inode16_type = typename inode_defs::n16;
-  using inode48_type = typename inode_defs::n48;
-  using inode256_type = typename inode_defs::n256;
-
-  if ( node == nullptr ) return HALT;  // no tree.
-
-  // Consider the current node.
-  const auto node_type = node.type();
-
-  if ( node_type == node_type::LEAF ) {
-    // On a leaf.
-    const auto *const leaf{node.ptr<::leaf *>()};
-    bkey = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-    auto val = leaf->get_value_view();
-    std::cerr<<"SCAN:: level="<<level<<", key="<<key_<<std::endl;
-    // if ( ! fn( key_, val ) ) return HALT;  // invoke lamba, halting if it returns false.
-    return CONTINUE; // pop the stack and continue the scan.
-  }
-
-  auto *const inode{node.ptr<::inode *>()};
-#if 0
-  const auto &key_prefix{inode->get_key_prefix()};
-  const auto key_prefix_length{key_prefix.length()};
-  if (key_prefix.get_shared_length(rkey) < key_prefix_length) {
-    return false; // FIXME Handle LTE here.
-  }
-  rkey.shift_right(key_prefix_length);
-  // FIXME How does descent to the current key followed by scan work?!?
-  auto res = inode->find_child(node_type, remaining_key[0]);
-#endif
-  int res {HALT};  // result from recursive call (initially invalid).
-  switch ( node_type ) {
-    case node_type::I4: {
-      const auto nchildren = inode->get_children_count();
-      const inode4_type* i4 = reinterpret_cast<const inode4_type*>( inode );
-      for (std::uint8_t i = 0; i < nchildren; i++ ) {
-        unodb::detail::node_ptr child { &( i4->children[ i ] ) };
-        res = scan( child, level+1, bkey, ckey, rkey/*, fn*/ );  // recursion
-        if ( res != CONTINUE ) break;
-      }
-      break;
-    }
-    case node_type::I16: {
-      const auto nchildren = inode->get_children_count();
-      auto *const i16 = reinterpret_cast<inode16_type * const>( inode );
-      for (std::uint8_t i = 0; i < nchildren; i++ ) {
-        unodb::detail::node_ptr child { &( i16->children[ i ] ) };
-        res = scan( child, level+1, bkey, ckey, rkey/*, fn*/ ); // recursion
-        if ( res != CONTINUE ) break;
-      }
-      break;
-    }
-    case node_type::I48: {
-      auto *const i48 = reinterpret_cast<inode48_type * const>( inode ); 
-      for (std::uint16_t i = 0; i < 256; i++ ) {
-        const auto child_i = i48->child_indexes[ static_cast<std::uint8_t>(i)].load();
-        if ( child_i == inode48_type::empty_child ) continue;
-        unodb::detail::node_ptr child { &( i48->children.pointer_array[ child_i ] ) };
-        res = scan( child, level+1, bkey, ckey, rkey/*, fn*/ );  // recursion
-        if ( res != CONTINUE ) break;
-      }
-      break;
-    }
-    case node_type::I256: {
-      auto *const i256 = reinterpret_cast<inode256_type * const>( inode ); 
-      for (std::uint16_t i = 0; i < 256; i++ ) {
-        unodb::detail::node_ptr child { &( i256->children[ i ] ) };
-        if ( child == nullptr ) continue;
-        res = scan( child, level+1, bkey, ckey, rkey/*, fn*/ ); // recursion
-        if ( res != CONTINUE ) break;
-      }
-      break;
-    }
-    default:
-      UNODB_DETAIL_CANNOT_HAPPEN();
-  }
-  // If res == HALT, then we will pop all the way out and halt.
-  // If res == RESTART, then we will pop all the way out and restart from the current key.
-  // If res == CONTINUE, then we will pop out one level and see if there is more work to be done.
-  return res;
-}
-
-template <>
-void it_t<db>::scan(key search_key/*, it_functor fn*/) const noexcept {
-  key bkey;                       // buffer for the materialized external key.
-  detail::art_key ckey{search_key};  // convert to an internal key.
-  auto rkey {ckey};
-  int res = RESTART;
-  while( res == RESTART ) {
-    res = scan( db_.root, 0/*level*/, bkey, ckey, rkey/*, fn*/ ); // initiate forward scan from current key.
-  }
-  return; // TODO This assumes that CONTINUE is never returned by the scan() kernel.
-}
-#endif
 #endif
 
 }  // namespace unodb

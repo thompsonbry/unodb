@@ -61,27 +61,6 @@ class inode : public inode_base {};
 
 }  // namespace detail
 
-// A typesafe enumeration for how the iterator will match keys during
-// search. You can use these enumerations to setup for a forward or
-// reverse scan.
-enum find_enum {
-  EQ,  // the search must position the iterator on an exact match for the search key in the tree.
-  GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
-  LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
-};
-
-//#define RECURSIVE_SCAN
-#ifdef RECURSIVE_SCAN
-// iterator callback function typedef.
-//
-// @param The current key.
-//
-// @param The current value.
-//
-// @return true to halt or false to continue
-typedef bool (*it_functor)(const key, const value_view);
-#endif
-
 class db final {
  public:
   using get_result = std::optional<value_view>;
@@ -115,6 +94,15 @@ class db final {
   ///
   /// iterator
   ///
+
+  // A typesafe enumeration for how the iterator will match keys during
+  // search. You can use these enumerations to setup for a forward or
+  // reverse scan.
+  enum seek_enum {
+    EQ,  // the search must position the iterator on an exact match for the search key in the tree.
+    GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
+    LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
+  };
 
   // Basic iterator for the non-thread-safe ART implementation.
   class iterator {
@@ -150,7 +138,7 @@ class db final {
     // index (!exact) and returns false otherwise.  If the iterator is
     // not positioned by this method, then the iterator is invalidated
     // (as if it were newly constructed).
-    bool find(key search_key, find_enum dir) noexcept;
+    bool seek(key search_key, seek_enum dir) noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
     // the key associated with that index entry.
