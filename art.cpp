@@ -487,31 +487,6 @@ void db::iterator::dump(std::ostream &os) const {
   }
 }
 
-std::optional<const key> db::iterator::get_key() noexcept {
-  // FIXME Eventually this will need to use the stack to reconstruct
-  // the key from the path from the root to this leaf.  Right now it
-  // is relying on the fact that simple fixed width keys are stored
-  // directly in the leaves.
-  if ( ! valid() ) return {}; // not positioned on anything.
-  const auto& e = stack_.top();
-  const auto& node = std::get<NP>( e );
-  const auto node_type = node.type();
-  UNODB_DETAIL_ASSERT( node_type == node_type::LEAF ); // On a leaf.
-  const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
-  key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
-  return key_; // return pointer to the internal key buffer.
-}
-
-std::optional<const value_view> db::iterator::get_val() const noexcept { // FIXME Move to header only with get_key().
-  if ( ! valid() ) return {}; // not positioned on anything.
-  const auto& e = stack_.top();
-  const auto& node = std::get<NP>( e );
-  const auto node_type = node.type();
-  UNODB_DETAIL_ASSERT( node_type == node_type::LEAF ); // On a leaf.
-  const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
-  return leaf->get_value_view();
-}
-
 // Traverse to the left-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the left-most leaf.
 // If the tree is empty, then the result is the same as end().

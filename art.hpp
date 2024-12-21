@@ -117,28 +117,13 @@ class db final {
   ///
 
   // Basic iterator for the non-thread-safe ART implementation.
-  class iterator {   
+  class iterator {
+    friend class db;
    public:
 
     // Construct an empty iterator.
-    iterator(db& tree):db_(tree) {}
+    inline iterator(db& tree):db_(tree) {}
 
-#ifdef RECURSIVE_SCAN
-    // FIXME Write a recursive scan function to scan the entire tree and
-    // this would doubtless be quite fast and could invoke a lambda for
-    // each visited key.  It can likely be done for reverse scan just as
-    // easily.  The iterator could be positioned with using find()
-    // semantics to return a find_result.  For OLC, we can restart the
-    // iterator from the current key by performing a find(GT).  The main
-    // question is how we do detect a version tag modification.
-    //
-    // @param The search key. The scan will begin at the first key GTE
-    // to the search key in the index.
-    //
-    // @param fn A functor to invoke for each visited entry.
-    void scan(key search_key/*, it_functor fn*/) const noexcept;
-#endif
-  
     // Position the iterator on the first entry in the stack.
     iterator& first() noexcept;
     
@@ -168,86 +153,35 @@ class db final {
     bool find(key search_key, find_enum dir) noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
-    // a const pointer to a decoded copy of the key associated with
-    // that index entry.  Otherwise returns nullptr.
+    // the key associated with that index entry.
     //
     // Note: std::optional does not allow reference types, hence going
     // with pointer to buffer return semantics.
-    std::optional<const key> get_key() noexcept;
+    inline std::optional<const key> get_key() noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
-    std::optional<const value_view> get_val() const noexcept;
+    inline std::optional<const value_view> get_val() const noexcept;
     
-    bool operator==(const iterator& other) const noexcept {
-      if ( &db_ != &other.db_ ) return false;                     // different tree?
-      if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?
-      if ( stack_.empty() ) return true;                          // both empty.
-      // TODO Is this any different for OLC where there could be two
-      // different tree structures and hence two iterators that point
-      // at the same (key,val) in a leaf but there is a different
-      // inode path?  In that case, this would say that the iterators
-      // are not the same.  Which seems to be the correct answer. (The
-      // main reason to compare iterators is to detect the end().)
-      const auto& a = stack_.top();
-      const auto& b = other.stack_.top();
-      return a == b; // top of stack is same (inode, key, and child_index).
-    }
-    
-    bool operator!=(const iterator& other) const noexcept { return !(*this == other); }
+    inline bool operator==(const iterator& other) const noexcept;    
+    inline bool operator!=(const iterator& other) const noexcept;
 
     // Debugging
     [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const;
-    
+
    protected:
-
+    
     // Return true unless the stack is empty.
-    bool valid() const noexcept { return ! stack_.empty(); }
-
+    inline bool valid() const noexcept { return ! stack_.empty(); }
+    
    private:
 
     static constexpr int NP = detail::inode_base::NP; // node pointer
     static constexpr int KB = detail::inode_base::KB; // key byte
     static constexpr int CI = detail::inode_base::CI; // child_index
     
-    // invalidate the iterator.
-    iterator& invalidate() noexcept {
-      while ( ! stack_.empty() ) stack_.pop(); // clear the stack
-      return *this;
-    }
-
-#ifdef RECURSIVE_SCAN
-    static constexpr int CONTINUE = 0;  // iterator will continue.
-    static constexpr int RESTART = -1;  // iterator will restart from the current key.
-    static constexpr int HALT = -2;     // iterator will halt.
-  
-    // Recursive inner implementation for the forward iterator. When
-    // invoked, the iterator seek to the current key and then performs a
-    // forward scan invoking the lambda for each visited leaf.  The scan
-    // invokes itself recursively.  If the scan() returns false, the
-    // scan is restarted for the current key.
-    //
-    // @param node The current node.
-    //
-    // @param level The depth in the tree. This is ZERO (0) when
-    // initially called.  The depth is used when restarting the iterator
-    // on a key since we need to pop up until we are back at level 0.
-    //
-    // @param bkey A buffer containing a materialized copy of the
-    // external key, modified by side-effect.
-    //
-    // @param ckey The current key, modified by side-effect.
-    //
-    // @param rkey The remaining key, which is shortened during
-    // recursive descent based on match bytes.
-    //
-    // @param fn The functor to invoke for each visited leaf.
-    //
-    // @return RESTART iff the iterator should restart from the root of
-    // the tree on the current key; CONTINUE if the iterator should
-    // continue; and HALT if the iterator should halt.
-    int scan(detail::node_ptr node, uint32_t level, unodb::key& bkey, detail::art_key& ckey, detail::art_key rkey/*, it_functor fn*/) const noexcept;
-#endif
+    // invalidate the iterator (pops everything off of the stack).
+    inline iterator& invalidate() noexcept;
 
     // The element (0) is the key byte, element (1) is child index in
     // the node, element (2) is the pointer to the child or nullptr if
@@ -258,47 +192,42 @@ class db final {
     db& db_;
 
     // A stack reflecting the parent path from the root of the tree to
-    // the current leaf.
+    // the current leaf.  An empty stack corresponds to the end()
+    // iterator.  The iterator for an empty tree is an empty stack.
     //
-    // The stack is a (node_ptr, key, child_index) tuple.
+    // The stack is made up of (node_ptr, key, child_index) entries
+    // defined by [iter_result].
     //
-    // FIXME UPDATE DOCUMENTATION!!!!
+    // The [node_ptr] is never [nullptr] and points to the internal
+    // node or leaf for that step in the path from the root to some
+    // leaf.  For the bottom of the stack, [node_ptr] is the root.
+    // For the top of the stack, [node_ptr] is the current leaf. In
+    // the degenerate case where the tree is a single root leaf, then
+    // the stack contains just that leaf.
     //
-    // Each entry corresponds to the path for a given internal node.
-    // An empty stack corresponds to the end() iterator.  The iterator
-    // for an empty tree is always an empty stack.  For a valid
-    // iterator, the bottom of the stack is an entry pointing to the
-    // root of the tree (child_ptr is the tree root) and the top of
-    // the stack is a pointer to the leaf (child_ptr is a leaf).
-    //
-    // The [key] is the [std::byte] along which the path descends to
-    // the child.  The [key] has no meaning for the root of the tree
-    // (aka the bottom of the stack).  The key byte may be used to
-    // reconstruct the full key (along with any prefix bytes in the
-    // nodes along the path).  The key byte is part of the stack entry
-    // to avoid having to search the keys of some node types when the
-    // child_index does not directly imply the key byte.
+    // The [key] is the [std::byte] along which the path descends from
+    // that [node_ptr].  The [key] has no meaning for a leaf.  The key
+    // byte may be used to reconstruct the full key (along with any
+    // prefix bytes in the nodes along the path).  The key byte is
+    // tracked to avoid having to search the keys of some node types
+    // (N48) when the [child_index] does not directly imply the key
+    // byte.
     //
     // The [child_index] is the [std::uint8_t] index position in the
     // parent at which the [child_ptr] was found.  The [child_index]
-    // has no meaning for the root of the tree (aka the bottom of the
-    // stack).  The [child_index] is used to avoid searching the
-    // parent for the [child_ptr] when advancing the iterator to the
-    // next() or the prior() leaf in the index.
+    // has no meaning for a leaf.  In the special case of N48, the
+    // [child_index] is the index into the [child_indexes[]].  For all
+    // other internal node types, the [child_index] is a direct index
+    // into the [children[]].  When finding the successor (or
+    // predecessor) the [child_index] needs to be interpreted
+    // according to the node type.  For N4 and N16, you just look at
+    // the next slot in the children[] to find the successor.  For
+    // N256, you look at the next non-null slot in the children[].
+    // N48 is the oddest of the node types.  For N48, you have to look
+    // at the child_indexes[], find the next mapped key value greater
+    // than the current one, and then look at its entry in the
+    // children[].
     //
-    // Note: When finding the successor (or predecessor) the
-    // [child_index] needs to be interpreted according to the node
-    // type.  For N4 and N16, you just look at the next slot in the
-    // children[] to find the successor.  For N256, you look at the
-    // next non-null slot in the children[].  N48 is the oddest of the
-    // node types.  For N48, you have to look at the key[], find the
-    // next mapped key value greater than the current one and then
-    // look at its entry in the children[].
-    //
-    // The [child_ptr] is a critical section policy wrapping a
-    // node_ptr and is never [nullptr].  The current leaf is found
-    // from the [child_ptr] for the entry on the top of the stack.
-    // 
     // FIXME For OLC, the child_index is only valid if the parent
     // version tag remains valid.  For that purpose, this tuple needs
     // to be expanded to also include the version tag of the parent.
@@ -330,48 +259,21 @@ class db final {
   // Return an iterator that is positioned after any possible entry in
   // the index.
   [[nodiscard]] iterator end() noexcept { return iterator(*this); }
-  
-#if 0
-  // member typedefs provided through inheriting from std::iterator
-  class iterator {
-    // iterator traits
-    using iterator_category = std::forward_iterator_tag;      
-    using value_type = std::pair<key,value_view>;
-    using difference_type = long;
-    using pointer = const long*;
-    using reference = const long&;
-    // A stack of node positions from the root to the current leaf.
-    // An empty stack is used iff there is no data in the tree. If
-    // the tree has any data, then the stack is a path to either a
-    // leaf a single entry corresponding to end() [positioned beyond
-    // the end of the tree].
-    std::stack<basic_inode_impl::iter_result> stack_ {};
-    // position the iterator on the first leaf (if any)
-    explicit iterator() {
-    }
-    // position the iterator on the search key (iff found).
-    explicit iterator(key search_key) {
-    }
-    // create an "end()" iterator.
-    explicit iterator(const basic_inode_impl::iter_result& end_result) {
-      stack_.push( end_result );
-    }
-   public:
-    iterator& operator++() { num = TO >= FROM ? num + 1: num - 1; return *this; }
-    iterator operator++(int) { iterator retval = *this; ++(*this); return retval; }
-    bool operator==(iterator other) const { return num == other.num; }
-    bool operator!=(iterator other) const { return !(*this == other); }
-    reference operator*() const { return num; } // TODO Create get_key() and get_val() methods in case people want less data.
-  };
-  iterator begin() { return iterator(FROM); } // return an iterator positioned on the first leaf in the index.
-  iterator end() { return iterator(basic_node_impl::end_result); }  // return an iterator positioned beyond the last leaf in the index.
-}; // class iterator
 
-iterator begin() { return &store[0]; }
-const_iterator begin() const { return &store[0]; }
-iterator end() { return &store[size]; }
-const_iterator end() const { return &store[size]; }
-#endif
+  // Scan the tree, applying the caller's lambda to each visited leaf.
+  //
+  // @param fn A function f(iterator&) returning [bool::halt].  The
+  // traversal will halt if the function returns [true].
+  // 
+  // FIXME Add ability to seek to some point to the iterator and make
+  // this an apply() on the iterator accepting a fromKey and toKey.
+  template <typename FN>
+  inline void scan(FN fn) noexcept {
+    auto it { begin() };
+    while ( it.valid() && ! fn( it ) ) {
+      it.next();
+    }
+  }
   
   // Stats
 
@@ -480,7 +382,7 @@ const_iterator end() const { return &store[size]; }
 
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  detail::node_ptr root{nullptr};  // FIXME This should be wrapped with the fake critical section.
+  detail::node_ptr root{nullptr};
 
 #ifdef UNODB_DETAIL_WITH_STATS
 
@@ -514,6 +416,6 @@ const_iterator end() const { return &store[size]; }
 
 }  // namespace unodb
 
-#include "art_iter.hpp" // header only iterator methods FIXME Remove or keep?
+#include "art_iter.hpp" // header only iterator methods
 
 #endif  // UNODB_DETAIL_ART_HPP

@@ -43,18 +43,16 @@ UNODB_START_TYPED_TESTS()
 //
 // FIXME Extend [verifier] to support scans.
 //
-//
-// FIXME unit tests, etc. ==> These should be handled by moving the test logic into the verifier.
-//
 // FIXME unit tests for gsl::span<std::byte>
 //
-// FIXME Thread safety unit tests.
+// FIXME Microbenchmarks for iterator.
 //
-// FIXME Develop a thread-safe version of the iterator based on mutex (trivial) and OLC.
+// FIXME Develop a thread-safe version of the iterator based on mutex (trivial) and OLC and extend microbenchmarks and unit tests
 //
 // FIXME Microbenchmark for parallel scaling with and w/o mutation.
 //
 
+// unit test with an empty tree.
 TYPED_TEST(ARTIteratorTest, empty_tree) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
@@ -66,7 +64,8 @@ TYPED_TEST(ARTIteratorTest, empty_tree) {
   UNODB_EXPECT_TRUE( ! b.get_val() );
 }
 
-TYPED_TEST(ARTIteratorTest, single_node_iterators_one_value) {
+// unit test where the root is a single leaf.
+TYPED_TEST(ARTIteratorTest, single_leaf_iterator_one_value) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
@@ -79,28 +78,34 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_one_value) {
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
 
-TYPED_TEST(ARTIteratorTest, single_node_iterators_two_values) {
+// unit test where the root is an I4 with two leafs under it.
+TYPED_TEST(ARTIteratorTest, I4_and_two_leaves) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
-  std::cerr<<"db state::\n"; db.dump(std::cerr);
+  //std::cerr<<"db state::\n"; db.dump(std::cerr);
   auto b = db.begin(); // obtain iterators.
   const auto e = db.end();
   UNODB_EXPECT_TRUE( b != e );
-  std::cerr<<"begin()::\n"; b.dump(std::cerr);
+  //std::cerr<<"begin()::\n"; b.dump(std::cerr);
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
   UNODB_EXPECT_TRUE( b.next() != e );
-  std::cerr<<"b.next()::\n"; b.dump(std::cerr);
+  //std::cerr<<"b.next()::\n"; b.dump(std::cerr);
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 1 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[1] );
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
-  std::cerr<<"b.next()::\n"; b.dump(std::cerr);
+  //std::cerr<<"b.next()::\n"; b.dump(std::cerr);
 }
 
-TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_two_deep_right_axis_one_deep) {
+// unit test for the following tree structure, which is setup by how we choose the keys.
+//
+//       I4
+//   I4     L2
+// L0 L1
+TYPED_TEST(ARTIteratorTest, iterator_three_values_left_axis_two_deep_right_axis_one_deep) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
@@ -121,7 +126,12 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_two_dee
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
 
-TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_oen_deep_right_axis_two_deep) {
+// unit test for the following tree structure, which is setup by how we choose the keys.
+//
+//       I4
+//   L0     I4
+//        L1 L2
+TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_one_deep_right_axis_two_deep) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
@@ -142,139 +152,104 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_oen_dee
   UNODB_EXPECT_TRUE( b.next() == e ); // nothing more in the iterator.
 }
 
-#if 0
-// A unit test for an iterator on an empty tree.
-TYPED_TEST(ARTIteratorTest, EmptyTree) {
+//
+// iterator scan() tests.
+//
+
+TYPED_TEST(ARTIteratorTest, scan_empty_tree) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
-  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
-  auto it = db.iterator(); // obtain iterator.
-  UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.get_key() );
-  UNODB_EXPECT_TRUE( ! it.get_val() );
-  UNODB_EXPECT_TRUE( ! it.next() );
-  UNODB_EXPECT_TRUE( ! it.find(0, unodb::find_enum::LTE) );
-  UNODB_EXPECT_TRUE( ! it.find(0, unodb::find_enum::EQ) );
-  UNODB_EXPECT_TRUE( ! it.find(0, unodb::find_enum::GTE) );
-  UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.find(1, unodb::find_enum::LTE) );
-  UNODB_EXPECT_TRUE( ! it.find(1, unodb::find_enum::EQ) );
-  UNODB_EXPECT_TRUE( ! it.find(1, unodb::find_enum::GTE) );
-  UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.begin() );
-  UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.last() );
-  UNODB_EXPECT_TRUE( ! it.valid() );
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  uint64_t n = 0;
+  auto fn = [&n](unodb::db::iterator&) {n++; return false;};
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 0, n );
 }
 
-// FIXME Unit test the first() and last() methods for the various node
-// types so we can then rely on their correct behavior here.  That
-// simplifies the test coverage required to ensure that first(),
-// last(), etc. work for any tree structure.
-TYPED_TEST(ARTIteratorTest, SingleLeafTree) {
+// Scan one leaf, verifying that we visit the leaf and can access its key and value.
+TYPED_TEST(ARTIteratorTest, scan_one_leaf) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({1});
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
+  uint64_t n = 0;
+  unodb::key visited_key{~0ULL};
+  unodb::value_view visited_val{};
+  auto fn = [&n,&visited_key,&visited_val](unodb::db::iterator& it) {
+    n++;
+    visited_key = it.get_key().value();
+    visited_val = it.get_val().value();
+    return false;
+  };
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 1, n );
+  UNODB_EXPECT_EQ( 0, visited_key );
+  UNODB_EXPECT_EQ( unodb::test::test_values[0], visited_val );
+}
+
+TYPED_TEST(ARTIteratorTest, scan_two_leaves) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
-  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
-  auto it = db.iterator(); // obtain iterator.
-  // check when iterator is not positioned on any leaf.
-  std::cerr<<"Check of initial invalid iterator"<<std::endl;
-  UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.get_key() );
-  UNODB_EXPECT_TRUE( ! it.get_val() );
-  UNODB_EXPECT_TRUE( ! it.next() );
-  // position the iterator on the first leaf and check behavior.
-  std::cerr<<"Positioning iterator on first leaf"<<std::endl;
-  UNODB_EXPECT_TRUE( it.first() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  std::cerr<<"Checking key"<<std::endl;
-  UNODB_EXPECT_EQ( 1, it.get_key().value() );
-  std::cerr<<"Checking val"<<std::endl;
-  UNODB_EXPECT_EQ( unodb::test::test_values[1], it.get_val().value() );
-  UNODB_EXPECT_TRUE( ! it.next() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  UNODB_EXPECT_TRUE( ! it.prior() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  // position the iterator on the last leaf and check behavior.
-  std::cerr<<"Positioning iterator on last leaf"<<std::endl;
-  UNODB_EXPECT_TRUE( it.last() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  UNODB_EXPECT_EQ( 1, it.get_key().value() );
-  UNODB_EXPECT_EQ( unodb::test::test_values[1], it.get_val().value() );
-  UNODB_EXPECT_TRUE( ! it.next() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  UNODB_EXPECT_TRUE( ! it.prior() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  // // exact search for [0], not found.
-  // std::cerr<<"Exact search for [0] - not found"<<std::endl;
-  // UNODB_EXPECT_TRUE( ! it.find(0, find_enum::EQ) );
-  // UNODB_EXPECT_TRUE( ! it.valid() );
-  // // prefix search for [0], positions on the first key GTE [0], which is [1].
-  // std::cerr<<"Prefix search for [0] - found"<<std::endl;
-  // UNODB_EXPECT_TRUE( ! it.find(0, find_enum );
-  // UNODB_EXPECT_TRUE( ! it.valid() );
-  // UNODB_EXPECT_EQ( 1, it.get_key() );
-  // UNODB_EXPECT_EQ( unodb::test::test_values[1], it.get_val() );
-  // UNODB_EXPECT_TRUE( ! it.next() );
-  // UNODB_EXPECT_TRUE( it.valid() );
-  // UNODB_EXPECT_TRUE( ! it.prior() );
-  // UNODB_EXPECT_TRUE( it.valid() );
-  // // exact search for [1], found.
-  // std::cerr<<"Exact search for [1] - found"<<std::endl;
-  // UNODB_EXPECT_TRUE( ! it.find(1, true/*exact*/) );
-  // UNODB_EXPECT_TRUE( it.valid() );
-  // UNODB_EXPECT_EQ( 1, it.get_key() );
-  // UNODB_EXPECT_EQ( unodb::test::test_values[1], it.get_val() );
-  // UNODB_EXPECT_TRUE( ! it.next() );
-  // UNODB_EXPECT_TRUE( it.valid() );
-  // UNODB_EXPECT_TRUE( ! it.prior() );
-  // UNODB_EXPECT_TRUE( it.valid() );
-  // // prefix search for first key GTE [1], found.
-  // std::cerr<<"Prefix search for [1] - found"<<std::endl;
-  // UNODB_EXPECT_TRUE( ! it.find(1, false/*exact*/) );
-  // UNODB_EXPECT_TRUE( ! it.valid() );
-  // UNODB_EXPECT_EQ( 1, it.get_key() );
-  // UNODB_EXPECT_EQ( unodb::test::test_values[1], it.get_val() );
-  // UNODB_EXPECT_TRUE( ! it.next() );
-  // UNODB_EXPECT_TRUE( it.valid() );
-  // UNODB_EXPECT_TRUE( ! it.prior() );
-  // UNODB_EXPECT_TRUE( it.valid() );
+  uint64_t n = 0;
+  auto fn = [&n](unodb::db::iterator&) {n++; return false;};
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 2, n );
 }
 
-TYPED_TEST(ARTIteratorTest, ThreeLeafTreeForwardScan) {
+TYPED_TEST(ARTIteratorTest, scan_three_leaves) {
   unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
   verifier.insert( 2, unodb::test::test_values[2] );
-  const TypeParam& db = verifier.get_db(); // reference to the database instance under test.
-  auto it = db.iterator(); // obtain iterator.
-  // check when iterator is not positioned on any leaf.
-  std::cerr<<"Check of initial invalid iterator"<<std::endl;
-  UNODB_EXPECT_TRUE( ! it.valid() );
-  UNODB_EXPECT_TRUE( ! it.get_key() );
-  UNODB_EXPECT_TRUE( ! it.get_val() );
-  UNODB_EXPECT_TRUE( ! it.next() );
-  // position the iterator on the first leaf and do forward scan. 
-  std::cerr<<"Positioning iterator on first leaf"<<std::endl;
-  UNODB_EXPECT_TRUE( it.first() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  UNODB_EXPECT_EQ( 0, it.get_key().value() );
-  UNODB_EXPECT_EQ( unodb::test::test_values[0], it.get_val().value() );
-  // next()
-  UNODB_EXPECT_TRUE( it.next() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  UNODB_EXPECT_EQ( 1, it.get_key().value() );
-  UNODB_EXPECT_EQ( unodb::test::test_values[1], it.get_val().value() );
-  // next()
-  UNODB_EXPECT_TRUE( it.next() );
-  UNODB_EXPECT_TRUE( it.valid() );
-  UNODB_EXPECT_EQ( 2, it.get_key().value() );
-  UNODB_EXPECT_EQ( unodb::test::test_values[2], it.get_val().value() );
-  // next() - nothing left.
-  UNODB_EXPECT_TRUE( ! it.next() );
-  UNODB_EXPECT_TRUE( it.valid() );  // iterator remains valid.
+  uint64_t n = 0;
+  auto fn = [&n](unodb::db::iterator&) {n++; return false;};
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 3, n );
 }
 
+TYPED_TEST(ARTIteratorTest, scan_four_leaves) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  verifier.insert( 3, unodb::test::test_values[3] );
+  uint64_t n = 0;
+  auto fn = [&n](unodb::db::iterator&) {n++; return false;};
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 4, n );
+}
+
+TYPED_TEST(ARTIteratorTest, scan_five_leaves) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  verifier.insert( 3, unodb::test::test_values[3] );
+  verifier.insert( 4, unodb::test::test_values[4] );
+  uint64_t n = 0;
+  auto fn = [&n](unodb::db::iterator&) {n++; return false;};
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 5, n );
+}
+
+TYPED_TEST(ARTIteratorTest, scan_five_leaves_halt_early) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0, unodb::test::test_values[0] );
+  verifier.insert( 1, unodb::test::test_values[1] );
+  verifier.insert( 2, unodb::test::test_values[2] );
+  verifier.insert( 3, unodb::test::test_values[3] );
+  verifier.insert( 4, unodb::test::test_values[4] );
+  uint64_t n = 0;
+  auto fn = [&n](unodb::db::iterator&) {n++; return n==1;};
+  db.scan( fn );
+  UNODB_EXPECT_EQ( 1, n );
+}
+
+#if 0
 #ifdef RECURSIVE_SCAN
 // FIXME This requires a begin() / end() pattern on each
 // basic_inode_xxx class.  Parking this approach for the moment and

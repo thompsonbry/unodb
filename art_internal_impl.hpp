@@ -618,9 +618,9 @@ class basic_inode_impl : public ArtPolicy::header_type {
       >;
   using iter_result_opt = std::optional< iter_result >;
   
-  static constexpr int NP = 0; // node pointer
-  static constexpr int KB = 1; // key byte
-  static constexpr int CI = 2; // child_index
+  static constexpr int NP = 0; // node pointer (to an internal node or leaf)
+  static constexpr int KB = 1; // key byte     (when stepping down from that node)
+  static constexpr int CI = 2; // child_index  (along which the path steps down from that node)
   
  protected:
   using inode_type = typename ArtPolicy::inode;
