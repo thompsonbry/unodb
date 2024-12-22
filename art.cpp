@@ -452,6 +452,10 @@ void db::dump(std::ostream &os) const {
 ///
 
 void db::iterator::dump(std::ostream &os) const {
+  if ( stack_.empty() ) {
+    os << "stack:: empty\n";
+    return;
+  }
   // Create a new stack and copy everything there.  Using the new
   // stack, print out the stack in top-bottom order.  This avoids
   // modifications to the existing stack for the iterator.
@@ -623,59 +627,53 @@ db::iterator& db::iterator::prior() noexcept {
   return *this; // stack is empty, so iterator == end().
 }
 
-#if 0
-
-// The seek() logic is quite similar to ::get().  It is nearly the
-// same code for the case where EQ semantics are used, but the
+// Note: The seek() logic is quite similar to ::get().  It is nearly
+// the same code for the case where EQ semantics are used, but the
 // iterator is positioned instead of returning the value for the key.
-// The GTE and LTE cases would correspond to where get() is willing to
-// return {} (leaf does not match, child pointer does not exist for
-// key), but in this case the iterator is positioned before (LTE) or
-// after (GTE) the missing key.
-//
-// FIXME REVIEW VERY CAREFULLY!
-template <> bool it_t<db>::seek(key search_key, seek_enum dir) noexcept {
-  
-  if ( dir != find_enum::EQ ) return {}; // FIXME Support LTE, GTE
+db::iterator& db::iterator::seek(key search_key, bool& match, bool fwd) noexcept {
 
-  invalidate();
-  if (UNODB_DETAIL_UNLIKELY(db.root== nullptr)) return false;
-  stack_entry cur { 0xFFU, 0xFFFFU, db.root }; // (key,child_index,root); key and child_index are ignore for the root.
-  // auto node{ db_.root };
-  // std::uint8_t child_index { 0 }; // child_index is ignored for the root node on the stack.
+  invalidate();  // invalidate the iterator (clear the stack).
+  match = false; // unless we wind up with an exact match.
+  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // aka end()
+
+  auto node{db_.root};
   const detail::art_key k{search_key};
   auto remaining_key{k};
 
   while (true) {
-    stack_.push( cur );
-    auto node = std::get<CP>( cur );
     const auto node_type = node.type();
     if (node_type == node_type::LEAF) {
-      // Terminate on a leaf.
-      const auto *const leaf{node.ptr<::leaf *>()};
-      if (leaf->matches(k)) return true;  // This path handles EQ/LTE/GTE.
-      // FIXME handle LT and GT here.
-      return false;
+      const auto *const leaf{node.ptr<detail::leaf *>()};
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      const int cmp = leaf->cmp( k );
+      if ( cmp == 0 ) {  // FIXME We need to compare the key ordering and then decide whether this key is the correct or to call prior() or next().
+        match = true;
+        return *this;
+      } else if ( fwd ) { // GTE semantics
+        return ( cmp < 0 ) ? *this :next();  // if search_key < leaf, use the leaf, else next().
+      } else {  // LTE semantics
+        return ( cmp > 0 ) ? *this :prior(); // if search_key > leaf, use the leaf, else prior().
+      }
+      UNODB_DETAIL_CANNOT_HAPPEN();
     }
     UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
-    // descent via an internal node.
-    auto *const inode{node.ptr<::inode *>()};
+    auto *const inode{node.ptr<detail::inode *>()};
     const auto &key_prefix{inode->get_key_prefix()};
     const auto key_prefix_length{key_prefix.length()};
     if (key_prefix.get_shared_length(remaining_key) < key_prefix_length) {
-      return false; // FIXME Handle LTE here.
+      UNODB_DETAIL_CANNOT_HAPPEN(); // FIXME HANDLE GTE/LTE here.
     }
     remaining_key.shift_right(key_prefix_length);
-    auto res = inode->find_child(node_type, remaining_key[0]); 
-    if (res.second == nullptr) return false;  // FIXME handle LT and GT here.
-    stack_.push( { remaining_key[0], res.first, res.second } );
-    // child_index = res.first;
-    // node = *(res.second);
+    auto res = inode->find_child( node_type, remaining_key[0] );
+    const auto *const child { res.second };
+    if ( child == nullptr ) {
+      UNODB_DETAIL_CANNOT_HAPPEN(); // FIXME HANDLE GTE/LTE here.
+    }
+    stack_.push( { node, remaining_key[0], res.first /*child_index*/ } );
+    node = *child;
     remaining_key.shift_right(1);
   }
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
-
-#endif
 
 }  // namespace unodb

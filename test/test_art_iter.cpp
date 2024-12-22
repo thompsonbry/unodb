@@ -41,21 +41,16 @@ UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 UNODB_START_TYPED_TESTS()
 
 //
-// FIXME Extend [verifier] to support scans.
-//
 // FIXME unit tests for gsl::span<std::byte>
 //
-// FIXME Microbenchmarks for iterator.
-//
-// FIXME Develop a thread-safe version of the iterator based on mutex (trivial) and OLC and extend microbenchmarks and unit tests
-//
-// FIXME Microbenchmark for parallel scaling with and w/o mutation.
+// FIXME Develop a thread-safe version of the iterator based on mutex
+// and OLC and extend microbenchmarks and unit tests.  For OLC, do a
+// microbenchmark for parallel scaling with and w/o mutation.
 //
 
 // unit test with an empty tree.
 TYPED_TEST(ARTIteratorTest, empty_tree__forward_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   auto b = db.begin(); // obtain iterators.
   const auto e = db.end();
@@ -67,7 +62,6 @@ TYPED_TEST(ARTIteratorTest, empty_tree__forward_scan) {
 // unit test with an empty tree.
 TYPED_TEST(ARTIteratorTest, empty_tree__reverse_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   auto b = db.last(); // obtain iterators.
   const auto e = db.end();
@@ -79,7 +73,6 @@ TYPED_TEST(ARTIteratorTest, empty_tree__reverse_scan) {
 // unit test where the root is a single leaf.
 TYPED_TEST(ARTIteratorTest, single_leaf_iterator_one_value) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   auto b = db.begin(); // obtain iterators.
@@ -93,7 +86,6 @@ TYPED_TEST(ARTIteratorTest, single_leaf_iterator_one_value) {
 // unit test where the root is an I4 with two leafs under it.
 TYPED_TEST(ARTIteratorTest, I4_and_two_leaves__forward_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
@@ -115,7 +107,6 @@ TYPED_TEST(ARTIteratorTest, I4_and_two_leaves__forward_scan) {
 // unit test where the root is an I4 with two leafs under it.
 TYPED_TEST(ARTIteratorTest, I4_and_two_leaves__reverse_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0, unodb::test::test_values[0] );
   verifier.insert( 1, unodb::test::test_values[1] );
@@ -141,7 +132,6 @@ TYPED_TEST(ARTIteratorTest, I4_and_two_leaves__reverse_scan) {
 // L0 L1
 TYPED_TEST(ARTIteratorTest, iterator_three_values_left_axis_two_deep_right_axis_one_deep__forward_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0xaa00, unodb::test::test_values[0] );
   verifier.insert( 0xaa01, unodb::test::test_values[1] );
@@ -167,7 +157,6 @@ TYPED_TEST(ARTIteratorTest, iterator_three_values_left_axis_two_deep_right_axis_
 // L0 L1
 TYPED_TEST(ARTIteratorTest, iterator_three_values_left_axis_two_deep_right_axis_one_deep__reverse_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0xaa00, unodb::test::test_values[0] );
   verifier.insert( 0xaa01, unodb::test::test_values[1] );
@@ -193,7 +182,6 @@ TYPED_TEST(ARTIteratorTest, iterator_three_values_left_axis_two_deep_right_axis_
 //        L1 L2
 TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_one_deep_right_axis_two_deep__forward_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0xaa00, unodb::test::test_values[0] );
   verifier.insert( 0xab0c, unodb::test::test_values[1] );
@@ -219,7 +207,6 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_one_dee
 //        L1 L2
 TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_one_deep_right_axis_two_deep__reverse_scan) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.check_absent_keys({0});
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 0xaa00, unodb::test::test_values[0] );
   verifier.insert( 0xab0c, unodb::test::test_values[1] );
@@ -237,6 +224,89 @@ TYPED_TEST(ARTIteratorTest, single_node_iterators_three_values_left_axis_one_dee
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
   UNODB_EXPECT_TRUE( b.prior() == e ); // nothing more in the iterator.
 }
+
+//
+// seek()
+//
+
+// unit test with an empty tree.
+TYPED_TEST(ARTIteratorTest, empty_tree__seek) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  const auto e = db.end();
+  bool match = false;
+  UNODB_EXPECT_TRUE( db.seek( 0/*key*/, match, true/*fwd*/ ) == e );
+  UNODB_EXPECT_EQ( match, false );
+  UNODB_EXPECT_TRUE( db.seek( 0/*key*/, match, false/*fwd*/ ) == e );
+  UNODB_EXPECT_EQ( match, false );
+}
+
+// unit test where the root is a single leaf.
+TYPED_TEST(ARTIteratorTest, single_leaf__seek) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 1, unodb::test::test_values[1] );
+  std::cerr<<"db state::\n"; db.dump(std::cerr);
+  const auto e = db.end();
+  { // exact match, forward traversal (GTE)
+    bool match = false;
+    auto it = db.seek( 1/*key*/, match, true/*fwd*/ );
+    UNODB_EXPECT_TRUE( it != e );
+    UNODB_EXPECT_EQ( match, true );
+    UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 1 );
+    UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    UNODB_EXPECT_TRUE( it.next() == e ); // nothing more in the iterator.
+  }
+  { // exact match, reverse traversal (LTE)
+    bool match = false;
+    auto it = db.seek( 1/*key*/, match, false/*fwd*/ );  
+    UNODB_EXPECT_TRUE( it != e );
+    UNODB_EXPECT_EQ( match, true );
+    UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 1 );
+    UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    UNODB_EXPECT_TRUE( it.next() == e ); // nothing more in the iterator.
+  }
+  { // forward traversal, before the first key in the data.
+    // match=false and iterator is positioned on the first key in the
+    // data.
+    bool match = true;
+    auto it = db.seek( 0/*key*/, match, true/*fwd*/ );
+    std::cerr<<"db.seek(0,&match,true)::\n"; it.dump(std::cerr);
+    UNODB_EXPECT_TRUE( it != e );
+    UNODB_EXPECT_EQ( match, false );
+    UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 1 );
+    UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    UNODB_EXPECT_TRUE( it.next() == e ); // nothing more in the iterator.
+  }
+  { // forward traversal, after the last key in the data.  match=false
+    // and iterator is positioned at end().
+    bool match = true;
+    auto it = db.seek( 2/*key*/, match, true/*fwd*/ );
+    UNODB_EXPECT_TRUE( it == e );
+    UNODB_EXPECT_EQ( match, false );
+  }
+  { // reverse traversal, before the first key in the data.
+    // match=false and iterator is positioned at end().
+    bool match = true;
+    auto it = db.seek( 0/*key*/, match, false/*fwd*/ );
+    UNODB_EXPECT_TRUE( it == e );
+    UNODB_EXPECT_EQ( match, false );
+  }
+  { // reverse traversal, after the last key in the data.  match=false
+    // and iterator is positioned at the last key.
+    bool match = true;
+    auto it = db.seek( 2/*key*/, match, false/*fwd*/ );
+    std::cerr<<"db.seek(2,&match,false)::\n"; it.dump(std::cerr);
+    UNODB_EXPECT_TRUE( it != e );
+    UNODB_EXPECT_EQ( match, false );
+    UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 1 );
+    UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    UNODB_EXPECT_TRUE( it.next() == e ); // nothing more in the iterator.
+  }
+}
+
+// FIXME (***) CONTINUE TO AT LEAST HEIGHT TWO TREES WITH SPECIFIC
+//             TESTS AND DO GENERAL CHECKS FOR LARGER TREES.
 
 //
 // forward scan

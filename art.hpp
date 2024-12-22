@@ -120,27 +120,27 @@ class db final {
     iterator& prior() noexcept;
     
     // Position the iterator on, before, or after the caller's key.
+    // If the iterator can not be positioned, it will be set to end().
+    // For example, if [fwd:=true] and the [search_key] is GT any key
+    // in the index then the iterator will be positioned to end()
+    // since there is no index entry greater than the search key.
+    // Likewise, if [fwd:=false] and the [search_key] is LT any key in
+    // the index, then the iterator will be positioned to end() since
+    // there is no index entry LT the search key.
     //
-    // @param search_key The iterator will be positioned on, before,
-    // or after this key.
-    //
-    // @param fwd When true, the iterator will be positioned first
-    // entry which orders GTE the search_key.  Otherwise, the iterator
-    // will be positioned on the last key which orders LTE the
-    // search_key.
+    // @param search_key The key used to position the iterator.
     //
     // @param match Will be set to true iff the search key is an exact
     // match in the index data.  Otherwise, the match is not exact and
     // the iterator is positioned either before or after the
     // search_key.
     //
-    // FIXME There are edge case which are not nicely handled by this
-    // definition.  For example, an empty index will always return
-    // end().  But an index with a single key that does not match the
-    // search_key can only return first() or last() for the iterator
-    // to remain valid.  That does not give the caller consistent
-    // semantics around an inexact match.
-    iterator& seek(key search_key, const bool fwd, bool& match) noexcept;
+    // @param fwd When true, the iterator will be positioned first
+    // entry which orders GTE the search_key and end() if there is no
+    // such entry.  Otherwise, the iterator will be positioned on the
+    // last key which orders LTE the search_key and end() if there is
+    // no such entry.
+    iterator& seek(key search_key, bool& match, bool fwd = true) noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
     // the key associated with that index entry.
@@ -268,6 +268,28 @@ class db final {
   // last().
   [[nodiscard]] iterator end() noexcept { return iterator(*this); }
 
+  // Return an iterator positioned on, before, or after the caller's
+  // key.  If the iterator can not be positioned, it will be set to
+  // end().  For example, if [fwd:=true] and the [search_key] is GT
+  // any key in the index then the iterator will be positioned to
+  // end() since there is no index entry greater than the search key.
+  // Likewise, if [fwd:=false] and the [search_key] is LT any key in
+  // the index, then the iterator will be positioned to end() since
+  // there is no index entry LT the search key.
+  //
+  // @param search_key The key used to position the iterator.
+  //
+  // @param match Will be set to true iff the search key is an exact
+  // match in the index data.  Otherwise, the match is not exact and
+  // the iterator is positioned either before or after the search_key.
+  //
+  // @param fwd When true, the iterator will be positioned first entry
+  // which orders GTE the search_key and end() if there is no such
+  // entry.  Otherwise, the iterator will be positioned on the last
+  // key which orders LTE the search_key and end() if there is no such
+  // entry.
+  [[nodiscard]] iterator seek(key search_key, bool& match, bool fwd = true) noexcept;
+  
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //
   // @param fn A function f(iterator&) returning [bool::halt].  The
@@ -279,19 +301,7 @@ class db final {
   // FIXME Add ability to seek to some point to the iterator and make
   // this an apply() on the iterator accepting a fromKey and toKey.
   template <typename FN>
-  inline void scan(FN fn, bool fwd = true) noexcept {
-    if ( fwd ) {
-      auto it { begin() };
-      while ( it.valid() && ! fn( it ) ) {
-        it.next();
-      }
-    } else {
-      auto it { last() };
-      while ( it.valid() && ! fn( it ) ) {
-        it.prior();
-      }
-    }
-  }
+  inline void scan(FN fn, bool fwd = true) noexcept;
   
   // Stats
 

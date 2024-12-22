@@ -43,6 +43,7 @@ class olc_db;
 
 namespace unodb::detail {
 
+// encode an external key into an internal key.
 template <>
 [[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
 basic_art_key<std::uint64_t>::make_binary_comparable(std::uint64_t k) noexcept {
@@ -53,6 +54,7 @@ basic_art_key<std::uint64_t>::make_binary_comparable(std::uint64_t k) noexcept {
 #endif
 }
 
+// decode an internal key into an external key.
 template <>
 [[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
 basic_art_key<std::uint64_t>::make_external(std::uint64_t k) noexcept {
@@ -110,6 +112,10 @@ class [[nodiscard]] basic_leaf final : public Header {
 
   [[nodiscard, gnu::pure]] constexpr auto matches(art_key k) const noexcept {
     return k == get_key();
+  }
+
+  [[nodiscard, gnu::pure]] constexpr auto cmp(art_key k) const noexcept {
+    return k.cmp( get_key() );
   }
 
   [[nodiscard, gnu::pure]] constexpr auto get_value_view() const noexcept {

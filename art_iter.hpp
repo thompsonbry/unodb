@@ -8,12 +8,12 @@
 
 namespace unodb {
 
-db::iterator& db::iterator::invalidate() noexcept {
+inline db::iterator& db::iterator::invalidate() noexcept {
   while ( ! stack_.empty() ) stack_.pop(); // clear the stack
   return *this;
 }
 
-std::optional<const key> db::iterator::get_key() noexcept {
+inline std::optional<const key> db::iterator::get_key() noexcept {
   // FIXME Eventually this will need to use the stack to reconstruct
   // the key from the path from the root to this leaf.  Right now it
   // is relying on the fact that simple fixed width keys are stored
@@ -27,7 +27,7 @@ std::optional<const key> db::iterator::get_key() noexcept {
   return key_; // return pointer to the internal key buffer.
 }
 
-std::optional<const value_view> db::iterator::get_val() const noexcept {
+inline std::optional<const value_view> db::iterator::get_val() const noexcept {
   if ( ! valid() ) return {}; // not positioned on anything.
   const auto& e = stack_.top();
   const auto& node = std::get<NP>( e );
@@ -36,7 +36,7 @@ std::optional<const value_view> db::iterator::get_val() const noexcept {
   return leaf->get_value_view();
 }
 
-bool db::iterator::operator==(const iterator& other) const noexcept {
+inline bool db::iterator::operator==(const iterator& other) const noexcept {
   if ( &db_ != &other.db_ ) return false;                     // different tree?
   if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?
   if ( stack_.empty() ) return true;                          // both empty.
@@ -51,7 +51,26 @@ bool db::iterator::operator==(const iterator& other) const noexcept {
   return a == b; // top of stack is same (inode, key, and child_index).
 }
     
-bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
+inline bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
+
+inline db::iterator db::seek(key search_key, bool& match, bool fwd) noexcept {
+  return end().seek( search_key, match, fwd);
+}
+
+template <typename FN>
+inline void db::scan(FN fn, bool fwd) noexcept {
+  if ( fwd ) {
+    auto it { begin() };
+    while ( it.valid() && ! fn( it ) ) {
+      it.next();
+    }
+  } else {
+    auto it { last() };
+    while ( it.valid() && ! fn( it ) ) {
+      it.prior();
+    }
+  }
+}
 
 } // namespace unodb
 
