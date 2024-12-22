@@ -95,15 +95,6 @@ class db final {
   /// iterator
   ///
 
-  // A typesafe enumeration for how the iterator will match keys during
-  // search. You can use these enumerations to setup for a forward or
-  // reverse scan.
-  enum seek_enum {
-    EQ,  // the search must position the iterator on an exact match for the search key in the tree.
-    GTE, // the search must position the iterator on the first key GTE to the search key in the tree.
-    LTE  // the search must position the iterator on the first key LTE to the search key in the tree.
-  };
-
   // Basic iterator for the non-thread-safe ART implementation.
   class iterator {
     friend class db;
@@ -128,13 +119,28 @@ class db final {
     // Position the iterator on the previous entry in the index.
     iterator& prior() noexcept;
     
-    // Position the iterator on the first entry which orders GTE the
-    // search_key. Returns true iff the search_key exists (exact
-    // match) or if the iterator was positioned to an entry in the
-    // index (!exact) and returns false otherwise.  If the iterator is
-    // not positioned by this method, then the iterator is invalidated
-    // (as if it were newly constructed).
-    bool seek(key search_key, seek_enum dir) noexcept;
+    // Position the iterator on, before, or after the caller's key.
+    //
+    // @param search_key The iterator will be positioned on, before,
+    // or after this key.
+    //
+    // @param fwd When true, the iterator will be positioned first
+    // entry which orders GTE the search_key.  Otherwise, the iterator
+    // will be positioned on the last key which orders LTE the
+    // search_key.
+    //
+    // @param match Will be set to true iff the search key is an exact
+    // match in the index data.  Otherwise, the match is not exact and
+    // the iterator is positioned either before or after the
+    // search_key.
+    //
+    // FIXME There are edge case which are not nicely handled by this
+    // definition.  For example, an empty index will always return
+    // end().  But an index with a single key that does not match the
+    // search_key can only return first() or last() for the iterator
+    // to remain valid.  That does not give the caller consistent
+    // semantics around an inexact match.
+    iterator& seek(key search_key, const bool fwd, bool& match) noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
     // the key associated with that index entry.
@@ -266,18 +272,24 @@ class db final {
   //
   // @param fn A function f(iterator&) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
+  //
+  // @param fwd When [true] perform a forward scan, otherwise perform
+  // a reverse scan.
   // 
   // FIXME Add ability to seek to some point to the iterator and make
   // this an apply() on the iterator accepting a fromKey and toKey.
-  //
-  // FIXME Support forward and reverse scans.  Perhaps just pass in
-  // [scan_dir] as a two value enum and use that to position the
-  // iterator via seek() and then drive it in the correct direction.
   template <typename FN>
-  inline void scan(FN fn) noexcept {
-    auto it { begin() };
-    while ( it.valid() && ! fn( it ) ) {
-      it.next();
+  inline void scan(FN fn, bool fwd = true) noexcept {
+    if ( fwd ) {
+      auto it { begin() };
+      while ( it.valid() && ! fn( it ) ) {
+        it.next();
+      }
+    } else {
+      auto it { last() };
+      while ( it.valid() && ! fn( it ) ) {
+        it.prior();
+      }
     }
   }
   
