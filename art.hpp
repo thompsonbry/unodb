@@ -112,24 +112,20 @@ class db final {
     // Construct an empty iterator.
     inline iterator(db& tree):db_(tree) {}
 
-    // Position the iterator on the first entry in the stack.
+    // Position the iterator on the first entry in the index.
     iterator& first() noexcept;
     
-    // Advance the iterator to next entry in the index and return
-    // true.
-    //
-    // @return false if the iterator is not positioned on a leaf or if
-    // there is no next entry.  An attempt to position the iterator
-    // after the last leaf does not change the state of the iterator.
+    // Advance the iterator to next entry in the index.
     iterator& next() noexcept;
     
-    // Position the iterator on the previous leaf in the index.  If the
-    // iterator is positioned after the last leaf, then this will
-    // position the iterator on the last leaf.
+    // Position the iterator on the last entry in the index, which can
+    // be used to initiate a reverse traversal.
     //
-    // @return false if the iterator is not positioned on a leaf or if
-    // there is no previous leaf.  An attempt to position the iterator
-    // before the first leaf does not change the state of the iterator.
+    // Note: This is NOT the same as end(), which does not position
+    // the iterator on anything.
+    iterator& last() noexcept;
+    
+    // Position the iterator on the previous entry in the index.
     iterator& prior() noexcept;
     
     // Position the iterator on the first entry which orders GTE the
@@ -244,8 +240,26 @@ class db final {
   // will be "end()".
   [[nodiscard]] iterator begin() noexcept { return iterator{*this}.first(); }
 
+  // Return an iterator that is positioned on the last entry in the
+  // index (if any).  If the index is empty, the returned iterator
+  // will be "end()".
+  [[nodiscard]] iterator last() noexcept { return iterator{*this}.last(); }
+
   // Return an iterator that is positioned after any possible entry in
   // the index.
+  //
+  // Note: end() is specific to a given db instance and not flyweight
+  // (there is an internal stack object) so it is a good idea to lift
+  // it out as a constant when writing loops which check against
+  // end().
+  //
+  // FIXME Should calling end().prior() bring us to last()?  If it
+  // does, how do we handle last().prior().prior()... when we reach
+  // the first entry in the index?  At that point, we need to return
+  // end() to indicate that the iterator is invalid().  If calling
+  // end().prior() initiates reverse traversal from the last index
+  // entry, then this could silently restart the reverse scan from
+  // last().
   [[nodiscard]] iterator end() noexcept { return iterator(*this); }
 
   // Scan the tree, applying the caller's lambda to each visited leaf.
@@ -255,6 +269,10 @@ class db final {
   // 
   // FIXME Add ability to seek to some point to the iterator and make
   // this an apply() on the iterator accepting a fromKey and toKey.
+  //
+  // FIXME Support forward and reverse scans.  Perhaps just pass in
+  // [scan_dir] as a two value enum and use that to position the
+  // iterator via seek() and then drive it in the correct direction.
   template <typename FN>
   inline void scan(FN fn) noexcept {
     auto it { begin() };

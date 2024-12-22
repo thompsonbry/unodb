@@ -511,6 +511,30 @@ db::iterator& db::iterator::first() noexcept {
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
 
+// Traverse to the right-most leaf. The stack is cleared first and then
+// re-populated as we step down along the path to the right-most leaf.
+// If the tree is empty, then the result is the same as end().
+db::iterator& db::iterator::last() noexcept {
+  invalidate();  // clear the stack
+  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
+  auto node{ db_.root };
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->last( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
 // Position the iterator on the next leaf in the index.
 db::iterator& db::iterator::next() noexcept {
   if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
@@ -543,7 +567,7 @@ db::iterator& db::iterator::next() noexcept {
           stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
           return *this;  // done
         }
-        // recursive descent.
+        // recursive left descent.
         inode = node.ptr<detail::inode *>();
         auto tmp = inode->begin( node_type );  // first child of the current internal node.
         stack_.push( tmp );                    // push the entry on the stack.
@@ -555,13 +579,51 @@ db::iterator& db::iterator::next() noexcept {
   return *this; // stack is empty, so iterator == end().
 }
 
-#if 0
-
 // Position the iterator on the prior leaf in the index.
 db::iterator& db::iterator::prior() noexcept {
-  UNODB_DETAIL_ASSERT( false );
-  return *this;  // FIXME WRITE THE CODE.
+  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
+  while ( ! stack_.empty() ) {
+    auto e = stack_.top();
+    auto node{ std::get<NP>( e ) };
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      stack_.pop(); // pop off the leaf
+      continue; // continue (if just a root leaf, we will fall through the loop since the stack will now be empty).
+    }
+    auto* inode{ node.ptr<detail::inode *>() };
+    auto nxt = inode->prior( node_type, std::get<CI>( e ) ); // previous child of that parent.
+    if ( ! nxt ) {
+      stack_.pop();  // Nothing more for that inode.
+      continue;      // We will look for the left sibling of the parent inode.
+    }
+    { // Recursive right descent.
+      UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
+      auto e2 = nxt.value();
+      stack_.pop();
+      stack_.push( e2 );
+      node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
+      while ( true ) {
+        UNODB_DETAIL_ASSERT( node != nullptr );
+        node_type = node.type();
+        if ( node_type == node_type::LEAF ) {
+          // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+          return *this;  // done
+        }
+        // recursive right descent.
+        inode = node.ptr<detail::inode *>();
+        auto tmp = inode->last( node_type );  // last child of the current internal node.
+        stack_.push( tmp );                   // push the entry on the stack.
+        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
+      }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+  }
+  return *this; // stack is empty, so iterator == end().
 }
+
+#if 0
 
 // The seek() logic is quite similar to ::get().  It is nearly the
 // same code for the case where EQ semantics are used, but the
