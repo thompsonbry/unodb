@@ -163,6 +163,16 @@ class db final {
     
     // Return true unless the stack is empty.
     inline bool valid() const noexcept { return ! stack_.empty(); }
+
+    // Push the given node onto the stack and traverse from the
+    // caller's node to the left-most leaf under that node, pushing
+    // nodes onto the stack as they are visited.
+    iterator& left_most_traversal(detail::node_ptr node) noexcept;
+
+    // Descend from the current state of the stack to the right most
+    // child leaf, updating the state of the iterator during the
+    // descent.
+    iterator& right_most_traversal(detail::node_ptr node) noexcept;
     
    private:
 

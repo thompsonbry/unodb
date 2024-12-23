@@ -50,7 +50,7 @@ inline bool db::iterator::operator==(const iterator& other) const noexcept {
   const auto& b = other.stack_.top();
   return a == b; // top of stack is same (inode, key, and child_index).
 }
-    
+
 inline bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
 
 inline db::iterator db::seek(key search_key, bool& match, bool fwd) noexcept {

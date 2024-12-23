@@ -494,7 +494,7 @@ void db::iterator::dump(std::ostream &os) const {
 // Traverse to the left-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the left-most leaf.
 // If the tree is empty, then the result is the same as end().
-db::iterator& db::iterator::first() noexcept {
+db::iterator& db::iterator::first() noexcept {  // TODO reuse left_most_traversal() here?
   invalidate();  // clear the stack
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
@@ -518,7 +518,7 @@ db::iterator& db::iterator::first() noexcept {
 // Traverse to the right-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the right-most leaf.
 // If the tree is empty, then the result is the same as end().
-db::iterator& db::iterator::last() noexcept {
+db::iterator& db::iterator::last() noexcept { // TODO reuse right_most_traversal() here?
   invalidate();  // clear the stack
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
@@ -627,6 +627,48 @@ db::iterator& db::iterator::prior() noexcept {
   return *this; // stack is empty, so iterator == end().
 }
 
+// Push the given node onto the stack and traverse from the caller's
+// node to the left-most leaf under that node, pushing nodes onto the
+// stack as they are visited.
+inline db::iterator& db::iterator::left_most_traversal(detail::node_ptr node) noexcept {
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->begin( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Push the given node onto the stack and traverse from the caller's
+// node to the right-most leaf under that node, pushing nodes onto the
+// stack as they are visited.
+inline db::iterator& db::iterator::right_most_traversal(detail::node_ptr node) noexcept {
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->last( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
 // Note: The seek() logic is quite similar to ::get().  It is nearly
 // the same code for the case where EQ semantics are used, but the
 // iterator is positioned instead of returning the value for the key.
@@ -660,16 +702,66 @@ db::iterator& db::iterator::seek(key search_key, bool& match, bool fwd) noexcept
     auto *const inode{node.ptr<detail::inode *>()};
     const auto &key_prefix{inode->get_key_prefix()};
     const auto key_prefix_length{key_prefix.length()};
-    if (key_prefix.get_shared_length(remaining_key) < key_prefix_length) {
-      UNODB_DETAIL_CANNOT_HAPPEN(); // FIXME HANDLE GTE/LTE here.
+    if ( key_prefix.get_shared_length( remaining_key ) < key_prefix_length ) {
+      // We have visited an internal node whose prefix is shorter than
+      // the bytes in the key that we need to match.  This means that
+      // the desired key (a) does not exist; and (b) is ordered before
+      // the key that we would visit along this path.
+      if ( fwd ) {
+        // If this is a forward traversal, we want the left most key
+        // under the current node.  We know that that left-most key
+        // will be GT the search key, so a left-deep descent will get
+        // us where we need to be.
+        return left_most_traversal( node );
+      } else {
+        // If this is a reverse traversal, we want the preceeding key.
+        // There might be a lot of edge cases for this.  The best
+        // thing might be to do a left deep descent from the current
+        // node to get to a leaf and then call prior() to get to the
+        // prececessor of that leaf.
+        //
+        // FIXME scan() UT for the case where seek() returns end() for the fromKey.
+        return left_most_traversal( node ).prior();
+      }
+      UNODB_DETAIL_CANNOT_HAPPEN();
     }
     remaining_key.shift_right(key_prefix_length);
     auto res = inode->find_child( node_type, remaining_key[0] );
-    const auto *const child { res.second };
+    const auto child_index { res.first };
+    const auto* const child { res.second };
     if ( child == nullptr ) {
-      UNODB_DETAIL_CANNOT_HAPPEN(); // FIXME HANDLE GTE/LTE here.
+      // FIXME find_child() DOES NOT return the child_index if the
+      // child is not found, so none of this works.
+      //
+      // We are on a key byte during the descent that is not mapped by
+      // the current node.  Where we go next depends on whether we are
+      // doing forward or reverse traversal.
+      if ( fwd ) {
+        // We take the next child_index that is mapped in the data and
+        // then do a left-most descent to land on the key that is the
+        // immediate successor of the desired key in the data.
+        auto nxt = inode->next( node_type, child_index );
+        if ( ! nxt ) return invalidate();
+        const auto child_index2 = std::get<CI>( nxt.value() );  // TODO extract from std::optional once (here and below).
+        const auto child2 = inode->get_child( node_type, child_index2 );
+        stack_.push( { node, std::get<KB>( nxt.value() ), child_index2 } );
+        return left_most_traversal( child2 );
+      } else {
+        // We take the prior child_index that is mapped and then do a
+        // right-most descent to land on the key that is the immediate
+        // precessor of the desired key in the data.
+        auto nxt = inode->prior( node_type, child_index );
+        if ( ! nxt ) return invalidate();
+        const auto child_index2 = std::get<CI>( nxt.value() );
+        const auto child2 = inode->get_child( node_type, child_index2 );
+        stack_.push( { node, std::get<KB>( nxt.value() ), child_index2 } );
+        return right_most_traversal( child2 );
+      }
+      // TODO Did find_child() give us an insertion point?
+      // FIXME Verify that I have a UT for both branches here.
+      UNODB_DETAIL_CANNOT_HAPPEN();
     }
-    stack_.push( { node, remaining_key[0], res.first /*child_index*/ } );
+    stack_.push( { node, remaining_key[0], child_index } );
     node = *child;
     remaining_key.shift_right(1);
   }

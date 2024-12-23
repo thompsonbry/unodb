@@ -246,7 +246,7 @@ TYPED_TEST(ARTIteratorTest, single_leaf__seek) {
   unodb::test::tree_verifier<TypeParam> verifier;
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   verifier.insert( 1, unodb::test::test_values[1] );
-  std::cerr<<"db state::\n"; db.dump(std::cerr);
+  //std::cerr<<"db state::\n"; db.dump(std::cerr);
   const auto e = db.end();
   { // exact match, forward traversal (GTE)
     bool match = false;
@@ -271,7 +271,7 @@ TYPED_TEST(ARTIteratorTest, single_leaf__seek) {
     // data.
     bool match = true;
     auto it = db.seek( 0/*key*/, match, true/*fwd*/ );
-    std::cerr<<"db.seek(0,&match,true)::\n"; it.dump(std::cerr);
+    //std::cerr<<"db.seek(0,&match,true)::\n"; it.dump(std::cerr);
     UNODB_EXPECT_TRUE( it != e );
     UNODB_EXPECT_EQ( match, false );
     UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 1 );
@@ -296,12 +296,116 @@ TYPED_TEST(ARTIteratorTest, single_leaf__seek) {
     // and iterator is positioned at the last key.
     bool match = true;
     auto it = db.seek( 2/*key*/, match, false/*fwd*/ );
-    std::cerr<<"db.seek(2,&match,false)::\n"; it.dump(std::cerr);
+    //std::cerr<<"db.seek(2,&match,false)::\n"; it.dump(std::cerr);
     UNODB_EXPECT_TRUE( it != e );
     UNODB_EXPECT_EQ( match, false );
     UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 1 );
     UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
     UNODB_EXPECT_TRUE( it.next() == e ); // nothing more in the iterator.
+  }
+}
+
+// unit test for the following tree structure, which is setup by how we choose the keys.
+//
+//       I4
+//   I4     L2
+// L0 L1
+TYPED_TEST(ARTIteratorTest, seek_three_values_left_axis_two_deep_right_axis_one_deep) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db(); // reference to the database instance under test.
+  verifier.insert( 0xaa00, unodb::test::test_values[0] );
+  verifier.insert( 0xaa01, unodb::test::test_values[1] );
+  verifier.insert( 0xab00, unodb::test::test_values[2] );
+  const auto e = db.end();
+  { // exact match, forward traversal
+    { // exact match, forward traversal (GTE), first key.
+      bool match = false;
+      auto it = db.seek( 0xaa00/*key*/, match, true/*fwd*/ );
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, true );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xaa00 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[0] );
+    }
+    { // exact match, forward traversal (GTE), middle key.
+      bool match = false;
+      auto it = db.seek( 0xaa01/*key*/, match, true/*fwd*/ );
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, true );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xaa01 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    }
+    { // exact match, forward traversal (GTE), last key.
+      bool match = false;
+      auto it = db.seek( 0xab00/*key*/, match, true/*fwd*/ );
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, true );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xab00 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[2] );
+    }
+  }
+  { // exact match, reverse traversal
+    { // exact match, reverse traversal (LTE), first key.
+      bool match = false;
+      auto it = db.seek( 0xaa00/*key*/, match, false/*fwd*/ );  
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, true );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xaa00 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[0] );
+    }
+    { // exact match, reverse traversal (LTE), middle key.
+      bool match = false;
+      auto it = db.seek( 0xaa01/*key*/, match, false/*fwd*/ );  
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, true );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xaa01 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    }
+    { // exact match, reverse traversal (LTE), last key.
+      bool match = false;
+      auto it = db.seek( 0xab00/*key*/, match, false/*fwd*/ );  
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, true );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xab00 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[2] );
+    }
+  }
+  { // before and after the first and last key
+    { // forward traversal, before the first key in the data.
+      // match=false and iterator is positioned on the first key in the
+      // data.
+      bool match = true;
+      auto it = db.seek( 0/*key*/, match, true/*fwd*/ );
+      //std::cerr<<"db.seek(0,&match,true)::\n"; it.dump(std::cerr);
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, false );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xaa00 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+    }
+    { // forward traversal, after the last key in the data.  match=false
+      // and iterator is positioned at end().
+      bool match = true;
+      auto it = db.seek( 0xffff/*key*/, match, true/*fwd*/ );
+      UNODB_EXPECT_TRUE( it == e );
+      UNODB_EXPECT_EQ( match, false );
+    }
+    { // reverse traversal, before the first key in the data.
+      // match=false and iterator is positioned at end().
+      bool match = true;
+      auto it = db.seek( 0/*key*/, match, false/*fwd*/ );
+      UNODB_EXPECT_TRUE( it == e );
+      UNODB_EXPECT_EQ( match, false );
+    }
+    { // reverse traversal, after the last key in the data.  match=false
+      // and iterator is positioned at the last key.
+      bool match = true;
+      auto it = db.seek( 0xffff/*key*/, match, false/*fwd*/ );
+      //std::cerr<<"db.seek(2,&match,false)::\n"; it.dump(std::cerr);
+      UNODB_EXPECT_TRUE( it != e );
+      UNODB_EXPECT_EQ( match, false );
+      UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xab00 );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[2] );
+      UNODB_EXPECT_TRUE( it.next() == e ); // nothing more in the iterator.
+    }
   }
 }
 
