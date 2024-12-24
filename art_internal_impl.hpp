@@ -876,50 +876,50 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Return an iter_result in the data which orders lexicographically
-  // less than the given key_byte.  This method is used by seek() to
-  // find the path before a key when the key is not mapped in the
-  // data.
-  [[nodiscard]] constexpr iter_result_opt before_key_byte(node_type type,
-                                                          std::byte key_byte) noexcept {
+  // Return an iter_result for the greatest key byte which orders
+  // lexicographically less than or equal to (LTE) the give key byte.
+  // This method is used by seek() to find the path before a key when
+  // the key is not mapped in the data.
+  [[nodiscard]] constexpr iter_result_opt lte_key_byte(node_type type,
+                                                       std::byte key_byte) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
-    // switch (type) {
-    //   case node_type::I4:
-    //     return static_cast<inode4_type *>(this)->find_child(key_byte);
-    //   case node_type::I16:
-    //     return static_cast<inode16_type *>(this)->find_child(key_byte);
-    //   case node_type::I48:
-    //     return static_cast<inode48_type *>(this)->find_child(key_byte);
-    //   case node_type::I256:
-    //     return static_cast<inode256_type *>(this)->find_child(key_byte);
-    //     // LCOV_EXCL_START
-    //   case node_type::LEAF:
-    //     UNODB_DETAIL_CANNOT_HAPPEN();
-    // }
+    switch (type) {
+      case node_type::I4:
+        return static_cast<inode4_type *>(this)->lte_key_byte(key_byte);
+      case node_type::I16:
+        return static_cast<inode16_type *>(this)->lte_key_byte(key_byte);
+      case node_type::I48:
+        return static_cast<inode48_type *>(this)->lte_key_byte(key_byte);
+      case node_type::I256:
+        return static_cast<inode256_type *>(this)->lte_key_byte(key_byte);
+        // LCOV_EXCL_START
+      case node_type::LEAF:
+        UNODB_DETAIL_CANNOT_HAPPEN();
+    }
     UNODB_DETAIL_CANNOT_HAPPEN();
     // LCOV_EXCL_STOP
   }
 
-  // Return an iter_result in the data which orders lexicographically
-  // greater than the given key_byte.  This method is used by seek()
-  // to find the path before a key when the key is not mapped in the
-  // data.
-  [[nodiscard]] constexpr iter_result_opt after_key_byte(node_type type,
-                                                         std::byte key_byte) noexcept {
+  // Return an iter_result for the smallest key byte which orders
+  // lexicographically greater than or equal to (GTE) the given
+  // key_byte.  This method is used by seek() to find the path before
+  // a key when the key is not mapped in the data.
+  [[nodiscard]] constexpr iter_result_opt gte_key_byte(node_type type,
+                                                       std::byte key_byte) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
-    // switch (type) {
-    //   case node_type::I4:
-    //     return static_cast<inode4_type *>(this)->find_child(key_byte);
-    //   case node_type::I16:
-    //     return static_cast<inode16_type *>(this)->find_child(key_byte);
-    //   case node_type::I48:
-    //     return static_cast<inode48_type *>(this)->find_child(key_byte);
-    //   case node_type::I256:
-    //     return static_cast<inode256_type *>(this)->find_child(key_byte);
-    //     // LCOV_EXCL_START
-    //   case node_type::LEAF:
-    //     UNODB_DETAIL_CANNOT_HAPPEN();
-    // }
+    switch (type) {
+      case node_type::I4:
+        return static_cast<inode4_type *>(this)->gte_key_byte(key_byte);
+      case node_type::I16:
+        return static_cast<inode16_type *>(this)->gte_key_byte(key_byte);
+      case node_type::I48:
+        return static_cast<inode48_type *>(this)->gte_key_byte(key_byte);
+      case node_type::I256:
+        return static_cast<inode256_type *>(this)->gte_key_byte(key_byte);
+        // LCOV_EXCL_START
+      case node_type::LEAF:
+        UNODB_DETAIL_CANNOT_HAPPEN();
+    }
     UNODB_DETAIL_CANNOT_HAPPEN();
     // LCOV_EXCL_STOP
   }
@@ -1366,6 +1366,37 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     const std::byte key = keys.byte_array[ next_index ].load();
     return { { node_ptr{ this, node_type::I4 }, key, next_index } };
   }
+
+  // N4: The keys[] is ordered for N4, so we scan the keys[] in order,
+  // returning the first value GTE the given [key_byte].
+  [[nodiscard]] constexpr typename basic_inode_4::iter_result_opt gte_key_byte(std::byte key_byte) noexcept {
+    const auto children_count_ = this->children_count.load();
+    for ( std::uint8_t i = 0; i < children_count_; ++i ) {
+      const std::byte key = keys.byte_array[ i ].load();
+      if ( key >= key_byte ) {
+        return { { node_ptr{ this, node_type::I4 }, key, i } };
+      }
+    }
+    // This should only occur if there is no entry in the keys[] which
+    // is greater-than the given [key_byte].
+    return parent_class::end_result;
+  }
+  
+  // N4: The keys[] is ordered for N4, so we scan the keys[] in
+  // reverse order, returning the first value LTE the given
+  // [key_byte].
+  [[nodiscard]] constexpr typename basic_inode_4::iter_result_opt lte_key_byte(std::byte key_byte) noexcept {
+    const auto children_count_ = this->children_count.load();
+    for ( std::int64_t i = children_count_ - 1; i >= 0; i-- ) {
+      const std::uint8_t child_index = static_cast<std::uint8_t>( i );
+      const std::byte key = keys.byte_array[ child_index ].load();
+      if ( key <= key_byte ) {
+        return { { node_ptr{ this, node_type::I4 }, key, child_index } };
+      }
+    }
+    // The first key in the node is GT the given key_byte.
+    return parent_class::end_result;
+  }
   
   constexpr void delete_subtree(db &db_instance) noexcept {
     const std::uint8_t children_count_ = this->children_count.load();
@@ -1712,6 +1743,36 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
     const std::uint8_t next_index = child_index - 1;  // next child index
     const std::byte key = keys.byte_array[ next_index ].load();
     return { { node_ptr{ this, node_type::I16 }, key, next_index } };
+  }
+  
+  // N16: The keys[] is ordered, so we scan the keys[] in reverse
+  // order, returning the first value LTE the given [key_byte].
+  [[nodiscard]] constexpr typename basic_inode_16::iter_result_opt lte_key_byte(std::byte key_byte) noexcept {
+    const auto children_count_ = this->children_count.load();
+    for ( std::int64_t i = children_count_ - 1; i >= 0; i-- ) {
+      const std::uint8_t child_index = static_cast<std::uint8_t>( i );
+      const std::byte key = keys.byte_array[ child_index ].load();
+      if ( key <= key_byte ) {
+        return { { node_ptr{ this, node_type::I16 }, key, child_index } };
+      }
+    }
+    // The first key in the node is GT the given key_byte.
+    return parent_class::end_result;
+  }
+  
+  // N16: The keys[] is ordered for N16, so we scan the keys[] in order,
+  // returning the first value GTE the given [key_byte].
+  [[nodiscard]] constexpr typename basic_inode_16::iter_result_opt gte_key_byte(std::byte key_byte) noexcept {
+    const auto children_count_ = this->children_count.load();
+    for ( std::uint8_t i = 0; i < children_count_; ++i ) {
+      const std::byte key = keys.byte_array[ i ].load();
+      if ( key >= key_byte ) {
+        return { { node_ptr{ this, node_type::I16 }, key, i } };
+      }
+    }
+    // This should only occur if there is no entry in the keys[] which
+    // is greater-than the given [key_byte].
+    return parent_class::end_result;
   }
   
   constexpr void delete_subtree(db &db_instance) noexcept {
@@ -2108,6 +2169,34 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
     }
     return parent_class::end_result;
   }
+
+  // N48: This is nearly identical to prior() except that we start the
+  // search on the [key_byte] rather than the position before that.
+  [[nodiscard]] constexpr typename basic_inode_48::iter_result_opt lte_key_byte(const std::byte key_byte) noexcept {
+    // loop over the prior byte values in lexical order.
+    for ( std::int64_t i = static_cast<std::int64_t>(key_byte); i >= 0; i-- ) {
+      const std::uint8_t child_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
+      if ( child_indexes[ child_index ] != empty_child ) {
+        const std::byte key = static_cast<std::byte>( i );
+        return { { node_ptr{ this, node_type::I48 }, key, child_index } };
+      }
+    }
+    return parent_class::end_result;
+  }
+
+  // N48: This is nearly identical to next() except that we start the
+  // search on the [key_byte] rather than the position after that.
+  [[nodiscard]] constexpr typename basic_inode_48::iter_result_opt gte_key_byte(std::byte key_byte) noexcept {
+    // loop over the remaining byte values in lexical order.
+    for ( std::uint64_t i = static_cast<std::uint64_t>(key_byte); i < 256; i++ ) {
+      const std::uint8_t child_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
+      if ( child_indexes[ child_index ] != empty_child ) {
+        const std::byte key = static_cast<std::byte>( i );
+        return { { node_ptr{ this, node_type::I48 }, key, child_index } };
+      }
+    }
+    return parent_class::end_result;
+  }
   
   constexpr void delete_subtree(db &db_instance) noexcept {
 #ifndef NDEBUG
@@ -2406,15 +2495,44 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
   [[nodiscard]] constexpr typename basic_inode_256::iter_result_opt prior(const std::uint8_t child_index) noexcept {
     // loop over the remaining byte values in lexical order.
     for ( std::int64_t i = static_cast<std::int64_t>(child_index) - 1; i >= 0; i-- ) {
-      if ( children[ static_cast<std::uint8_t>( i ) ] != nullptr ) { // downcast is safe since in [0:255]
+      const std::uint8_t next_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
+      if ( children[ next_index ] != nullptr ) { // downcast is safe since in [0:255]
         const std::byte key = static_cast<std::byte>( i );
-        const std::uint8_t next_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
         return { { node_ptr{ this, node_type::I256 }, key, next_index } };
       }
     }
     return parent_class::end_result;
   }  
 
+  // N256: This is nearly identical to prior() except that we start
+  // the search on the [key_byte] rather than the position before
+  // that.
+  [[nodiscard]] constexpr typename basic_inode_256::iter_result_opt lte_key_byte(std::byte key_byte) noexcept {
+    // loop over the prior byte values in lexical order.
+    for ( std::int64_t i = static_cast<std::int64_t>(key_byte); i >= 0; i-- ) {
+      const std::uint8_t child_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
+      if ( children[ child_index ] != nullptr ) {
+        const std::byte key = static_cast<std::byte>( i );
+        return { { node_ptr{ this, node_type::I256 }, key, child_index } };
+      }
+    }
+    return parent_class::end_result;
+  }
+
+  // N256: This is nearly identical to next() except that we start the
+  // search on the [key_byte] rather than the position after that.
+  [[nodiscard]] constexpr typename basic_inode_256::iter_result_opt gte_key_byte(std::byte key_byte) noexcept {
+    // loop over the remaining byte values in lexical order.
+    for ( std::uint64_t i = static_cast<std::uint64_t>(key_byte); i < basic_inode_256::capacity; i++ ) {
+      const std::uint8_t child_index = static_cast<std::uint8_t>( i ); // downcast is safe since in [0:255]
+      if ( children[ child_index ] != nullptr ) {
+        const std::byte key = static_cast<std::byte>( i );
+        return { { node_ptr{ this, node_type::I48 }, key, child_index } };
+      }
+    }
+    return parent_class::end_result;
+  }
+  
   // TODO Lifting this out might help with iterator and lambda patterns.
   template <typename Function>
   constexpr void for_each_child(Function func) const

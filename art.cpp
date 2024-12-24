@@ -735,9 +735,22 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
         // We take the next child_index that is mapped in the data and
         // then do a left-most descent to land on the key that is the
         // immediate successor of the desired key in the data.
-        auto nxt = inode->after_key_byte( node_type, remaining_key[0] );
-        if ( ! nxt ) return invalidate(); // FIXME Look at this edge case.
-        auto tmp = nxt.value();           // unwrap.
+        //    
+        // Note: We are probing with a key byte which does not appear
+        // in our list of keys (this was verified above) so this will
+        // always be the index the first entry whose key byte is
+        // greater-than the probe value and [false] if there is no
+        // such entry.
+        auto nxt = inode->gte_key_byte( node_type, remaining_key[0] );
+        if ( ! nxt ) {
+          // FIXME Look at this edge case.  We need to pop entries off
+          // the stack until we find one with a right-sibling of the
+          // path we took to this node and then do a left-most descent
+          // under that right-sibling. In the extreme case, we want
+          // the right-most leaf in the index.
+          UNODB_DETAIL_CANNOT_HAPPEN();
+        }
+        auto tmp = nxt.value(); // unwrap.
         const auto child_index = std::get<CI>( tmp );
         const auto child = inode->get_child( node_type, child_index );
         return left_most_traversal( child );
@@ -745,8 +758,16 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
         // We take the prior child_index that is mapped and then do a
         // right-most descent to land on the key that is the immediate
         // precessor of the desired key in the data.
-        auto nxt = inode->before_key_byte( node_type, remaining_key[0] );
-        if ( ! nxt ) return invalidate(); // FIXME Look at this edge case.
+        auto nxt = inode->lte_key_byte( node_type, remaining_key[0] );
+        if ( ! nxt ) {
+          // FIXME Look at this edge case.  If there is no such entry
+          // before the current key byte, then we need to pop off the
+          // current entry until we find one with a left-sibling and
+          // then to a right-most descent under that left-sibling.  In
+          // the extreme case there is no such previous entry and we
+          // want the left-most leaf in the index.
+          UNODB_DETAIL_CANNOT_HAPPEN();
+        }
         auto tmp = nxt.value();           // unwrap.
         const auto child_index = std::get<CI>( tmp );
         const auto child = inode->get_child( node_type, child_index );
