@@ -410,12 +410,16 @@ TYPED_TEST(ARTIteratorTest, seek_three_values_left_axis_two_deep_right_axis_one_
 }
 
 // FIXME (***) CONTINUE TO AT LEAST HEIGHT TWO TREES WITH SPECIFIC
-//             TESTS AND DO GENERAL CHECKS FOR LARGER TREES.
+//             TESTS.
 //
-// FIXME Tests for edge cases for scan() including: empty tree, first
-// key missing, last key missing, both end keys missing, both end keys
-// are the same (and both exist or one exists or both are missing),
-// etc.
+// FIXME (***) DO GENERAL CHECKS FOR LARGER TREES. For example, we
+// could generate trees with a space between each pair of keys and use
+// that to probe the before/after semantics of seek().
+//
+// FIXME (***) Tests for edge cases for scan() including: empty tree,
+// first key missing, last key missing, both end keys missing, both
+// end keys are the same (and both exist or one exists or both are
+// missing), etc.
 
 //
 // forward scan

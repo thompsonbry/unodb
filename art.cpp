@@ -708,17 +708,15 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
       // the desired key (a) does not exist; and (b) is ordered before
       // the key that we would visit along this path.
       if ( fwd ) {
-        // If this is a forward traversal, we want the left most key
-        // under the current node.  We know that that left-most key
-        // will be GT the search key, so a left-deep descent will get
-        // us where we need to be.
+        // FWD: We want the left most key under the current node.  We
+        // know that that left-most key will be GT the search key, so
+        // a left-deep descent will get us where we need to be.
         return left_most_traversal( node );
       } else {
-        // If this is a reverse traversal, we want the preceeding key.
-        // There might be a lot of edge cases for this.  The best
-        // thing might be to do a left deep descent from the current
-        // node to get to a leaf and then call prior() to get to the
-        // prececessor of that leaf.
+        // REV: We want the preceeding key.  There might be a lot of
+        // edge cases for this.  The best thing might be to do a left
+        // deep descent from the current node to get to a leaf and
+        // then call prior() to get to the prececessor of that leaf.
         //
         // FIXME scan() UT for the case where seek() returns end() for the fromKey.
         return left_most_traversal( node ).prior();
@@ -732,9 +730,9 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
       // the current node.  Where we go next depends on whether we are
       // doing forward or reverse traversal.
       if ( fwd ) {
-        // We take the next child_index that is mapped in the data and
-        // then do a left-most descent to land on the key that is the
-        // immediate successor of the desired key in the data.
+        // FWD: Take the next child_index that is mapped in the data
+        // and then do a left-most descent to land on the key that is
+        // the immediate successor of the desired key in the data.
         //    
         // Note: We are probing with a key byte which does not appear
         // in our list of keys (this was verified above) so this will
@@ -743,30 +741,50 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
         // such entry.
         auto nxt = inode->gte_key_byte( node_type, remaining_key[0] );
         if ( ! nxt ) {
-          // FIXME Look at this edge case.  We need to pop entries off
-          // the stack until we find one with a right-sibling of the
-          // path we took to this node and then do a left-most descent
-          // under that right-sibling. In the extreme case, we want
-          // the right-most leaf in the index.
-          UNODB_DETAIL_CANNOT_HAPPEN();
+          // Pop entries off the stack until we find one with a
+          // right-sibling of the path we took to this node and then
+          // do a left-most descent under that right-sibling. If there
+          // is no such parent, we will wind up with an empty stack
+          // (aka the end() iterator) and return that state.
+          while ( ! stack_.empty() ) {
+            stack_.pop();
+            const auto centry = stack_.top();
+            const auto cnode = std::get<NP>( centry );
+            auto *const icnode{cnode.ptr<detail::inode *>()};
+            const auto cnxt = icnode->next( cnode.type(), std::get<CI>(centry) ); // right-sibling.
+            if ( cnxt ) {
+              auto nchild = icnode->get_child( cnode.type(), std::get<CI>(centry) );
+              return left_most_traversal( nchild );
+            }
+          }
+          return *this; // stack is empty (aka end()).
         }
         auto tmp = nxt.value(); // unwrap.
         const auto child_index = std::get<CI>( tmp );
         const auto child = inode->get_child( node_type, child_index );
         return left_most_traversal( child );
       } else {
-        // We take the prior child_index that is mapped and then do a
-        // right-most descent to land on the key that is the immediate
-        // precessor of the desired key in the data.
+        // REV: Take the prior child_index that is mapped and then do
+        // a right-most descent to land on the key that is the
+        // immediate precessor of the desired key in the data.
         auto nxt = inode->lte_key_byte( node_type, remaining_key[0] );
         if ( ! nxt ) {
-          // FIXME Look at this edge case.  If there is no such entry
-          // before the current key byte, then we need to pop off the
-          // current entry until we find one with a left-sibling and
-          // then to a right-most descent under that left-sibling.  In
-          // the extreme case there is no such previous entry and we
-          // want the left-most leaf in the index.
-          UNODB_DETAIL_CANNOT_HAPPEN();
+          // Pop off the current entry until we find one with a
+          // left-sibling and then do a right-most descent under that
+          // left-sibling.  In the extreme case there is no such
+          // previous entry and we will wind up with an empty stack.
+          while ( ! stack_.empty() ) {
+            stack_.pop();
+            const auto centry = stack_.top();
+            const auto cnode = std::get<NP>( centry );
+            auto *const icnode{cnode.ptr<detail::inode *>()};
+            const auto cnxt = icnode->prior( cnode.type(), std::get<CI>(centry) ); // left-sibling.
+            if ( cnxt ) {
+              auto nchild = icnode->get_child( cnode.type(), std::get<CI>(centry) );
+              return right_most_traversal( nchild );
+            }
+          }
+          return *this; // stack is empty (aka end()).
         }
         auto tmp = nxt.value();           // unwrap.
         const auto child_index = std::get<CI>( tmp );
