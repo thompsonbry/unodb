@@ -669,9 +669,12 @@ inline db::iterator& db::iterator::right_most_traversal(detail::node_ptr node) n
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
 
-// Note: The seek() logic is quite similar to ::get() for the case
-// where the search_key exists in the data, but the iterator is
-// positioned instead of returning the value for the key.
+// Note: The basic seek() logic is similar to ::get() as long as the
+// search_key exists in the data.  However, the iterator is positioned
+// instead of returning the value for the key.  Life gets a lot more
+// complicated when the search_key is not in the data and we have to
+// consider the cases for both forward traversal and reverse traversal
+// from a key that is not in the data.
 db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) noexcept {
 
   invalidate();  // invalidate the iterator (clear the stack).
@@ -688,7 +691,7 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
       const auto *const leaf{node.ptr<detail::leaf *>()};
       stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
       const int cmp = leaf->cmp( k );
-      if ( cmp == 0 ) {  // FIXME We need to compare the key ordering and then decide whether this key is the correct or to call prior() or next().
+      if ( cmp == 0 ) {
         match = true;
         return *this;
       } else if ( fwd ) { // GTE semantics
@@ -717,8 +720,6 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
         // edge cases for this.  The best thing might be to do a left
         // deep descent from the current node to get to a leaf and
         // then call prior() to get to the prececessor of that leaf.
-        //
-        // FIXME scan() UT for the case where seek() returns end() for the fromKey.
         return left_most_traversal( node ).prior();
       }
       UNODB_DETAIL_CANNOT_HAPPEN();

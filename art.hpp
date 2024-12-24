@@ -278,13 +278,9 @@ class db final {
   // it out as a constant when writing loops which check against
   // end().
   //
-  // FIXME Should calling end().prior() bring us to last()?  If it
-  // does, how do we handle last().prior().prior()... when we reach
-  // the first entry in the index?  At that point, we need to return
-  // end() to indicate that the iterator is invalid().  If calling
-  // end().prior() initiates reverse traversal from the last index
-  // entry, then this could silently restart the reverse scan from
-  // last().
+  // Note: end() is not a valid iterator position.  You CAN NOT call
+  // prior() on end() to go backwards.  Instead, use the seek() API to
+  // find a suitable starting point for the reverse traversal.
   [[nodiscard]] iterator end() noexcept { return iterator(*this); }
 
   // Return an iterator positioned on, before, or after the caller's
