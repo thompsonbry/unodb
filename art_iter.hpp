@@ -53,12 +53,13 @@ inline bool db::iterator::operator==(const iterator& other) const noexcept {
 
 inline bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
 
-inline db::iterator db::seek(key search_key, bool& match, bool fwd) noexcept {
+inline db::iterator db::seek(const key search_key, bool& match, bool fwd) noexcept {
   return end().seek( search_key, match, fwd);
 }
 
 template <typename FN>
 inline void db::scan(FN fn, bool fwd) noexcept {
+  if ( empty() ) return;
   if ( fwd ) {
     auto it { begin() };
     while ( it.valid() && ! fn( it ) ) {
@@ -68,6 +69,51 @@ inline void db::scan(FN fn, bool fwd) noexcept {
     auto it { last() };
     while ( it.valid() && ! fn( it ) ) {
       it.prior();
+    }
+  }
+}
+
+template <typename FN>
+inline void db::scan(const key fromKey, FN fn, bool fwd) noexcept {
+  if ( empty() ) return;
+  bool match {};
+  if ( fwd ) {
+    auto it { seek( fromKey, match, true/*fwd*/ ) };
+    while ( it.valid() && ! fn( it ) ) {
+      it.next();
+    }
+  } else {
+    auto it { seek( fromKey, match, false/*fwd*/ ) };
+    while ( it.valid() && ! fn( it ) ) {
+      it.prior();
+    }
+  }
+}
+
+template <typename FN>
+inline void db::scan(const key fromKey, const key toKey, FN fn) noexcept {
+  if ( empty() ) return;
+  // FIXME THIS MUST CONVERT TO art_key FIRST.  Then we should reuse
+  // that conversion for each seek() call, put seek() in the internal
+  // API along with begin() and end(), and update the unit tests of
+  // those internal methods to be friend classes.  This comparison
+  // only works here because the external keys are trivially
+  // comparable.
+  const bool fwd { fromKey < toKey };
+  bool match {};
+  if ( fwd ) {
+    auto it1 { seek( fromKey, match, true /*fwd*/ ) }; // lower bound
+    auto it2 { seek( fromKey, match, false/*fwd*/ ) }; // upper bound
+    while ( it1.valid() && ! fn( it1 ) ) {
+      it1.next();
+      if ( it1.current_node() == it2.current_node() ) break;  // TODO UNLIKELY
+    }
+  } else {
+    auto it1 { seek( fromKey, match, false/*fwd*/ ) }; // lower bound
+    auto it2 { seek( fromKey, match, true /*fwd*/ ) }; // upper bound
+    while ( it1.valid() && ! fn( it1 ) ) {
+      it1.prior();
+      if ( it1.current_node() == it2.current_node() ) break;  // TODO UNLIKELY
     }
   }
 }

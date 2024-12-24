@@ -669,10 +669,10 @@ inline db::iterator& db::iterator::right_most_traversal(detail::node_ptr node) n
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
 
-// Note: The seek() logic is quite similar to ::get().  It is nearly
-// the same code for the case where EQ semantics are used, but the
-// iterator is positioned instead of returning the value for the key.
-db::iterator& db::iterator::seek(key search_key, bool& match, bool fwd) noexcept {
+// Note: The seek() logic is quite similar to ::get() for the case
+// where the search_key exists in the data, but the iterator is
+// positioned instead of returning the value for the key.
+db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) noexcept {
 
   invalidate();  // invalidate the iterator (clear the stack).
   match = false; // unless we wind up with an exact match.
@@ -727,12 +727,7 @@ db::iterator& db::iterator::seek(key search_key, bool& match, bool fwd) noexcept
     }
     remaining_key.shift_right(key_prefix_length);
     auto res = inode->find_child( node_type, remaining_key[0] );
-    const auto child_index { res.first };
-    const auto* const child { res.second };
-    if ( child == nullptr ) {
-      // FIXME find_child() DOES NOT return the child_index if the
-      // child is not found, so none of this works.
-      //
+    if ( res.second == nullptr ) {
       // We are on a key byte during the descent that is not mapped by
       // the current node.  Where we go next depends on whether we are
       // doing forward or reverse traversal.
@@ -740,31 +735,33 @@ db::iterator& db::iterator::seek(key search_key, bool& match, bool fwd) noexcept
         // We take the next child_index that is mapped in the data and
         // then do a left-most descent to land on the key that is the
         // immediate successor of the desired key in the data.
-        auto nxt = inode->next( node_type, child_index );
-        if ( ! nxt ) return invalidate();
-        const auto child_index2 = std::get<CI>( nxt.value() );  // TODO extract from std::optional once (here and below).
-        const auto child2 = inode->get_child( node_type, child_index2 );
-        stack_.push( { node, std::get<KB>( nxt.value() ), child_index2 } );
-        return left_most_traversal( child2 );
+        auto nxt = inode->after_key_byte( node_type, remaining_key[0] );
+        if ( ! nxt ) return invalidate(); // FIXME Look at this edge case.
+        auto tmp = nxt.value();           // unwrap.
+        const auto child_index = std::get<CI>( tmp );
+        const auto child = inode->get_child( node_type, child_index );
+        return left_most_traversal( child );
       } else {
         // We take the prior child_index that is mapped and then do a
         // right-most descent to land on the key that is the immediate
         // precessor of the desired key in the data.
-        auto nxt = inode->prior( node_type, child_index );
-        if ( ! nxt ) return invalidate();
-        const auto child_index2 = std::get<CI>( nxt.value() );
-        const auto child2 = inode->get_child( node_type, child_index2 );
-        stack_.push( { node, std::get<KB>( nxt.value() ), child_index2 } );
-        return right_most_traversal( child2 );
+        auto nxt = inode->before_key_byte( node_type, remaining_key[0] );
+        if ( ! nxt ) return invalidate(); // FIXME Look at this edge case.
+        auto tmp = nxt.value();           // unwrap.
+        const auto child_index = std::get<CI>( tmp );
+        const auto child = inode->get_child( node_type, child_index );
+        return right_most_traversal( child );
       }
-      // TODO Did find_child() give us an insertion point?
-      // FIXME Verify that I have a UT for both branches here.
       UNODB_DETAIL_CANNOT_HAPPEN();
+    } else {
+      // Simple case. There is a child for the current key byte.
+      const auto child_index { res.first };
+      const auto *const child { res.second };
+      stack_.push( { node, remaining_key[0], child_index } );
+      node = *child;
+      remaining_key.shift_right(1);
     }
-    stack_.push( { node, remaining_key[0], child_index } );
-    node = *child;
-    remaining_key.shift_right(1);
-  }
+  } // while ( true )
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
 

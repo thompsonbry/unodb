@@ -591,10 +591,12 @@ class basic_inode_impl : public ArtPolicy::header_type {
   using db = typename ArtPolicy::db;
 
   // The first element is the child index in the node, the second
-  // element is a pointer to the child.  If there is no such chidl,
-  // the pointer is nullptr, and the index is undefined.
+  // element is a pointer to the child.  If there is no such child,
+  // the pointer is nullptr, and the child_index is undefined.
   using find_result =
-      std::pair<std::uint8_t, critical_section_policy<node_ptr> *>;
+      std::pair< std::uint8_t // child_index
+               , critical_section_policy<node_ptr> *  // child
+               >;
 
   // A 3-tuple that is returned by the iterator visitation pattern
   // which represents the path in the tree for an internal node.
@@ -873,7 +875,55 @@ class basic_inode_impl : public ArtPolicy::header_type {
     UNODB_DETAIL_CANNOT_HAPPEN();
     // LCOV_EXCL_STOP
   }
-    
+
+  // Return an iter_result in the data which orders lexicographically
+  // less than the given key_byte.  This method is used by seek() to
+  // find the path before a key when the key is not mapped in the
+  // data.
+  [[nodiscard]] constexpr iter_result_opt before_key_byte(node_type type,
+                                                          std::byte key_byte) noexcept {
+    UNODB_DETAIL_ASSERT(type != node_type::LEAF);
+    // switch (type) {
+    //   case node_type::I4:
+    //     return static_cast<inode4_type *>(this)->find_child(key_byte);
+    //   case node_type::I16:
+    //     return static_cast<inode16_type *>(this)->find_child(key_byte);
+    //   case node_type::I48:
+    //     return static_cast<inode48_type *>(this)->find_child(key_byte);
+    //   case node_type::I256:
+    //     return static_cast<inode256_type *>(this)->find_child(key_byte);
+    //     // LCOV_EXCL_START
+    //   case node_type::LEAF:
+    //     UNODB_DETAIL_CANNOT_HAPPEN();
+    // }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+    // LCOV_EXCL_STOP
+  }
+
+  // Return an iter_result in the data which orders lexicographically
+  // greater than the given key_byte.  This method is used by seek()
+  // to find the path before a key when the key is not mapped in the
+  // data.
+  [[nodiscard]] constexpr iter_result_opt after_key_byte(node_type type,
+                                                         std::byte key_byte) noexcept {
+    UNODB_DETAIL_ASSERT(type != node_type::LEAF);
+    // switch (type) {
+    //   case node_type::I4:
+    //     return static_cast<inode4_type *>(this)->find_child(key_byte);
+    //   case node_type::I16:
+    //     return static_cast<inode16_type *>(this)->find_child(key_byte);
+    //   case node_type::I48:
+    //     return static_cast<inode48_type *>(this)->find_child(key_byte);
+    //   case node_type::I256:
+    //     return static_cast<inode256_type *>(this)->find_child(key_byte);
+    //     // LCOV_EXCL_START
+    //   case node_type::LEAF:
+    //     UNODB_DETAIL_CANNOT_HAPPEN();
+    // }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+    // LCOV_EXCL_STOP
+  }
+
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   constexpr basic_inode_impl(unsigned children_count_, art_key k1,

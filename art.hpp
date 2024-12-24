@@ -173,6 +173,15 @@ class db final {
     // child leaf, updating the state of the iterator during the
     // descent.
     iterator& right_most_traversal(detail::node_ptr node) noexcept;
+
+    // Return the node on the top of the stack, which will wrap
+    // nullptr if the stack is empty.
+    inline detail::node_ptr current_node() noexcept {
+      return stack_.empty()
+          ? detail::node_ptr(nullptr)
+          : std::get<NP>( stack_.top() );
+      ;
+    }
     
    private:
 
@@ -298,7 +307,7 @@ class db final {
   // entry.  Otherwise, the iterator will be positioned on the last
   // key which orders LTE the search_key and end() if there is no such
   // entry.
-  [[nodiscard]] iterator seek(key search_key, bool& match, bool fwd = true) noexcept;
+  [[nodiscard]] iterator seek(const key search_key, bool& match, bool fwd = true) noexcept;
   
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //
@@ -307,11 +316,42 @@ class db final {
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
   // a reverse scan.
-  // 
-  // FIXME Add ability to seek to some point to the iterator and make
-  // this an apply() on the iterator accepting a fromKey and toKey.
   template <typename FN>
   inline void scan(FN fn, bool fwd = true) noexcept;
+
+  // Scan in the indicated direction, applying the caller's lambda to
+  // each visited leaf.
+  //
+  // @param fromKey is an inclusive bound for the starting point of
+  // the scan.
+  //
+  // @param fn A function f(iterator&) returning [bool::halt].  The
+  // traversal will halt if the function returns [true].
+  //
+  // @param fwd When [true] perform a forward scan, otherwise perform
+  // a reverse scan.
+  template <typename FN>
+  inline void scan(const key fromKey, FN fn, bool fwd = true) noexcept;
+
+  // Scan the key range, applying the caller's lambda to each visited
+  // leaf.  The scan will proceed in lexicographic order iff fromKey
+  // is less than toKey and in reverse lexicographic order iff toKey
+  // is less than fromKey.
+  //
+  // @param fromKey is an inclusive bound for the starting point of
+  // the scan.
+  //
+  // @param toKey is an inclusive bound for the ending point of the
+  // scan.
+  //
+  // @param fn A function f(iterator&) returning [bool::halt].  The
+  // traversal will halt if the function returns [true].
+  //
+  // Decide on external vs internal APIs and have a clear translation
+  // point from the external keys (key) to the internal keys
+  // (art_key).
+  template <typename FN>
+  inline void scan(const key fromKey, const key toKey, FN fn) noexcept;
   
   // Stats
 

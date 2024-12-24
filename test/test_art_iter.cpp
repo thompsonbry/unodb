@@ -379,7 +379,7 @@ TYPED_TEST(ARTIteratorTest, seek_three_values_left_axis_two_deep_right_axis_one_
       UNODB_EXPECT_TRUE( it != e );
       UNODB_EXPECT_EQ( match, false );
       UNODB_EXPECT_TRUE( it.get_key() && it.get_key().value() == 0xaa00 );
-      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[1] );
+      UNODB_EXPECT_TRUE( it.get_val() && it.get_val().value() == unodb::test::test_values[0] );
     }
     { // forward traversal, after the last key in the data.  match=false
       // and iterator is positioned at end().
@@ -411,6 +411,11 @@ TYPED_TEST(ARTIteratorTest, seek_three_values_left_axis_two_deep_right_axis_one_
 
 // FIXME (***) CONTINUE TO AT LEAST HEIGHT TWO TREES WITH SPECIFIC
 //             TESTS AND DO GENERAL CHECKS FOR LARGER TREES.
+//
+// FIXME Tests for edge cases for scan() including: empty tree, first
+// key missing, last key missing, both end keys missing, both end keys
+// are the same (and both exist or one exists or both are missing),
+// etc.
 
 //
 // forward scan
