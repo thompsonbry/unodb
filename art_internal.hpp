@@ -100,7 +100,7 @@ struct [[nodiscard]] basic_art_key final {
     static_assert(std::is_trivially_copyable_v<basic_art_key<KeyType>>);
     static_assert(sizeof(basic_art_key<KeyType>) == sizeof(KeyType));
   }
-};
+}; // class basic_art_key
 
 using art_key = basic_art_key<unodb::key>;
 

@@ -315,14 +315,14 @@ class [[nodiscard]] olc_inode_4 final
   }
 
   // cppcheck-suppress duplInheritedMember
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
     os << ", ";
     ::lock(*this).dump(os);
-    basic_inode_4::dump(os);
+    basic_inode_4::dump(os, recursive);
   }
 
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-};
+}; // basic_inode_4
 
 // 48 (or 56) == sizeof(inode_4)
 #ifndef _MSC_VER
@@ -399,10 +399,10 @@ class [[nodiscard]] olc_inode_16 final
   }
 
   // cppcheck-suppress duplInheritedMember
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
     os << ", ";
     ::lock(*this).dump(os);
-    basic_inode_16::dump(os);
+    basic_inode_16::dump(os, recursive);
   }
 
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
@@ -480,10 +480,10 @@ class [[nodiscard]] olc_inode_48 final
   }
 
   // cppcheck-suppress duplInheritedMember
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
     os << ", ";
     ::lock(*this).dump(os);
-    basic_inode_48::dump(os);
+    basic_inode_48::dump(os, recursive);
   }
 
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
@@ -562,10 +562,10 @@ class [[nodiscard]] olc_inode_256 final
   }
 
   // cppcheck-suppress duplInheritedMember
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
     os << ", ";
     ::lock(*this).dump(os);
-    basic_inode_256::dump(os);
+    basic_inode_256::dump(os, recursive);
   }
 
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()

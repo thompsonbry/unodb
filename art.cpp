@@ -465,27 +465,9 @@ void db::iterator::dump(std::ostream &os) const {
   while ( ! tmp.empty() ) {
     const auto& e = tmp.top();
     const auto np = std::get<NP>( e );
-    const auto kb = std::get<KB>( e );
-    const auto ci = std::get<CI>( e );
-    std::string nt = "???";
-    if(np.type()==node_type::LEAF) nt = "LEAF";
-    if(np.type()==node_type::I4  ) nt = "I4  ";
-    if(np.type()==node_type::I16 ) nt = "I16 ";
-    if(np.type()==node_type::I48 ) nt = "I48 ";
-    if(np.type()==node_type::I256) nt = "I256";
-    os << "stack:: level = " << level;
-    os << ", node at: " << np.template ptr<void *>()
-       << ", tagged ptr = 0x" << std::hex << np.raw_val() << std::dec
-       << ", type = " << nt
-        ;
-    if ( np.type() != node_type::LEAF ) {
-      auto *const inode{ np.ptr<detail::inode *>() };
-      os << ", key_byte = "<<static_cast<uint64_t>(kb)
-         << ", child_index = "<<static_cast<uint64_t>(ci)
-         << ", # children = "<<static_cast<std::uint64_t>(inode->get_children_count())
-          ;
-    }
-    os << std::endl;
+    os << "stack:: level = " << level << ", ";
+    detail::art_policy::dump_node( os, np, false /*recursive*/ );
+    if ( np.type() != node_type::LEAF ) os << std::endl;
     tmp.pop();
     level--;
   }
@@ -690,7 +672,7 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
     if (node_type == node_type::LEAF) {
       const auto *const leaf{node.ptr<detail::leaf *>()};
       stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-      const int cmp = leaf->cmp( k );
+      const auto cmp = leaf->cmp( k );
       if ( cmp == 0 ) {
         match = true;
         return *this;
@@ -702,25 +684,41 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
       UNODB_DETAIL_CANNOT_HAPPEN();
     }
     UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
-    auto *const inode{node.ptr<detail::inode *>()};
-    const auto &key_prefix{inode->get_key_prefix()};
-    const auto key_prefix_length{key_prefix.length()};
-    if ( key_prefix.get_shared_length( remaining_key ) < key_prefix_length ) {
-      // We have visited an internal node whose prefix is shorter than
-      // the bytes in the key that we need to match.  This means that
-      // the desired key (a) does not exist; and (b) is ordered before
-      // the key that we would visit along this path.
+    auto *const inode{node.ptr<detail::inode *>()};  // some internal node.
+    const auto &key_prefix{inode->get_key_prefix()}; // prefix for that node.
+    const auto key_prefix_length{key_prefix.length()}; // length of that prefix.
+    const auto shared_length = key_prefix.get_shared_length( remaining_key ); // #of prefix bytes matched.
+    if ( shared_length < key_prefix_length ) {
+      // We have visited an internal node whose prefix is longer than
+      // the bytes in the key that we need to match.  To figure out
+      // whether the search key would be located before or after the
+      // current internal node, we need to compare the respective key
+      // spans lexicographically.  Since we have [shared_length] bytes
+      // in common, we know that the next byte will tell us the
+      // relative ordering of the key vs the prefix.
+      const auto cmp = static_cast<std::int16_t>(remaining_key[ shared_length ])
+                     - static_cast<std::int16_t>(key_prefix   [ shared_length ]); // compare prefix and key and the first byte where they differ.
+      std::cerr<<"shared_length="<<shared_length<<", cmp(remaining_key,key_prefix)="<<cmp<<", fwd="<<fwd; key_prefix.dump(std::cerr); std::cerr<<std::endl;
+      UNODB_DETAIL_ASSERT( cmp != 0 );
       if ( fwd ) {
-        // FWD: We want the left most key under the current node.  We
-        // know that that left-most key will be GT the search key, so
-        // a left-deep descent will get us where we need to be.
-        return left_most_traversal( node );
+        if ( cmp < 0 ) {
+          // FWD and the search key is ordered before this node.  We
+          // want the proceeding key.
+          return left_most_traversal( node ).prior();
+        } else {
+          // FWD and the search key is ordered after this node.  Right
+          // most descent and then next().
+          return right_most_traversal( node ).next();
+        }
       } else {
-        // REV: We want the preceeding key.  There might be a lot of
-        // edge cases for this.  The best thing might be to do a left
-        // deep descent from the current node to get to a leaf and
-        // then call prior() to get to the prececessor of that leaf.
+        if ( cmp < 0 ) {
+          // REV and the search key is ordered before this node.  We
+          // want the preceeding key.
         return left_most_traversal( node ).prior();
+        } else {
+          // REV and the search key is ordered after this node. 
+          return right_most_traversal( node ).next();
+        }
       }
       UNODB_DETAIL_CANNOT_HAPPEN();
     }

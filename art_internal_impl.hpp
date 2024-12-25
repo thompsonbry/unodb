@@ -130,7 +130,7 @@ class [[nodiscard]] basic_leaf final : public Header {
 
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool /*recursive*/) const {
     os << ", " << get_key() << ", value size: " << value_size << '\n';
   }
 
@@ -147,7 +147,7 @@ class [[nodiscard]] basic_leaf final : public Header {
   const value_size_type value_size;
   // NOLINTNEXTLINE(modernize-avoid-c-arrays)
   std::byte value_start[1];
-};
+}; // class basic_leaf
 
 template <class Header, class Db>
 [[nodiscard]] auto make_db_leaf_ptr(art_key k, value_view v,
@@ -400,7 +400,7 @@ struct basic_art_policy final {
   }
 
   [[gnu::cold]] UNODB_DETAIL_NOINLINE static void dump_node(
-      std::ostream &os, const NodePtr &node) {
+      std::ostream &os, const NodePtr &node, bool recursive = true) {
     os << "node at: " << node.template ptr<void *>() << ", tagged ptr = 0x"
        << std::hex << node.raw_val() << std::dec;
     if (node == nullptr) {
@@ -411,23 +411,23 @@ struct basic_art_policy final {
     switch (node.type()) {
       case node_type::LEAF:
         os << "LEAF";
-        node.template ptr<leaf_type *>()->dump(os);
+        node.template ptr<leaf_type *>()->dump(os, recursive);
         break;
       case node_type::I4:
         os << "I4";
-        node.template ptr<inode4_type *>()->dump(os);
+        node.template ptr<inode4_type *>()->dump(os, recursive);
         break;
       case node_type::I16:
         os << "I16";
-        node.template ptr<inode16_type *>()->dump(os);
+        node.template ptr<inode16_type *>()->dump(os, recursive);
         break;
       case node_type::I48:
         os << "I48";
-        node.template ptr<inode48_type *>()->dump(os);
+        node.template ptr<inode48_type *>()->dump(os, recursive);
         break;
       case node_type::I256:
         os << "I256";
-        node.template ptr<inode256_type *>()->dump(os);
+        node.template ptr<inode256_type *>()->dump(os, recursive);
         break;
     }
   }
@@ -435,6 +435,9 @@ struct basic_art_policy final {
   basic_art_policy() = delete;
 };
 
+// The key_prefix is a sequence of bytes that are a prefix on the path
+// from the parent of some node to a child of that node (used for
+// prefix compression).
 template <template <class> class CriticalSectionPolicy>
 union [[nodiscard]] key_prefix {
  private:
@@ -469,11 +472,15 @@ union [[nodiscard]] key_prefix {
 
   ~key_prefix() noexcept = default;
 
+  // Return the number of bytes in common between this key_prefix and
+  // a view of some internal key (shifted_key) from which any leading
+  // bytes already matched by the traversal path have been discarded.
   [[nodiscard]] constexpr auto get_shared_length(
       unodb::detail::art_key shifted_key) const noexcept {
     return shared_len(static_cast<std::uint64_t>(shifted_key), u64, length());
   }
 
+  // The number of prefix bytes.
   [[nodiscard]] constexpr unsigned length() const noexcept {
     const auto result = f.key_prefix_length.load();
     UNODB_DETAIL_ASSERT(result <= key_prefix_capacity);
@@ -510,10 +517,14 @@ union [[nodiscard]] key_prefix {
     UNODB_DETAIL_ASSERT(f.key_prefix_length.load() <= key_prefix_capacity);
   }
 
+  // Return the byte at the specified index.
   [[nodiscard]] constexpr auto byte_at(std::size_t i) const noexcept {
     UNODB_DETAIL_ASSERT(i < length());
     return f.key_prefix[i].load();
   }
+
+  // same as byte_at[].
+  [[nodiscard]] constexpr auto operator[](std::size_t i) const noexcept {return byte_at( i );}
 
   [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
     const auto len = length();
@@ -556,7 +567,7 @@ union [[nodiscard]] key_prefix {
                         k1_u64, static_cast<std::uint64_t>(shifted_k2),
                         key_prefix_capacity));
   }
-};
+}; // class key_prefix
 
 // A class used as a sentinel for basic_inode template args: the
 // larger node type for the largest node type and the smaller node type for
@@ -942,7 +953,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
         children_count{gsl::narrow_cast<std::uint8_t>(children_count_)} {}
 
  protected:
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool /*recursive*/) const {
     k_prefix.dump(os);
     const auto children_count_ = this->children_count.load();
     os << ", # children = "
@@ -1406,15 +1417,17 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
-    parent_class::dump(os);
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
+    parent_class::dump(os, recursive);
     const auto children_count_ = this->children_count.load();
     os << ", key bytes =";
     for (std::uint8_t i = 0; i < children_count_; i++)
       dump_byte(os, keys.byte_array[i]);
-    os << ", children:\n";
-    for (std::uint8_t i = 0; i < children_count_; i++)
-      ArtPolicy::dump_node(os, children[i].load());
+    if ( recursive ) {
+      os << ", children:  \n";
+      for (std::uint8_t i = 0; i < children_count_; i++)
+        ArtPolicy::dump_node(os, children[i].load());
+    }
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
@@ -1782,15 +1795,17 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
-    parent_class::dump(os);
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
+    parent_class::dump(os, recursive);
     const auto children_count_ = this->children_count.load();
     os << ", key bytes =";
     for (std::uint8_t i = 0; i < children_count_; ++i)
       dump_byte(os, keys.byte_array[i]);
-    os << ", children:\n";
-    for (std::uint8_t i = 0; i < children_count_; ++i)
-      ArtPolicy::dump_node(os, children[i].load());
+    if ( recursive ) {
+      os << ", children:  \n";
+      for (std::uint8_t i = 0; i < children_count_; ++i)
+        ArtPolicy::dump_node(os, children[i].load());
+    }
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
@@ -2218,8 +2233,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
-    parent_class::dump(os);
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
+    parent_class::dump(os, recursive);
 #ifndef NDEBUG
     const auto children_count_ = this->children_count.load();
     unsigned actual_children_count = 0;
@@ -2234,8 +2249,10 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
            << ": ";
         UNODB_DETAIL_ASSERT(children.pointer_array[child_indexes[i]] !=
                             nullptr);
-        ArtPolicy::dump_node(os,
-                             children.pointer_array[child_indexes[i]].load());
+        if ( recursive ) {
+          ArtPolicy::dump_node(os,
+                               children.pointer_array[child_indexes[i]].load());
+        }
 #ifndef NDEBUG
         ++actual_children_count;
         UNODB_DETAIL_ASSERT(actual_children_count <= children_count_);
@@ -2563,14 +2580,16 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
-  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const {
-    parent_class::dump(os);
+  [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os, bool recursive) const {
+    parent_class::dump(os, recursive);
     os << ", key bytes & children:\n";
-    for_each_child([&os](unsigned i, node_ptr child) {
+    for_each_child([&os,recursive](unsigned i, node_ptr child) {
       os << ' ';
       dump_byte(os, gsl::narrow_cast<std::byte>(i));
       os << ' ';
-      ArtPolicy::dump_node(os, child);
+      if ( recursive ) {
+        ArtPolicy::dump_node(os, child);
+      }
     });
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
