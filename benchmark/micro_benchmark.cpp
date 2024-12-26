@@ -135,12 +135,12 @@ void dense_iter_full_fwd_scan(benchmark::State &state) {
   for (const auto _ : state) {
     for (auto i = 0; i < full_scan_multiplier; ++i) {
       std::uint64_t sum = 0;
-      auto it = test_db.begin();
-      auto end = test_db.end();  // obtain once since not free.
-      while ( it.next() != end ) {  // visit everything.
-        sum += it.get_key().value();
-        sum += static_cast<std::uint64_t>(it.get_val().value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
-      }
+      auto fn = [&sum](unodb::db::visitor& v) {
+        sum += v.get_key();
+        sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
+        return false;
+      };
+      test_db.scan( fn );
       ::benchmark::DoNotOptimize(sum);  // ensure that the keys were retrieved.
     }
   }

@@ -657,14 +657,14 @@ inline db::iterator& db::iterator::right_most_traversal(detail::node_ptr node) n
 // complicated when the search_key is not in the data and we have to
 // consider the cases for both forward traversal and reverse traversal
 // from a key that is not in the data.
-db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) noexcept {
+db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept {
 
   invalidate();  // invalidate the iterator (clear the stack).
   match = false; // unless we wind up with an exact match.
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // aka end()
 
   auto node{db_.root};
-  const detail::art_key k{search_key};
+  const detail::art_key k = search_key;
   auto remaining_key{k};
 
   while (true) {
@@ -703,21 +703,21 @@ db::iterator& db::iterator::seek(const key search_key, bool& match, bool fwd) no
       if ( fwd ) {
         if ( cmp < 0 ) {
           // FWD and the search key is ordered before this node.  We
-          // want the proceeding key.
-          return left_most_traversal( node ).prior();
+          // want the left-most leaf under the node.
+          return left_most_traversal( node );
         } else {
           // FWD and the search key is ordered after this node.  Right
           // most descent and then next().
           return right_most_traversal( node ).next();
         }
-      } else {
+      } else {  // reverse traversal
         if ( cmp < 0 ) {
           // REV and the search key is ordered before this node.  We
           // want the preceeding key.
         return left_most_traversal( node ).prior();
         } else {
           // REV and the search key is ordered after this node. 
-          return right_most_traversal( node ).next();
+          return right_most_traversal( node );
         }
       }
       UNODB_DETAIL_CANNOT_HAPPEN();

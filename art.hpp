@@ -19,6 +19,13 @@
 #include "in_fake_critical_section.hpp"
 #include "node_type.hpp"
 
+// From googletest/gtest/gtest_prod.h
+//
+// Note: The test class must be in the same namespace as the class being tested.
+// For example, putting MyClassTest in an anonymous namespace will not work.
+#define FRIEND_TEST(test_case_name, test_name) \
+  friend class test_case_name##_##test_name##_Test
+
 namespace unodb {
 
 namespace detail {
@@ -62,6 +69,8 @@ class inode : public inode_base {};
 }  // namespace detail
 
 class db final {
+  FRIEND_TEST(ARTIteratorTest,empty_tree__forward_scan);
+  FRIEND_TEST(ARTIteratorTest,empty_tree__seek);
  public:
   using get_result = std::optional<value_view>;
 
@@ -91,11 +100,14 @@ class db final {
   
   void clear() noexcept;
 
+  // FIXME Make the iterator protected, but this requires a lot of
+  // changes to the unit tests.
+  //
+  // protected:
+  
   ///
-  /// iterator
+  /// iterator (the iterator is an internal API, the public API is scan()).
   ///
-
-  // Basic iterator for the non-thread-safe ART implementation.
   class iterator {
     friend class db;
    public:
@@ -128,7 +140,7 @@ class db final {
     // the index, then the iterator will be positioned to end() since
     // there is no index entry LT the search key.
     //
-    // @param search_key The key used to position the iterator.
+    // @param search_key The internal key used to position the iterator.
     //
     // @param match Will be set to true iff the search key is an exact
     // match in the index data.  Otherwise, the match is not exact and
@@ -140,7 +152,7 @@ class db final {
     // such entry.  Otherwise, the iterator will be positioned on the
     // last key which orders LTE the search_key and end() if there is
     // no such entry.
-    iterator& seek(key search_key, bool& match, bool fwd = true) noexcept;
+    iterator& seek(const detail::art_key& search_key, bool& match, bool fwd = true) noexcept;
     
     // Iff the iterator is positioned on an index entry, then returns
     // the key associated with that index entry.
@@ -162,7 +174,7 @@ class db final {
    protected:
     
     // Return true unless the stack is empty.
-    inline bool valid() const noexcept { return ! stack_.empty(); }
+    inline bool valid() const noexcept;
 
     // Push the given node onto the stack and traverse from the
     // caller's node to the left-most leaf under that node, pushing
@@ -176,12 +188,7 @@ class db final {
 
     // Return the node on the top of the stack, which will wrap
     // nullptr if the stack is empty.
-    inline detail::node_ptr current_node() noexcept {
-      return stack_.empty()
-          ? detail::node_ptr(nullptr)
-          : std::get<NP>( stack_.top() );
-      ;
-    }
+    inline detail::node_ptr current_node() noexcept;
     
    private:
 
@@ -303,11 +310,35 @@ class db final {
   // entry.  Otherwise, the iterator will be positioned on the last
   // key which orders LTE the search_key and end() if there is no such
   // entry.
-  [[nodiscard]] iterator seek(const key search_key, bool& match, bool fwd = true) noexcept;
+  //[[nodiscard]] iterator seek(const key search_key, bool& match, bool fwd = true) noexcept;
+
+ public:
+  
+  ///
+  /// scan:
+  ///
+
+  // Note: The scan() interface is public.  The iterator and the
+  // methods to obtain an iterator are protected (except for tests).
+  // This encapsulation makes it easier to define methods which
+  // operate on external keys (scan()) and those which operate on
+  // internal keys (seek() and the iterator). It also makes life
+  // easier for mutex_db since scan() can take the lock.
+
+  // Alias for an object visited by the scan_api.
+  struct visitor {
+    friend class db;
+   protected:
+    iterator& it;
+    inline visitor(iterator& it_):it(it_){}
+   public:
+    inline key get_key() noexcept;  // visit the key (may side-effect the iterator so not const).
+    inline value_view get_value() const noexcept; // visit the value.
+  };
   
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //
-  // @param fn A function f(iterator&) returning [bool::halt].  The
+  // @param fn A function f(kvp) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
@@ -321,7 +352,7 @@ class db final {
   // @param fromKey is an inclusive bound for the starting point of
   // the scan.
   //
-  // @param fn A function f(iterator&) returning [bool::halt].  The
+  // @param fn A function f(kvp) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
@@ -337,18 +368,14 @@ class db final {
   // @param fromKey is an inclusive bound for the starting point of
   // the scan.
   //
-  // @param toKey is an inclusive bound for the ending point of the
+  // @param toKey is an exclusive bound for the ending point of the
   // scan.
   //
-  // @param fn A function f(iterator&) returning [bool::halt].  The
+  // @param fn A function f(kvp) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
-  //
-  // Decide on external vs internal APIs and have a clear translation
-  // point from the external keys (key) to the internal keys
-  // (art_key).
   template <typename FN>
   inline void scan(const key fromKey, const key toKey, FN fn) noexcept;
-  
+
   // Stats
 
 #ifdef UNODB_DETAIL_WITH_STATS

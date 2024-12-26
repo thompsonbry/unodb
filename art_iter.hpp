@@ -36,6 +36,8 @@ inline std::optional<const value_view> db::iterator::get_val() const noexcept {
   return leaf->get_value_view();
 }
 
+inline bool db::iterator::valid() const noexcept { return ! stack_.empty(); }
+
 inline bool db::iterator::operator==(const iterator& other) const noexcept {
   if ( &db_ != &other.db_ ) return false;                     // different tree?
   if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?
@@ -53,67 +55,88 @@ inline bool db::iterator::operator==(const iterator& other) const noexcept {
 
 inline bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
 
-inline db::iterator db::seek(const key search_key, bool& match, bool fwd) noexcept {
-  return end().seek( search_key, match, fwd);
+inline detail::node_ptr db::iterator::current_node() noexcept {
+  return stack_.empty()
+      ? detail::node_ptr(nullptr)
+      : std::get<NP>( stack_.top() );
+  ;
 }
+
+// inline db::iterator db::seek(const key search_key, bool& match, bool fwd) noexcept {
+//   return end().seek( search_key, match, fwd);
+// }
+
+inline key db::visitor::get_key() noexcept {return it.get_key().value();}
+inline value_view db::visitor::get_value() const noexcept {return it.get_val().value();}
 
 template <typename FN>
 inline void db::scan(FN fn, bool fwd) noexcept {
   if ( empty() ) return;
   if ( fwd ) {
     auto it { begin() };
-    while ( it.valid() && ! fn( it ) ) {
+    visitor v{ it };
+    while ( it.valid() ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it.next();
     }
   } else {
     auto it { last() };
-    while ( it.valid() && ! fn( it ) ) {
+    visitor v { it };
+    while ( it.valid() ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it.prior();
     }
   }
 }
 
 template <typename FN>
-inline void db::scan(const key fromKey, FN fn, bool fwd) noexcept {
+inline void db::scan(const key fromKey_, FN fn, bool fwd) noexcept {
   if ( empty() ) return;
+  const detail::art_key fromKey{fromKey_};  // convert to internal key
   bool match {};
   if ( fwd ) {
-    auto it { seek( fromKey, match, true/*fwd*/ ) };
-    while ( it.valid() && ! fn( it ) ) {
+    auto it { end().seek( fromKey, match, true/*fwd*/ ) };
+    visitor v { it };
+    while ( it.valid() ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it.next();
     }
   } else {
-    auto it { seek( fromKey, match, false/*fwd*/ ) };
-    while ( it.valid() && ! fn( it ) ) {
+    auto it { end().seek( fromKey, match, false/*fwd*/ ) };
+    visitor v { it };
+    while ( it.valid() ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it.prior();
     }
   }
 }
 
 template <typename FN>
-inline void db::scan(const key fromKey, const key toKey, FN fn) noexcept {
+inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
   if ( empty() ) return;
-  // FIXME THIS MUST CONVERT TO art_key FIRST.  Then we should reuse
-  // that conversion for each seek() call, put seek() in the internal
-  // API along with begin() and end(), and update the unit tests of
-  // those internal methods to be friend classes.  This comparison
-  // only works here because the external keys are trivially
-  // comparable.
-  const bool fwd { fromKey < toKey };
+  const detail::art_key fromKey{fromKey_};  // convert to internal key
+  const detail::art_key toKey{toKey_};      // convert to internal key
+  const auto ret = fromKey.cmp( toKey );    // compare the internal keys.
+  const bool fwd { ret < 0 };               // fromKey is less than toKey
+  if ( ret == 0 ) return;                   // NOP if fromKey == toKey since toKey is exclusive upper bound.
   bool match {};
   if ( fwd ) {
-    auto it1 { seek( fromKey, match, true /*fwd*/ ) }; // lower bound
-    auto it2 { seek( fromKey, match, false/*fwd*/ ) }; // upper bound
-    while ( it1.valid() && ! fn( it1 ) ) {
+    auto it1 { end().seek( fromKey, match, true /*fwd*/ ) }; // lower bound
+    auto it2 { end().seek( fromKey, match, false/*fwd*/ ) }; // upper bound
+    visitor v { it1 };
+    while ( it1.valid() ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it1.next();
-      if ( it1.current_node() == it2.current_node() ) break;  // TODO UNLIKELY
+      if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
     }
   } else {
-    auto it1 { seek( fromKey, match, false/*fwd*/ ) }; // lower bound
-    auto it2 { seek( fromKey, match, true /*fwd*/ ) }; // upper bound
-    while ( it1.valid() && ! fn( it1 ) ) {
+    auto it1 { end().seek( fromKey, match, false/*fwd*/ ) }; // lower bound
+    auto it2 { end().seek( fromKey, match, true /*fwd*/ ) }; // upper bound
+    visitor v { it1 };
+    while ( it1.valid() ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it1.prior();
-      if ( it1.current_node() == it2.current_node() ) break;  // TODO UNLIKELY
+      if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
     }
   }
 }
