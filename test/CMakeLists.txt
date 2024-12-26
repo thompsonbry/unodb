@@ -66,6 +66,7 @@ add_test_target(test_qsbr)
 target_link_libraries(test_qsbr PRIVATE qsbr_test_utils)
 add_db_test_target(test_art)
 add_db_test_target(test_art_iter)
+add_db_test_target(test_art_scan)
 add_db_test_target(test_art_concurrency)
 # - Google Test with MSVC standard library tries to allocate memory in the
 # exception-thrown-as-expected-path.
@@ -82,7 +83,7 @@ target_link_libraries(test_art_concurrency PRIVATE qsbr_test_utils)
 
 if(COVERAGE)
   add_custom_target(tests_for_coverage ctest
-    DEPENDS test_art test_art_iter test_art_concurrency test_qsbr_ptr test_qsbr test_art_oom
+    DEPENDS test_art test_art_iter test_art_scan test_art_concurrency test_qsbr_ptr test_qsbr test_art_oom
             test_qsbr_oom)
   add_coverage_target(TARGET coverage DEPENDENCY tests_for_coverage)
 endif()
@@ -94,5 +95,6 @@ add_custom_target(valgrind_tests
   COMMAND ${VALGRIND_COMMAND} ./test_qsbr;
   COMMAND ${VALGRIND_COMMAND} ./test_art;
   COMMAND ${VALGRIND_COMMAND} ./test_art_iter;
+  COMMAND ${VALGRIND_COMMAND} ./test_art_scan;
   COMMAND ${VALGRIND_COMMAND} ./test_art_concurrency
-  DEPENDS test_qsbr_ptr test_qsbr test_art test_art_iter test_art_concurrency)
+  DEPENDS test_qsbr_ptr test_qsbr test_art test_art_iter test_art_scan test_art_concurrency)
