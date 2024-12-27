@@ -28,37 +28,90 @@ using unodb::detail::thread_syncs;
 using unodb::test::test_values;
 
 // Test suite for scan() API for the ART.
+//
+// FIXME There are three scan() variants.  Each of them needs to be
+// tested since they are independent.  The existing test coverage is
+// enough to make sure that each of them compiles.
+//
+// FIXME Tests which focus on scan(fromKey,toKey) and insure proper
+// upper bound and reordering of the keys to determine forward or
+// reverse traversal.
+//
+// FIXME unit tests for gsl::span<std::byte>
+//
+// FIXME Develop a thread-safe version of the iterator based on mutex
+// and OLC and extend microbenchmarks and unit tests.  For OLC, do a
+// microbenchmark for parallel scaling with and w/o mutation.
+//
+//
 template <class Db>
 class ARTScanTest : public ::testing::Test {
  public:
   using Test::Test;
 };
 
+static inline bool odd(const unodb::key x) {return x % 2;}
+static inline bool even(const unodb::key x) {return ! odd( x );}
+
+static void dump(const std::vector<unodb::key>& x) {
+  std::cerr<<"[";
+  auto it = x.begin();
+  while ( it != x.end() ) {
+      std::cerr<<*it<<" ";
+      it++;
+  }
+  std::cerr<<"]"<<std::endl;
+}
 
 // Test help creates an index and populates it with the ODD keys in
-// [0:limit-1].  It then verifies the correct behavior of
-// scan(fromKey,toKey) against that index.  Since the data only
-// contains the ODD keys, you can probe with EVEN keys and verify that
-// the scan() is carried out from the appropriate key in the data.
+// [0:limit-1] so the first key is always ONE (1).  It then verifies
+// the correct behavior of scan(fromKey,toKey) against that index.
+// Since the data only contains the ODD keys, you can probe with EVEN
+// keys and verify that the scan() is carried out from the appropriate
+// key in the data when the fromKey and/or toKey do not exist in the
+// data.
+//
+// @param fromKey
+// @param toKey
+// @param limit The largest key to be installed (if EVEN, then the largest key is limit-1).
 template <typename TypeParam>
-void doScanTest(const uint64_t limit, const unodb::key fromKey, const unodb::key toKey) {
+void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t limit) {
   unodb::test::tree_verifier<TypeParam> verifier;
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
-  // Insert odd keys into the database.
+  // Insert odd keys into the database and into an ordered container.
+  std::vector<unodb::key> expected {};
   for ( uint64_t i = 1; i < limit; i+=2 ) {
     verifier.insert( i, unodb::test::test_values[0] );
+    if ( i >= fromKey && i < toKey ) {
+      expected.push_back( i );
+    }
   }
-  const uint64_t nexpected = (toKey - fromKey) / 2; // expected number to visit.
+  const uint64_t nexpected = expected.size();
+  std::cerr<<"scan_test"
+           <<": fromKey="<<fromKey<<", toKey="<<toKey<<", limit="<<limit
+           <<", nexpected="<<nexpected<<", expected keys="; dump(expected);
   uint64_t nactual { 0 };  // actual number visited.
-  auto fn = [&nactual,fromKey,toKey](unodb::db::visitor& v) {
-    const auto key = v.get_key();
-    EXPECT_EQ( nactual*2+fromKey, key ) << "nactual="<<nactual<<", fromKey="<<fromKey<<", toKey="<<toKey<<", key="<<key;
-    EXPECT_TRUE( toKey != key ) << "nactual="<<nactual<<", fromKey="<<fromKey<<", toKey="<<toKey<<", key="<<key;  // we should never visit the toKey
-    nactual++;
-    return false;
+  auto eit = expected.begin();
+  auto eit2 = expected.end();
+  auto fn = [&nactual,&eit,eit2](unodb::db::visitor& v) {
+    if ( eit == eit2 ) {
+      EXPECT_TRUE(false)<<"ART scan should have halted.";
+      return true;  // halt early.
+    }
+    const auto ekey = *eit;  // expected key to visit
+    const auto akey = v.get_key(); // actual key visited.
+    std::cerr<< "nactual="<<nactual<<", ekey="<<ekey<<", akey="<<akey<<std::endl;
+    if ( ekey != akey ) {
+      EXPECT_EQ( ekey, akey );
+      return true;  // halt early.
+    }
+    nactual++;    // count #of visited keys.
+    eit++;        // advance iterator over the expected keys.
+    return false; // !halt (aka continue scan).
   };
   db.scan( fromKey, toKey, fn );
-  UNODB_EXPECT_EQ( nactual, nexpected );
+  EXPECT_TRUE( eit == eit2 ) << "Expected iterator should have been fully consumed, but was not (ART scan visited too little).";
+  EXPECT_EQ( nactual, nexpected )<<", fromKey="<<fromKey<<", toKey="<<toKey<<", limit="<<limit;
 }
 
 //
@@ -69,30 +122,6 @@ using ARTTypes = ::testing::Types<unodb::db>/*, unodb::mutex_db, unodb::olc_db>*
 UNODB_TYPED_TEST_SUITE(ARTScanTest, ARTTypes)
 
 UNODB_START_TYPED_TESTS()
-
-//
-// FIXME unit tests for gsl::span<std::byte>
-//
-// FIXME Develop a thread-safe version of the iterator based on mutex
-// and OLC and extend microbenchmarks and unit tests.  For OLC, do a
-// microbenchmark for parallel scaling with and w/o mutation.
-//
-//
-//
-// ==================== MORE SCAN TESTS HERE ====================
-//
-// FIXME (***) Tests for edge cases for scan() including: empty tree,
-// first key missing, last key missing, both end keys missing, both
-// end keys are the same (and both exist or one exists or both are
-// missing), etc.
-//
-// FIXME There are three scan() variants.  Each of them needs to be
-// tested since they are independent.  The existing test coverage is
-// enough to make sure that each of them compiles.
-//
-// FIXME Tests which focus on scan(fromKey,toKey) and insure proper
-// upper bound and reordering of the keys to determine forward or
-// reverse traversal.
 
 //
 // forward scan
@@ -432,19 +461,44 @@ TYPED_TEST(ARTScanTest, scan_reverse__1000_entries) {
   UNODB_EXPECT_EQ( 1000, n );
 }
 
+// FIXME (***) Tests for edge cases for scan() including: empty tree,
+// first key missing, last key missing, both end keys missing, both
+// end keys are the same (and both exist or one exists or both are
+// missing), etc.
 //
 // FIXME (***) DO GENERAL CHECKS FOR LARGER TREES. For example, we
 // could generate trees with a space between each pair of keys and use
 // that to examine the before/after semantics of seek() for both
-// forward and reverse traversal.
+// forward and reverse traversal.  For this, make sure that we hit
+// enough cases to (a) test a variety of internal node types; and (b)
+// check a variety of key prefix length conditions.
+
+// Check the edge conditions for the single leaf iterator (limit=1, so
+// only ONE (1) is installed into the ART index).  Check all iterator
+// flavors for this.
+TYPED_TEST(ARTScanTest, scan_from__fromKey_0__toKey_1__entries_1) {doScanTest<TypeParam>( 0, 1, 1 );} // nothing
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_2__entries_1) {doScanTest<TypeParam>( 1, 2, 1 );} // one key
+TYPED_TEST(ARTScanTest, scan_from__fromKey_2__toKey_3__entries_1) {doScanTest<TypeParam>( 2, 3, 1 );} // nothing
+TYPED_TEST(ARTScanTest, scan_from__fromKey_0__toKey_2__entries_1) {doScanTest<TypeParam>( 0, 2, 1 );} // one key
+TYPED_TEST(ARTScanTest, scan_from__fromKey_2__toKey_2__entries_1) {doScanTest<TypeParam>( 2, 2, 1 );} // nothing
+
 //
 // TODO Do reverse traversal checks.
 //
 // TODO Do scan(fromKey,dir) checks.
 
-TYPED_TEST(ARTScanTest, scan_from__10_entries__fromKey_0__toKey_10) {doScanTest<TypeParam>( 10, 1, 10 );}
+// fromKey is odd (exists); toKey is even (hence does not exist).
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_2__entries_5) {doScanTest<TypeParam>( 1, 2, 5 );}
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_4__entries_5) {doScanTest<TypeParam>( 1, 4, 5 );}
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_6__entries_5) {doScanTest<TypeParam>( 1, 6, 5 );}
+// fromKey is odd (exists); toKey is odd (exists).
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_1__entries_5) {doScanTest<TypeParam>( 1, 1, 5 );}
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_3__entries_5) {doScanTest<TypeParam>( 1, 3, 5 );}
+TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_5__entries_5) {doScanTest<TypeParam>( 1, 5, 5 );}
 
-TYPED_TEST(ARTScanTest, scan_from__1000_entries__fromKey_1__toKey_999) {doScanTest<TypeParam>( 1000, 1, 999 );}
+//TYPED_TEST(ARTScanTest, scan_from__fromKey_0__toKey_10__entries_10) {doScanTest<TypeParam>( 0, 10, 10 );}
+
+//TYPED_TEST(ARTScanTest, scan_from__1000_entries__fromKey_1__toKey_999) {doScanTest<TypeParam>( 1000, 1, 999 );}
 
 UNODB_END_TESTS()
 

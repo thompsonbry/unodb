@@ -453,7 +453,7 @@ void db::dump(std::ostream &os) const {
 
 void db::iterator::dump(std::ostream &os) const {
   if ( stack_.empty() ) {
-    os << "stack:: empty\n";
+    os << "iter::stack:: empty\n";
     return;
   }
   // Create a new stack and copy everything there.  Using the new
@@ -465,7 +465,7 @@ void db::iterator::dump(std::ostream &os) const {
   while ( ! tmp.empty() ) {
     const auto& e = tmp.top();
     const auto np = std::get<NP>( e );
-    os << "stack:: level = " << level << ", ";
+    os << "iter::stack:: level = " << level << ", ";
     detail::art_policy::dump_node( os, np, false /*recursive*/ );
     if ( np.type() != node_type::LEAF ) os << std::endl;
     tmp.pop();
@@ -698,7 +698,7 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
       // relative ordering of the key vs the prefix.
       const auto cmp = static_cast<std::int16_t>(remaining_key[ shared_length ])
                      - static_cast<std::int16_t>(key_prefix   [ shared_length ]); // compare prefix and key and the first byte where they differ.
-      std::cerr<<"shared_length="<<shared_length<<", cmp(remaining_key,key_prefix)="<<cmp<<", fwd="<<fwd; key_prefix.dump(std::cerr); std::cerr<<std::endl;
+      std::cerr<<"shared_length="<<shared_length<<", cmp(remaining_key,key_prefix)="<<cmp<<", fwd="<<fwd; key_prefix.dump(std::cerr); std::cerr<<std::endl; // FIXME COMMENT OUT THIS LINE.
       UNODB_DETAIL_ASSERT( cmp != 0 );
       if ( fwd ) {
         if ( cmp < 0 ) {

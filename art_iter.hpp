@@ -121,8 +121,11 @@ inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
   if ( ret == 0 ) return;                   // NOP if fromKey == toKey since toKey is exclusive upper bound.
   bool match {};
   if ( fwd ) {
-    auto it1 { end().seek( fromKey, match, true /*fwd*/ ) }; // lower bound
-    auto it2 { end().seek( fromKey, match, false/*fwd*/ ) }; // upper bound
+    auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // lower bound
+    auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // upper bound
+    std::cerr<<"scan:: fwd"<<std::endl;         // FIXME REMOVE DEBUG LINES.
+    std::cerr<<"scan:: fromKey="<<fromKey_<<std::endl; it1.dump(std::cerr);
+    std::cerr<<"scan:: toKey="<<fromKey_<<std::endl; it2.dump(std::cerr);
     visitor v { it1 };
     while ( it1.valid() ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
@@ -130,8 +133,11 @@ inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
       if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
     }
   } else {
-    auto it1 { end().seek( fromKey, match, false/*fwd*/ ) }; // lower bound
-    auto it2 { end().seek( fromKey, match, true /*fwd*/ ) }; // upper bound
+    auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // upper bound
+    auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // upper bound
+    std::cerr<<"scan:: rev"<<std::endl;         // FIXME REMOVE DEBUG LINES.
+    std::cerr<<"scan:: fromKey="<<fromKey_<<std::endl; it1.dump(std::cerr);
+    std::cerr<<"scan:: toKey="<<fromKey_<<std::endl; it2.dump(std::cerr);
     visitor v { it1 };
     while ( it1.valid() ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
