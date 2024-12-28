@@ -120,7 +120,6 @@ void dense_full_scan(benchmark::State &state) {
 // tree using db::scan(), reading both the keys and the values.
 template <class Db>
 void dense_iter_full_fwd_scan(benchmark::State &state) {
-  if constexpr( std::is_same_v<Db, unodb::db> ) {  // FIXME mutex_db, olc_db
   Db test_db;
   const auto key_limit = static_cast<unodb::key>(state.range(0));
 
@@ -149,7 +148,6 @@ void dense_iter_full_fwd_scan(benchmark::State &state) {
 #ifdef UNODB_DETAIL_WITH_STATS
   unodb::benchmark::set_size_counter(state, "size", tree_size);
 #endif  // UNODB_DETAIL_WITH_STATS
-  }
 }
 
 // inserts keys and a constant value and scans the entries in a
@@ -158,7 +156,6 @@ void dense_iter_full_fwd_scan(benchmark::State &state) {
 // it must check for the end of the range).
 template <class Db>
 void dense_iter_keyrange_fwd_scan(benchmark::State &state) {
-  if constexpr( std::is_same_v<Db, unodb::db> ) {  // FIXME mutex_db, olc_db
   Db test_db;
   const auto key_limit = static_cast<unodb::key>(state.range(0));
 
@@ -187,7 +184,6 @@ void dense_iter_keyrange_fwd_scan(benchmark::State &state) {
 #ifdef UNODB_DETAIL_WITH_STATS
   unodb::benchmark::set_size_counter(state, "size", tree_size);
 #endif  // UNODB_DETAIL_WITH_STATS
-  }
 }
 
 void dense_tree_sparse_deletes_args(benchmark::internal::Benchmark *b) {
@@ -378,8 +374,20 @@ BENCHMARK_TEMPLATE(dense_full_scan, unodb::olc_db)
 BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::db)
     ->Range(100, 1<<28)
     ->Unit(benchmark::kMicrosecond);
+BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::mutex_db)
+    ->Range(100, 1<<20)
+    ->Unit(benchmark::kMicrosecond);
+BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::olc_db)
+    ->Range(100, 1<<28)
+    ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_TEMPLATE(dense_iter_keyrange_fwd_scan, unodb::db)
+    ->Range(100, 1<<28)
+    ->Unit(benchmark::kMicrosecond);
+BENCHMARK_TEMPLATE(dense_iter_keyrange_fwd_scan, unodb::mutex_db)
+    ->Range(100, 1<<20)
+    ->Unit(benchmark::kMicrosecond);
+BENCHMARK_TEMPLATE(dense_iter_keyrange_fwd_scan, unodb::olc_db)
     ->Range(100, 1<<28)
     ->Unit(benchmark::kMicrosecond);
 

@@ -287,7 +287,7 @@ class db final {
   
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //
-  // @param fn A function f(kvp) returning [bool::halt].  The
+  // @param fn A function f(visitor&) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
@@ -301,7 +301,7 @@ class db final {
   // @param fromKey is an inclusive bound for the starting point of
   // the scan.
   //
-  // @param fn A function f(kvp) returning [bool::halt].  The
+  // @param fn A function f(visitor&) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
@@ -320,7 +320,7 @@ class db final {
   // @param toKey is an exclusive bound for the ending point of the
   // scan.
   //
-  // @param fn A function f(kvp) returning [bool::halt].  The
+  // @param fn A function f(visitor&) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
   template <typename FN>
   inline void scan(const key fromKey, const key toKey, FN fn) noexcept;

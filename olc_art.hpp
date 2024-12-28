@@ -97,6 +97,64 @@ class olc_db final {
   // Only legal in single-threaded context, as destructor
   void clear() noexcept;
 
+  // Alias for an object visited by the scan_api.
+  struct visitor {
+    friend class db;
+   protected:
+    //iterator& it;
+    //inline visitor(iterator& it_):it(it_){}
+   public:
+    inline visitor() {}  // FIXME OLC VISITOR IMPLEMENTATION NEEDS DB AND STACK AND VERSION INFO
+    inline key get_key() noexcept;  // visit the key (may side-effect the iterator so not const).
+    inline value_view get_value() const noexcept; // visit the value.
+  };
+  
+  // Scan the tree, applying the caller's lambda to each visited leaf.
+  //
+  // @param fn A function f(visitor&) returning [bool::halt].  The
+  // traversal will halt if the function returns [true].
+  //
+  // @param fwd When [true] perform a forward scan, otherwise perform
+  // a reverse scan.
+  template <typename FN>
+  inline void scan(FN fn, bool fwd = true) noexcept {
+    // FIXME db_.scan( fn, fwd );
+  }    
+
+  // Scan in the indicated direction, applying the caller's lambda to
+  // each visited leaf.
+  //
+  // @param fromKey is an inclusive bound for the starting point of
+  // the scan.
+  //
+  // @param fn A function f(visitor&) returning [bool::halt].  The
+  // traversal will halt if the function returns [true].
+  //
+  // @param fwd When [true] perform a forward scan, otherwise perform
+  // a reverse scan.
+  template <typename FN>
+  inline void scan(const key fromKey, FN fn, bool fwd = true) noexcept {
+    // FIXME db_.scan( fromKey, fn, fwd );
+  }    
+
+  // Scan the key range, applying the caller's lambda to each visited
+  // leaf.  The scan will proceed in lexicographic order iff fromKey
+  // is less than toKey and in reverse lexicographic order iff toKey
+  // is less than fromKey.
+  //
+  // @param fromKey is an inclusive bound for the starting point of
+  // the scan.
+  //
+  // @param toKey is an exclusive bound for the ending point of the
+  // scan.
+  //
+  // @param fn A function f(visitor&) returning [bool::halt].  The
+  // traversal will halt if the function returns [true].
+  template <typename FN>
+  inline void scan(const key fromKey, const key toKey, FN fn) noexcept {
+    // FIXME db_.scan( fromKey, toKey, fn );
+  }
+  
   // Stats
 
 #ifdef UNODB_DETAIL_WITH_STATS

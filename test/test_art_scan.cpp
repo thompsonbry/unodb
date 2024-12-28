@@ -120,7 +120,7 @@ void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t
 //
 // template meta parameters.
 //
-using ARTTypes = ::testing::Types<unodb::db>/*, unodb::mutex_db, unodb::olc_db>*/;     // FIXME Restore all ART types.
+using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db/*, unodb::olc_db>*/>;     // FIXME Restore all ART types.
 
 UNODB_TYPED_TEST_SUITE(ARTScanTest, ARTTypes)
 
