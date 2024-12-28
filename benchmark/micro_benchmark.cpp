@@ -372,23 +372,23 @@ BENCHMARK_TEMPLATE(dense_full_scan, unodb::olc_db)
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::db)
-    ->Range(100, 1<<28)
+    ->Range(128, 1<<28)
     ->Unit(benchmark::kMicrosecond);
 BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::mutex_db)
-    ->Range(100, 1<<20)
+    ->Range(128, 1<<20)  // less scale since just not interesting.
     ->Unit(benchmark::kMicrosecond);
 BENCHMARK_TEMPLATE(dense_iter_full_fwd_scan, unodb::olc_db)
-    ->Range(100, 1<<28)
+    ->Range(128, 1<<28)
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_TEMPLATE(dense_iter_keyrange_fwd_scan, unodb::db)
-    ->Range(100, 1<<28)
+    ->Range(128, 1<<28)
     ->Unit(benchmark::kMicrosecond);
 BENCHMARK_TEMPLATE(dense_iter_keyrange_fwd_scan, unodb::mutex_db)
-    ->Range(100, 1<<20)
+    ->Range(128, 1<<20)  // less scale since just not interesting.
     ->Unit(benchmark::kMicrosecond);
 BENCHMARK_TEMPLATE(dense_iter_keyrange_fwd_scan, unodb::olc_db)
-    ->Range(100, 1<<28)
+    ->Range(128, 1<<28)
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_TEMPLATE(dense_tree_sparse_deletes, unodb::db)

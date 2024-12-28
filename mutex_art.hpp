@@ -70,8 +70,8 @@ class mutex_db final {
   inline void scan(FN fn, bool fwd = true) noexcept {
     const std::lock_guard guard{mutex};
     db_.scan( fn, fwd );
-  }    
-
+  }
+  
   // Scan in the indicated direction, applying the caller's lambda to
   // each visited leaf.
   //
@@ -87,8 +87,8 @@ class mutex_db final {
   inline void scan(const key fromKey, FN fn, bool fwd = true) noexcept {
     const std::lock_guard guard{mutex};
     db_.scan( fromKey, fn, fwd );
-  }    
-
+  }
+  
   // Scan the key range, applying the caller's lambda to each visited
   // leaf.  The scan will proceed in lexicographic order iff fromKey
   // is less than toKey and in reverse lexicographic order iff toKey

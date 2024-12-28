@@ -62,10 +62,6 @@ inline detail::node_ptr db::iterator::current_node() noexcept {
   ;
 }
 
-// inline db::iterator db::seek(const key search_key, bool& match, bool fwd) noexcept {
-//   return end().seek( search_key, match, fwd);
-// }
-
 inline key db::visitor::get_key() noexcept {return it.get_key().value();}
 inline value_view db::visitor::get_value() const noexcept {return it.get_val().value();}
 
