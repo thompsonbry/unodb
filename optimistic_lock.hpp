@@ -132,7 +132,7 @@ class [[nodiscard]] optimistic_lock final {
 
    private:
     std::uint64_t version{0};
-  };
+  }; // class version_type
 
   class [[nodiscard]] atomic_version_type final {
    public:
@@ -174,11 +174,13 @@ class [[nodiscard]] optimistic_lock final {
 
     static_assert(decltype(version)::is_always_lock_free,
                   "Must use always lock-free atomics");
-  };
+  }; // class atomic_version_type
 
  public:
   class write_guard;
 
+  // Encapsulates a lock on some node and the version information that
+  // was read for that lock.
   class [[nodiscard]] read_critical_section final {
    public:
     read_critical_section() noexcept = default;
@@ -237,7 +239,7 @@ class [[nodiscard]] optimistic_lock final {
     version_type version{0};
 
     friend class write_guard;
-  };
+  }; // class read_critical_section
 
   class [[nodiscard]] write_guard final {
    public:
@@ -285,7 +287,7 @@ class [[nodiscard]] optimistic_lock final {
 
    private:
     optimistic_lock *lock{nullptr};
-  };
+  }; // class write_guard
 
   optimistic_lock() noexcept = default;
 
@@ -296,6 +298,10 @@ class [[nodiscard]] optimistic_lock final {
 
   ~optimistic_lock() noexcept = default;
 
+  // Acquire and return a read_critical_section for some lock.  This
+  // is done without writing anything on the lock, but it can spin if
+  // the lock is in a transient state (e.g., locked by a writer). The
+  // returned read_critical_section MAY be marked [obsolete].
   [[nodiscard]] read_critical_section try_read_lock() noexcept {
     while (true) {
       const auto current_version = version.load();
@@ -338,6 +344,7 @@ class [[nodiscard]] optimistic_lock final {
   }
 
  private:
+  // return true if the version has not changed.
   [[nodiscard]] bool check(version_type locked_version) const noexcept {
     UNODB_DETAIL_ASSERT(read_lock_count.load(std::memory_order_acquire) > 0);
 
@@ -397,7 +404,7 @@ class [[nodiscard]] optimistic_lock final {
     UNODB_DETAIL_ASSERT(old_value > 0);
 #endif
   }
-};
+}; // class optimistic_lock
 
 static_assert(std::is_standard_layout_v<optimistic_lock>);
 
@@ -481,7 +488,7 @@ class [[nodiscard]] in_critical_section final {
 
   static_assert(std::atomic<T>::is_always_lock_free,
                 "Must use always lock-free atomics");
-};
+}; // class in_critical_section
 
 }  // namespace unodb
 

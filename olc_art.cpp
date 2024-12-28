@@ -142,8 +142,11 @@ using olc_inode_defs =
                                    olc_inode_48, olc_inode_256>;
 
 using olc_art_policy =
-    unodb::detail::basic_art_policy<unodb::olc_db, unodb::in_critical_section,
-                                    unodb::detail::olc_node_ptr, olc_inode_defs,
+    unodb::detail::basic_art_policy<unodb::olc_db,
+                                    unodb::in_critical_section,
+                                    unodb::optimistic_lock::read_critical_section,
+                                    unodb::detail::olc_node_ptr,
+                                    olc_inode_defs,
                                     unodb::detail::db_inode_qsbr_deleter,
                                     unodb::detail::db_leaf_qsbr_deleter>;
 
@@ -253,6 +256,18 @@ struct olc_impl_helpers {
 }  // namespace unodb::detail
 
 namespace {
+
+///
+/// OLC inode classes extend the basic inode classes and wrap them
+/// with additional policy stuff.
+///
+/// Note: These classes may assert that appropriate optimistic locks
+/// are held, but they do not take those locks.  That happens above
+/// the inode abstraction in the various algorithms which must follow
+/// the OLC patterns to ensure that they do not take action on data
+/// before they have verified that the optimistic condition remained
+/// true while data was read from the inode.
+///
 
 class [[nodiscard]] olc_inode_4 final
     : public unodb::detail::basic_inode_4<olc_art_policy> {
@@ -882,7 +897,7 @@ olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
 
   auto remaining_key{k};
 
-  if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.check())) {
+  if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.check())) { // FIXME This should be (and is) checked after getting the node_ptr_lock. It does not need to be here too.
     // LCOV_EXCL_START
     spin_wait_loop_body();
     return {};
@@ -891,8 +906,7 @@ olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
 
   while (true) {
     auto node_critical_section = node_ptr_lock(node).try_read_lock();
-    if (UNODB_DETAIL_UNLIKELY(node_critical_section.must_restart())) return {};
-
+    if (UNODB_DETAIL_UNLIKELY(node_critical_section.must_restart())) return {}; // Lock version chaining (node and parent)
     if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
       return {};  // LCOV_EXCL_LINE
 

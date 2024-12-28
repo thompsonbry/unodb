@@ -221,13 +221,18 @@ inline void basic_db_inode_deleter<INode, Db>::operator()(
 // The basic_art_policy encapsulates differences between plain and OLC
 // ART, such as extra header field, and node access critical section
 // type.
-template <class Db, template <class> class CriticalSectionPolicy, class NodePtr,
-          class INodeDefs, template <class> class INodeReclamator,
-          template <class, class> class LeafReclamator>
+template <class Db,
+          template <class> class CriticalSectionPolicy,
+          class ReadCriticalSection,
+          class NodePtr,
+          class INodeDefs,
+          template <class> class INodeReclamator,
+          template <class, class> class LeafReclamator
+          >
 struct basic_art_policy final {
   using node_ptr = NodePtr;
   using header_type = typename NodePtr::header_type;
-
+  using read_critical_section = ReadCriticalSection;
   using inode_defs = INodeDefs;
   using inode = typename inode_defs::inode;
   using inode4_type = typename inode_defs::n4;
@@ -433,7 +438,7 @@ struct basic_art_policy final {
   }
 
   basic_art_policy() = delete;
-};
+}; // class basic_art_policy
 
 // The key_prefix is a sequence of bytes that are a prefix on the path
 // from the parent of some node to a child of that node (used for
@@ -597,6 +602,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
   using critical_section_policy =
       typename ArtPolicy::template critical_section_policy<T>;
 
+  using read_critical_section = typename ArtPolicy::read_critical_section;
+  
   using db_leaf_unique_ptr = typename ArtPolicy::db_leaf_unique_ptr;
 
   using db = typename ArtPolicy::db;
@@ -609,8 +616,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
                , critical_section_policy<node_ptr> *  // child
                >;
 
-  // A 3-tuple that is returned by the iterator visitation pattern
-  // which represents the path in the tree for an internal node.
+  // A tuple that is returned by the iterator visitation pattern which
+  // represents the path in the tree for an internal node.
   //
   // Note: The node pointer is either an internal node or a leaf.
   //
@@ -628,18 +635,29 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // When overflow happens, the iter_result is not defined and the
   // outer std::optional will return false.
   //
-  // FIXME For OLC, we also need the version tag for the parent so
-  // this would be a 4-tuple.
+  // Note: The read_critical_section contains the version information
+  // that must be valid to use the KB and CI data read from the NP.
+  // The CS information is cached when when those data are read from
+  // the NP along with the KB and CI values that were read.
+  //
+  // FIXME variable length keys: we need to track the prefix length
+  // that was consumed from the key during the descent so we know how
+  // much to pop off of the internal key buffer when popping something
+  // off of the stack.  For OLC, that information must be read when
+  // using the CS but you DO NOT check the CS for validity when
+  // popping something off of the key buffer.
   using iter_result = std::tuple
       < node_ptr        // node pointer (NP) TODO -- make this [const node_ptr]?
       , std::byte       // key byte     (KB)
       , std::uint8_t    // child-index  (CI) (index into children[] except for N48, which is index into the child_indexes[], aka the same as the key byte)
+//      , read_critical_section  // read-critical-section (CS) (version information NP lock used to populate [KB] and [CI] fields in this tuple).
       >;
   using iter_result_opt = std::optional< iter_result >;
   
-  static constexpr int NP = 0; // node pointer (to an internal node or leaf)
+  static constexpr int NP = 0; // node pointer (to an internal node or leaf, can also be the root node or root leaf)
   static constexpr int KB = 1; // key byte     (when stepping down from that node)
   static constexpr int CI = 2; // child_index  (along which the path steps down from that node)
+  static constexpr int CS = 3; // read_critical_section (for that node when obtaining the child_index).
   
  protected:
   using inode_type = typename ArtPolicy::inode;

@@ -28,8 +28,13 @@ class olc_db;
 
 namespace detail {
 
-template <class, template <class> class, class, class, template <class> class,
-          template <class, class> class>
+template <class,  // Db
+          template <class> class,  // CriticalSectionPolicy
+          class,                   // ReadCriticalSection
+          class,                   // NodePtr
+          class,                   // INodeDefs
+          template <class> class,  // INodeReclamator
+          template <class, class> class>  // LeadReclamator
 struct basic_art_policy;  // IWYU pragma: keep
 
 struct olc_node_header;
@@ -265,10 +270,12 @@ class olc_db final {
 
 #endif  // UNODB_DETAIL_WITH_STATS
 
+  // optimistic lock guarding the [root].
   alignas(
       detail::hardware_destructive_interference_size) mutable optimistic_lock
       root_pointer_lock;
 
+  // The root of the tree, guarded by the [root_pointer_lock].
   in_critical_section<detail::olc_node_ptr> root{detail::olc_node_ptr{nullptr}};
 
   static_assert(sizeof(root_pointer_lock) + sizeof(root) <=
@@ -311,7 +318,7 @@ class olc_db final {
   template <class>
   friend class detail::db_inode_qsbr_deleter;
 
-  template <class, template <class> class, class, class, template <class> class,
+  template <class, template <class> class, class, class, class, template <class> class,
             template <class, class> class>
   friend struct detail::basic_art_policy;
 

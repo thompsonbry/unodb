@@ -34,8 +34,13 @@ struct [[nodiscard]] node_header {};
 
 static_assert(std::is_empty_v<node_header>);
 
-template <class, template <class> class, class, class, template <class> class,
-          template <class, class> class>
+template <class,  // Db
+          template <class> class,  // CriticalSectionPolicy
+          class,                   // ReadCriticalSection
+          class,                   // NodePtr
+          class,                   // INodeDefs
+          template <class> class,  // INodeReclamator
+          template <class, class> class>  // LeadReclamator
 struct basic_art_policy;  // IWYU pragma: keep
 
 using node_ptr = basic_node_ptr<node_header>;
@@ -50,8 +55,13 @@ using db_inode_deleter =
     unodb::detail::basic_db_inode_deleter<INode, unodb::db>;
 
 using art_policy = unodb::detail::basic_art_policy<
-    unodb::db, unodb::in_fake_critical_section, unodb::detail::node_ptr,
-    inode_defs, db_inode_deleter, unodb::detail::basic_db_leaf_deleter>;
+  unodb::db,
+  unodb::in_fake_critical_section,
+  unodb::fake_read_critical_section,
+  unodb::detail::node_ptr,
+  inode_defs,
+  db_inode_deleter,
+  unodb::detail::basic_db_leaf_deleter>;
 
 using inode_base = unodb::detail::basic_inode_impl<art_policy>;
 
@@ -183,8 +193,9 @@ class db final {
    private:
 
     static constexpr int NP = detail::inode_base::NP; // node pointer
-    static constexpr int KB = detail::inode_base::KB; // key byte
-    static constexpr int CI = detail::inode_base::CI; // child_index
+    static constexpr int KB = detail::inode_base::KB; // key byte (on descent from NP)
+    static constexpr int CI = detail::inode_base::CI; // child_index (on descent from NP)(
+    static constexpr int CS = detail::inode_base::CS; // (read)_critical_section (for NP, guards validity of KB and CI.)
     
     // invalidate the iterator (pops everything off of the stack).
     inline iterator& invalidate() noexcept;
@@ -460,7 +471,7 @@ class db final {
   template <class, class>
   friend class detail::basic_db_leaf_deleter;
 
-  template <class, template <class> class, class, class, template <class> class,
+  template <class, template <class> class, class, class, class, template <class> class,
             template <class, class> class>
   friend struct detail::basic_art_policy;
 
