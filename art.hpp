@@ -301,8 +301,8 @@ class db final {
     iterator& it;
     inline visitor(iterator& it_):it(it_){}
    public:
-    inline key get_key() noexcept;  // visit the key (may side-effect the iterator so not const).
-    inline value_view get_value() const noexcept; // visit the value.
+    inline key get_key() noexcept {return it.get_key().value();}  // visit the key (may side-effect the iterator so not const).
+    inline value_view get_value() const noexcept {return it.get_val().value();} // visit the value.
   };
   
   // Scan the tree, applying the caller's lambda to each visited leaf.

@@ -17,6 +17,7 @@
 
 #include "art_common.hpp"
 #include "art_internal.hpp"
+//#include "art_internal_impl.hpp"
 #include "assert.hpp"
 #include "node_type.hpp"
 #include "optimistic_lock.hpp"
@@ -42,6 +43,11 @@ struct basic_art_policy;  // IWYU pragma: keep
 struct olc_node_header;
 
 using olc_node_ptr = basic_node_ptr<olc_node_header>;
+
+    // // FIXME THIS IS HACKED IN.  A PROPER REFACTOR IS REQUIRED.
+    // using node_ptr = unodb::detail::olc_node_ptr; // NodePtr;
+    // using header_type = typename node_ptr::header_type;
+    // using leaf = detail::basic_leaf<header_type>;
 
 template <class>
 class db_inode_qsbr_deleter;  // IWYU pragma: keep
@@ -107,9 +113,43 @@ class olc_db final {
   ///
   /// iterator (the iterator is an internal API, the public API is scan()).
   ///
-  protected:
+ protected:
+  // The OLC scan() logic tracks the version tag (a read_critical_section)
+  // for each node in the stack.  This information is required because the
+  // iter_result tuples already contain physical information read from
+  // nodes which may have been invalidated by subsequent mutations.  The
+  // scan is built on iterator methods for seek(), next(), prior(), etc.
+  // These methods must restart (rebuilding the stack and redoing the work)
+  // if they encounter a version tag for an element on the stack which is
+  // no longer valid.  Restart works by performing a seek() to the key for
+  // the leaf on the bottom of the stack.  Restarts can be full (from the
+  // root) or partial (from the first element in the stack which was not
+  // invalidated by the structural modification).
+  // 
+  // During scan(), the iterator seek()s to some key and then invokes the
+  // caller's lambda passing a reference to a visitor object.  That visitor
+  // allows the caller to access the key and/or value associated with the
+  // leaf.  If the leaf is concurrently deleted from the structure, the
+  // visitor relies on epoch protection to return the data from the now
+  // invalidated leaf.  This is still the state that the caller would have
+  // observed without the concurrent structural modification.  When next()
+  // is called, it will discover that the leaf on the bottom of the stack
+  // is not valid (it is marked as obsolete) and it will have to restart by
+  // seek() to the key for that leaf and then invoking next() if the key
+  // still exists and otherwise we should already be on the successor of
+  // that leaf.
+  //
+  // Note: The OLC thread safety mechanisms permit concurrent non-atomic
+  // (multi-work) mutations to be applied to nodes.  This means that a
+  // thread can read junk in the middle of some reorganization of a node
+  // (e.g., the keys or children are being reordered to maintain an
+  // invariant for I16).  To protect against reading such junk, the thread
+  // reads the version tag before and after it accesses data in the node
+  // and restarts if the version information has changed.  The thread must
+  // not act on information that it had read until it verifies that the
+  // version tag remained unchanged across the read operation.
   class iterator {
-    friend class olc_db;
+  friend class olc_db;
    public:
 
     // Construct an empty iterator.
@@ -162,11 +202,46 @@ class olc_db final {
     //
     // Note: std::optional does not allow reference types, hence going
     // with pointer to buffer return semantics.
-    inline std::optional<const key> get_key() noexcept;
+    inline std::optional<const key> get_key() noexcept {
+#if 1
+      return {}; // FIXME This is running into problems with partial type information.
+#else
+      // Note: If the iterator is on a leaf, we return the key for that
+      // leaf regardless of whether the leaf has been deleted.  This is
+      // part of the design semantics for the OLC ART scan.
+      //
+      // FIXME Eventually this will need to use the stack to reconstruct
+      // the key from the path from the root to this leaf.  Right now it
+      // is relying on the fact that simple fixed width keys are stored
+      // directly in the leaves.
+      if ( ! valid() ) return {}; // not positioned on anything.
+      const auto& e = stack_.top();
+      const auto& node = std::get<NP>( e );
+      UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
+      const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
+      key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
+      return key_; // return pointer to the internal key buffer.
+#endif
+    }
     
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
-    inline std::optional<const value_view> get_val() const noexcept;
+    inline std::optional<const value_view> get_val() const noexcept {
+#if 1
+      return {}; // FIXME This is running into problems with partial type information.
+#else
+      // Note: If the iterator is on a leaf, we return the value for
+      // that leaf regardless of whether the leaf has been deleted.
+      // This is part of the design semantics for the OLC ART scan.
+      //
+      if ( ! valid() ) return {}; // not positioned on anything.
+      const auto& e = stack_.top();
+      const auto& node = std::get<NP>( e );
+      UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
+      const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
+      return leaf->get_value_view();
+#endif
+    }
     
     inline bool operator==(const iterator& other) const noexcept;    
     inline bool operator!=(const iterator& other) const noexcept;
@@ -311,8 +386,8 @@ class olc_db final {
     iterator& it;
     inline visitor(iterator& it_):it(it_){}
    public:
-    inline key get_key() noexcept;  // visit the key (may side-effect the iterator so not const).
-    inline value_view get_value() const noexcept; // visit the value.
+    inline key get_key() noexcept {return it.get_key().value();}  // visit the key (may side-effect the iterator so not const).
+    inline value_view get_value() const noexcept {return it.get_val().value();} // visit the value.
   };
   
   // Scan the tree, applying the caller's lambda to each visited leaf.
@@ -324,13 +399,28 @@ class olc_db final {
   // a reverse scan.
   template <typename FN>
   inline void scan(FN fn, bool fwd = true) noexcept {
-    // FIXME db_.scan( fn, fwd );
+    if ( empty() ) return;
+    if ( fwd ) {
+      auto it { iterator(*this).first() };
+      visitor v{ it };
+      while ( it.valid() ) {
+        if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+        it.next();
+      }
+    } else {
+      auto it { iterator(*this).last() };
+      visitor v { it };
+      while ( it.valid() ) {
+        if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+        it.prior();
+      }
+    }
   }    
 
   // Scan in the indicated direction, applying the caller's lambda to
   // each visited leaf.
   //
-  // @param fromKey is an inclusive bound for the starting point of
+  // @param fromKey_ is an inclusive bound for the starting point of
   // the scan.
   //
   // @param fn A function f(visitor&) returning [bool::halt].  The
@@ -339,8 +429,25 @@ class olc_db final {
   // @param fwd When [true] perform a forward scan, otherwise perform
   // a reverse scan.
   template <typename FN>
-  inline void scan(const key fromKey, FN fn, bool fwd = true) noexcept {
-    // FIXME db_.scan( fromKey, fn, fwd );
+  inline void scan(const key fromKey_, FN fn, bool fwd = true) noexcept {
+    if ( empty() ) return;
+    const detail::art_key fromKey{fromKey_};  // convert to internal key
+    bool match {};
+    if ( fwd ) {
+      auto it { iterator(*this).seek( fromKey, match, true/*fwd*/ ) };
+      visitor v { it };
+      while ( it.valid() ) {
+        if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+        it.next();
+      }
+    } else {
+      auto it { iterator(*this).seek( fromKey, match, false/*fwd*/ ) };
+      visitor v { it };
+      while ( it.valid() ) {
+        if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+        it.prior();
+      }
+    }
   }    
 
   // Scan the key range, applying the caller's lambda to each visited
@@ -348,17 +455,66 @@ class olc_db final {
   // is less than toKey and in reverse lexicographic order iff toKey
   // is less than fromKey.
   //
-  // @param fromKey is an inclusive bound for the starting point of
+  // @param fromKey_ is an inclusive bound for the starting point of
   // the scan.
   //
-  // @param toKey is an exclusive bound for the ending point of the
+  // @param toKey_ is an exclusive bound for the ending point of the
   // scan.
   //
   // @param fn A function f(visitor&) returning [bool::halt].  The
   // traversal will halt if the function returns [true].
   template <typename FN>
-  inline void scan(const key fromKey, const key toKey, FN fn) noexcept {
-    // FIXME db_.scan( fromKey, toKey, fn );
+  inline void scan(const key fromKey_, const key toKey_, FN fn) noexcept {
+    // FIXME There should be a cheaper way to handle the exclusive bound
+    // case.  This relies on key decoding, which is expensive for variable
+    // length keys.  At a minimum, we could compare the internal keys to
+    // avoid the decoding.  But it would be nice to know the leaf that we
+    // will not visit and just halt when we get there.
+    constexpr bool debug = false;  // set true to debug scan. FIXME REMOVE [debug]?
+    if ( empty() ) return;
+    const detail::art_key fromKey{fromKey_};  // convert to internal key
+    const detail::art_key toKey{toKey_};      // convert to internal key
+    const auto ret = fromKey.cmp( toKey );    // compare the internal keys.
+    const bool fwd { ret < 0 };               // fromKey is less than toKey
+    if ( ret == 0 ) return;                   // NOP if fromKey == toKey since toKey is exclusive upper bound.
+    bool match {};
+    if ( fwd ) {
+      auto it1 { iterator(*this).seek( fromKey, match, true/*fwd*/ ) }; // lower bound
+      // auto it2 { end().seek( toKey, match, true/*fwd*/ ) }; // upper bound
+      // if ( it2.get_key() == toKey_ ) it2.prior();  // back up one if the toKey exists (exclusive upper bound).
+      if constexpr ( debug ) {
+        std::cerr<<"scan:: fwd"<<std::endl;
+        std::cerr<<"scan:: fromKey="<<fromKey_<<std::endl; it1.dump(std::cerr);
+        // std::cerr<<"scan:: toKey="<<toKey_<<std::endl; it2.dump(std::cerr);
+      }
+      visitor v { it1 };
+      while ( it1.valid() && it1.get_key() < toKey_ ) {
+        if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+        // if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
+        it1.next();
+        if constexpr( debug ) {
+          std::cerr<<"scan: next()"<<std::endl; it1.dump( std::cerr );
+        }
+      }
+    } else { // reverse traversal.
+      auto it1 { iterator(*this).seek( fromKey, match, true/*fwd*/ ) }; // upper bound
+      // auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // lower bound
+      // if ( it2.get_key() == toKey_ ) it2.next();  // advance one if the toKey exists (exclusive lower bound during reverse traversal)
+      if constexpr( debug ) {
+        std::cerr<<"scan:: rev"<<std::endl;
+        std::cerr<<"scan:: fromKe   y="<<fromKey_<<std::endl; it1.dump(std::cerr);
+        // std::cerr<<"scan:: toKey="<<toKey_<<std::endl; it2.dump(std::cerr);
+      }
+      visitor v { it1 };
+      while ( it1.valid() && it1.get_key() > toKey_ ) {
+        if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+        // if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
+        it1.prior();
+        if constexpr( debug ) {
+          std::cerr<<"scan: prior()"<<std::endl; it1.dump( std::cerr );
+        }
+      }
+    }
   }
   
   // Stats

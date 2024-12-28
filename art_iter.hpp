@@ -48,9 +48,6 @@ inline bool db::iterator::operator==(const iterator& other) const noexcept {
 
 inline bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
 
-inline key db::visitor::get_key() noexcept {return it.get_key().value();}
-inline value_view db::visitor::get_value() const noexcept {return it.get_val().value();}
-
 template <typename FN>
 inline void db::scan(FN fn, bool fwd) noexcept {
   if ( empty() ) return;
