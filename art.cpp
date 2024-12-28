@@ -5,6 +5,7 @@
 #include "art.hpp"
 
 #include <cstddef>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <type_traits>
@@ -465,7 +466,10 @@ void db::iterator::dump(std::ostream &os) const {
   while ( ! tmp.empty() ) {
     const auto& e = tmp.top();
     const auto np = std::get<NP>( e );
-    os << "iter::stack:: level = " << level << ", ";
+    os << "iter::stack:: level = " << level
+       << ", key_byte=0x"<<std::hex<<std::setfill('0')<<std::setw(2)<<static_cast<uint64_t>(std::get<KB>( e ))<<std::dec
+       << ", child_index=0x"<<std::hex<<std::setfill('0')<<std::setw(2)<<static_cast<uint64_t>(std::get<CI>( e ))<<std::dec
+       << ", ";
     detail::art_policy::dump_node( os, np, false /*recursive*/ );
     if ( np.type() != node_type::LEAF ) os << std::endl;
     tmp.pop();
@@ -698,7 +702,7 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
       // relative ordering of the key vs the prefix.
       const auto cmp = static_cast<std::int16_t>(remaining_key[ shared_length ])
                      - static_cast<std::int16_t>(key_prefix   [ shared_length ]); // compare prefix and key and the first byte where they differ.
-      std::cerr<<"shared_length="<<shared_length<<", cmp(remaining_key,key_prefix)="<<cmp<<", fwd="<<fwd; key_prefix.dump(std::cerr); std::cerr<<std::endl; // FIXME COMMENT OUT THIS LINE.
+      //std::cerr<<"shared_length="<<shared_length<<", cmp(remaining_key,key_prefix)="<<cmp<<", fwd="<<fwd; key_prefix.dump(std::cerr); std::cerr<<std::endl;
       UNODB_DETAIL_ASSERT( cmp != 0 );
       if ( fwd ) {
         if ( cmp < 0 ) {
@@ -738,15 +742,15 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
         // always be the index the first entry whose key byte is
         // greater-than the probe value and [false] if there is no
         // such entry.
-        auto nxt = inode->gte_key_byte( node_type, remaining_key[0] );
+        auto nxt = inode->gte_key_byte( node_type, remaining_key[0] ); // Note: [node] has not been pushed onto the stack yet!
         if ( ! nxt ) {
           // Pop entries off the stack until we find one with a
           // right-sibling of the path we took to this node and then
           // do a left-most descent under that right-sibling. If there
           // is no such parent, we will wind up with an empty stack
           // (aka the end() iterator) and return that state.
+          if ( ! stack_.empty() ) stack_.pop();
           while ( ! stack_.empty() ) {
-            stack_.pop();
             const auto centry = stack_.top();
             const auto cnode = std::get<NP>( centry );
             auto *const icnode{cnode.ptr<detail::inode *>()};
@@ -755,13 +759,15 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
               auto nchild = icnode->get_child( cnode.type(), std::get<CI>(centry) );
               return left_most_traversal( nchild );
             }
+            stack_.pop();
           }
           return *this; // stack is empty (aka end()).
         }
         auto tmp = nxt.value(); // unwrap.
         const auto child_index = std::get<CI>( tmp );
         const auto child = inode->get_child( node_type, child_index );
-        return left_most_traversal( child );
+        stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
+        return left_most_traversal( child );                       // left most traversal
       } else {
         // REV: Take the prior child_index that is mapped and then do
         // a right-most descent to land on the key that is the
@@ -772,8 +778,8 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
           // left-sibling and then do a right-most descent under that
           // left-sibling.  In the extreme case there is no such
           // previous entry and we will wind up with an empty stack.
+          if ( ! stack_.empty() ) stack_.pop();
           while ( ! stack_.empty() ) {
-            stack_.pop();
             const auto centry = stack_.top();
             const auto cnode = std::get<NP>( centry );
             auto *const icnode{cnode.ptr<detail::inode *>()};
@@ -782,13 +788,15 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
               auto nchild = icnode->get_child( cnode.type(), std::get<CI>(centry) );
               return right_most_traversal( nchild );
             }
+            stack_.pop();
           }
           return *this; // stack is empty (aka end()).
         }
         auto tmp = nxt.value();           // unwrap.
         const auto child_index = std::get<CI>( tmp );
         const auto child = inode->get_child( node_type, child_index );
-        return right_most_traversal( child );
+        stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
+        return right_most_traversal( child ); // right most traversal
       }
       UNODB_DETAIL_CANNOT_HAPPEN();
     } else {

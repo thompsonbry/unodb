@@ -111,8 +111,14 @@ inline void db::scan(const key fromKey_, FN fn, bool fwd) noexcept {
   }
 }
 
+// FIXME There should be a cheaper way to handle the exclusive bound
+// case.  This relies on key decoding, which is expensive for variable
+// length keys.  At a minimum, we could compare the internal keys to
+// avoid the decoding.  But it would be nice to know the leaf that we
+// will not visit and just halt when we get there.
 template <typename FN>
 inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
+  constexpr bool debug = false;  // set true to debug scan. FIXME REMOVE [debug]?
   if ( empty() ) return;
   const detail::art_key fromKey{fromKey_};  // convert to internal key
   const detail::art_key toKey{toKey_};      // convert to internal key
@@ -122,27 +128,39 @@ inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
   bool match {};
   if ( fwd ) {
     auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // lower bound
-    auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // upper bound
-    std::cerr<<"scan:: fwd"<<std::endl;         // FIXME REMOVE DEBUG LINES.
-    std::cerr<<"scan:: fromKey="<<fromKey_<<std::endl; it1.dump(std::cerr);
-    std::cerr<<"scan:: toKey="<<fromKey_<<std::endl; it2.dump(std::cerr);
-    visitor v { it1 };
-    while ( it1.valid() ) {
-      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
-      it1.next();
-      if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
+    // auto it2 { end().seek( toKey, match, true/*fwd*/ ) }; // upper bound
+    // if ( it2.get_key() == toKey_ ) it2.prior();  // back up one if the toKey exists (exclusive upper bound).
+    if constexpr ( debug ) {
+      std::cerr<<"scan:: fwd"<<std::endl;
+      std::cerr<<"scan:: fromKey="<<fromKey_<<std::endl; it1.dump(std::cerr);
+      // std::cerr<<"scan:: toKey="<<toKey_<<std::endl; it2.dump(std::cerr);
     }
-  } else {
-    auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // upper bound
-    auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // upper bound
-    std::cerr<<"scan:: rev"<<std::endl;         // FIXME REMOVE DEBUG LINES.
-    std::cerr<<"scan:: fromKey="<<fromKey_<<std::endl; it1.dump(std::cerr);
-    std::cerr<<"scan:: toKey="<<fromKey_<<std::endl; it2.dump(std::cerr);
     visitor v { it1 };
-    while ( it1.valid() ) {
+    while ( it1.valid() && it1.get_key() < toKey_ ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+      // if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
+      it1.next();
+      if constexpr( debug ) {
+        std::cerr<<"scan: next()"<<std::endl; it1.dump( std::cerr );
+      }
+    }
+  } else { // reverse traversal.
+    auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // upper bound
+    // auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // lower bound
+    // if ( it2.get_key() == toKey_ ) it2.next();  // advance one if the toKey exists (exclusive lower bound during reverse traversal)
+    if constexpr( debug ) {
+      std::cerr<<"scan:: rev"<<std::endl;
+      std::cerr<<"scan:: fromKe   y="<<fromKey_<<std::endl; it1.dump(std::cerr);
+    // std::cerr<<"scan:: toKey="<<toKey_<<std::endl; it2.dump(std::cerr);
+    }
+    visitor v { it1 };
+    while ( it1.valid() && it1.get_key() > toKey_ ) {
+      if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
+      // if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
       it1.prior();
-      if ( UNODB_DETAIL_UNLIKELY( it1.current_node() == it2.current_node() ) ) break;
+      if constexpr( debug ) {
+      std::cerr<<"scan: prior()"<<std::endl; it1.dump( std::cerr );
+      }
     }
   }
 }

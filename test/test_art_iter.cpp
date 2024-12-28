@@ -40,6 +40,7 @@ UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 
 UNODB_START_TYPED_TESTS()
 
+// FIXME (***) Change the API such that everthing except scan() is protected and make it all use internal keys.
 //
 // FIXME unit tests for gsl::span<std::byte>
 //
@@ -523,11 +524,6 @@ TYPED_TEST(ARTIteratorTest, seek_three_leaves_under_the_root) {
     }
   }
 }
-
-// FIXME (***) CONTINUE TO AT LEAST HEIGHT TWO TREES WITH SPECIFIC
-//             TESTS.
-//
-// FIXME (***) Change the API such that everthing except scan() is protected and make it all use internal keys.
 
 UNODB_END_TESTS()
 

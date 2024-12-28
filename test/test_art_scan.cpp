@@ -87,9 +87,12 @@ void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t
     }
   }
   const uint64_t nexpected = expected.size();
-  std::cerr<<"scan_test"
+  constexpr bool debug = false;
+  if constexpr( debug ) {
+    std::cerr<<"scan_test"
            <<": fromKey="<<fromKey<<", toKey="<<toKey<<", limit="<<limit
            <<", nexpected="<<nexpected<<", expected keys="; dump(expected);
+  }
   uint64_t nactual { 0 };  // actual number visited.
   auto eit = expected.begin();
   auto eit2 = expected.end();
@@ -100,7 +103,7 @@ void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t
     }
     const auto ekey = *eit;  // expected key to visit
     const auto akey = v.get_key(); // actual key visited.
-    std::cerr<< "nactual="<<nactual<<", ekey="<<ekey<<", akey="<<akey<<std::endl;
+    if constexpr( debug ) {std::cerr<< "nactual="<<nactual<<", ekey="<<ekey<<", akey="<<akey<<std::endl;}
     if ( ekey != akey ) {
       EXPECT_EQ( ekey, akey );
       return true;  // halt early.
@@ -461,18 +464,10 @@ TYPED_TEST(ARTScanTest, scan_reverse__1000_entries) {
   UNODB_EXPECT_EQ( 1000, n );
 }
 
-// FIXME (***) Tests for edge cases for scan() including: empty tree,
-// first key missing, last key missing, both end keys missing, both
-// end keys are the same (and both exist or one exists or both are
-// missing), etc.
+// Tests for edge cases for scan() including first key missing, last
+// key missing, both end keys missing, both end keys are the same (and
+// both exist or one exists or both are missing), etc.
 //
-// FIXME (***) DO GENERAL CHECKS FOR LARGER TREES. For example, we
-// could generate trees with a space between each pair of keys and use
-// that to examine the before/after semantics of seek() for both
-// forward and reverse traversal.  For this, make sure that we hit
-// enough cases to (a) test a variety of internal node types; and (b)
-// check a variety of key prefix length conditions.
-
 // Check the edge conditions for the single leaf iterator (limit=1, so
 // only ONE (1) is installed into the ART index).  Check all iterator
 // flavors for this.
@@ -485,7 +480,14 @@ TYPED_TEST(ARTScanTest, scan_from__fromKey_2__toKey_2__entries_1) {doScanTest<Ty
 //
 // TODO Do reverse traversal checks.
 //
-// TODO Do scan(fromKey,dir) checks.
+
+//
+// FIXME (***) DO GENERAL CHECKS FOR LARGER TREES. For example, we
+// could generate trees with a space between each pair of keys and use
+// that to examine the before/after semantics of seek() for both
+// forward and reverse traversal.  For this, make sure that we hit
+// enough cases to (a) test a variety of internal node types; and (b)
+// check a variety of key prefix length conditions.
 
 // fromKey is odd (exists); toKey is even (hence does not exist).
 TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_2__entries_5) {doScanTest<TypeParam>( 1, 2, 5 );}
@@ -496,9 +498,9 @@ TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_1__entries_5) {doScanTest<Ty
 TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_3__entries_5) {doScanTest<TypeParam>( 1, 3, 5 );}
 TYPED_TEST(ARTScanTest, scan_from__fromKey_1__toKey_5__entries_5) {doScanTest<TypeParam>( 1, 5, 5 );}
 
-//TYPED_TEST(ARTScanTest, scan_from__fromKey_0__toKey_10__entries_10) {doScanTest<TypeParam>( 0, 10, 10 );}
+TYPED_TEST(ARTScanTest, scan_from__fromKey_0__toKey_10__entries_10) {doScanTest<TypeParam>( 0, 10, 10 );}
 
-//TYPED_TEST(ARTScanTest, scan_from__1000_entries__fromKey_1__toKey_999) {doScanTest<TypeParam>( 1000, 1, 999 );}
+TYPED_TEST(ARTScanTest, scan_from__1000_entries__fromKey_1__toKey_999) {doScanTest<TypeParam>( 1, 999, 1000 );}
 
 UNODB_END_TESTS()
 
