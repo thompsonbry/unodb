@@ -19,13 +19,6 @@
 #include "in_fake_critical_section.hpp"
 #include "node_type.hpp"
 
-// From googletest/gtest/gtest_prod.h
-//
-// Note: The test class must be in the same namespace as the class being tested.
-// For example, putting MyClassTest in an anonymous namespace will not work.
-#define FRIEND_TEST(test_case_name, test_name) \
-  friend class test_case_name##_##test_name##_Test
-
 namespace unodb {
 
 namespace detail {
@@ -69,8 +62,6 @@ class inode : public inode_base {};
 }  // namespace detail
 
 class db final {
-  FRIEND_TEST(ARTIteratorTest,empty_tree__forward_scan);
-  FRIEND_TEST(ARTIteratorTest,empty_tree__seek);
  public:
   using get_result = std::optional<value_view>;
 
@@ -100,14 +91,10 @@ class db final {
   
   void clear() noexcept;
 
-  // FIXME Make the iterator protected, but this requires a lot of
-  // changes to the unit tests.
-  //
-  // protected:
-  
   ///
   /// iterator (the iterator is an internal API, the public API is scan()).
   ///
+  protected:
   class iterator {
     friend class db;
    public:
@@ -130,6 +117,9 @@ class db final {
     
     // Position the iterator on the previous entry in the index.
     iterator& prior() noexcept;
+
+    // Makes this the "end()" iterator (by clearing the stack).
+    inline iterator& end() noexcept {return invalidate();}
     
     // Position the iterator on, before, or after the caller's key.
     // If the iterator can not be positioned, it will be set to end().
@@ -266,56 +256,15 @@ class db final {
     key key_ {};
     
   }; // class iterator
-
-  // Return an iterator that is positioned on the first entry in the
-  // index (if any).  If the index is empty, the returned iterator
-  // will be "end()".
-  [[nodiscard]] iterator begin() noexcept { return iterator{*this}.first(); }
-
-  // Return an iterator that is positioned on the last entry in the
-  // index (if any).  If the index is empty, the returned iterator
-  // will be "end()".
-  [[nodiscard]] iterator last() noexcept { return iterator{*this}.last(); }
-
-  // Return an iterator that is positioned after any possible entry in
-  // the index.
+  
   //
-  // Note: end() is specific to a given db instance and not flyweight
-  // (there is an internal stack object) so it is a good idea to lift
-  // it out as a constant when writing loops which check against
-  // end().
+  // end of the iterator API, which is an internal API.
   //
-  // Note: end() is not a valid iterator position.  You CAN NOT call
-  // prior() on end() to go backwards.  Instead, use the seek() API to
-  // find a suitable starting point for the reverse traversal.
-  [[nodiscard]] iterator end() noexcept { return iterator(*this); }
-
-  // Return an iterator positioned on, before, or after the caller's
-  // key.  If the iterator can not be positioned, it will be set to
-  // end().  For example, if [fwd:=true] and the [search_key] is GT
-  // any key in the index then the iterator will be positioned to
-  // end() since there is no index entry greater than the search key.
-  // Likewise, if [fwd:=false] and the [search_key] is LT any key in
-  // the index, then the iterator will be positioned to end() since
-  // there is no index entry LT the search key.
-  //
-  // @param search_key The key used to position the iterator.
-  //
-  // @param match Will be set to true iff the search key is an exact
-  // match in the index data.  Otherwise, the match is not exact and
-  // the iterator is positioned either before or after the search_key.
-  //
-  // @param fwd When true, the iterator will be positioned first entry
-  // which orders GTE the search_key and end() if there is no such
-  // entry.  Otherwise, the iterator will be positioned on the last
-  // key which orders LTE the search_key and end() if there is no such
-  // entry.
-  //[[nodiscard]] iterator seek(const key search_key, bool& match, bool fwd = true) noexcept;
-
+  
  public:
   
   ///
-  /// scan:
+  /// public scan API
   ///
 
   // Note: The scan() interface is public.  The iterator and the
@@ -376,6 +325,13 @@ class db final {
   template <typename FN>
   inline void scan(const key fromKey, const key toKey, FN fn) noexcept;
 
+  //
+  // TEST ONLY METHODS
+  //
+
+  // Used to write the iterator tests.
+  auto __test_only_iterator__() noexcept {return iterator(*this);}
+  
   // Stats
 
 #ifdef UNODB_DETAIL_WITH_STATS

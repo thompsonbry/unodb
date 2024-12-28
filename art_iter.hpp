@@ -73,14 +73,14 @@ template <typename FN>
 inline void db::scan(FN fn, bool fwd) noexcept {
   if ( empty() ) return;
   if ( fwd ) {
-    auto it { begin() };
+    auto it { iterator(*this).first() };
     visitor v{ it };
     while ( it.valid() ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it.next();
     }
   } else {
-    auto it { last() };
+    auto it { iterator(*this).last() };
     visitor v { it };
     while ( it.valid() ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
@@ -95,14 +95,14 @@ inline void db::scan(const key fromKey_, FN fn, bool fwd) noexcept {
   const detail::art_key fromKey{fromKey_};  // convert to internal key
   bool match {};
   if ( fwd ) {
-    auto it { end().seek( fromKey, match, true/*fwd*/ ) };
+    auto it { iterator(*this).seek( fromKey, match, true/*fwd*/ ) };
     visitor v { it };
     while ( it.valid() ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
       it.next();
     }
   } else {
-    auto it { end().seek( fromKey, match, false/*fwd*/ ) };
+    auto it { iterator(*this).seek( fromKey, match, false/*fwd*/ ) };
     visitor v { it };
     while ( it.valid() ) {
       if ( UNODB_DETAIL_UNLIKELY( fn( v ) ) ) break;
@@ -127,7 +127,7 @@ inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
   if ( ret == 0 ) return;                   // NOP if fromKey == toKey since toKey is exclusive upper bound.
   bool match {};
   if ( fwd ) {
-    auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // lower bound
+    auto it1 { iterator(*this).seek( fromKey, match, true/*fwd*/ ) }; // lower bound
     // auto it2 { end().seek( toKey, match, true/*fwd*/ ) }; // upper bound
     // if ( it2.get_key() == toKey_ ) it2.prior();  // back up one if the toKey exists (exclusive upper bound).
     if constexpr ( debug ) {
@@ -145,7 +145,7 @@ inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
       }
     }
   } else { // reverse traversal.
-    auto it1 { end().seek( fromKey, match, true/*fwd*/ ) }; // upper bound
+    auto it1 { iterator(*this).seek( fromKey, match, true/*fwd*/ ) }; // upper bound
     // auto it2 { end().seek( toKey, match, false/*fwd*/ ) }; // lower bound
     // if ( it2.get_key() == toKey_ ) it2.next();  // advance one if the toKey exists (exclusive lower bound during reverse traversal)
     if constexpr( debug ) {
