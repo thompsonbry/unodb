@@ -30,7 +30,7 @@ namespace detail {
 
 template <class,  // Db
           template <class> class,  // CriticalSectionPolicy
-          class,                   // ReadCriticalSection
+          class,                   // LockPolicy
           class,                   // NodePtr
           class,                   // INodeDefs
           template <class> class,  // INodeReclamator

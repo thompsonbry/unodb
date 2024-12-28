@@ -144,7 +144,7 @@ using olc_inode_defs =
 using olc_art_policy =
     unodb::detail::basic_art_policy<unodb::olc_db,
                                     unodb::in_critical_section,
-                                    unodb::optimistic_lock::read_critical_section,
+                                    unodb::optimistic_lock,
                                     unodb::detail::olc_node_ptr,
                                     olc_inode_defs,
                                     unodb::detail::db_inode_qsbr_deleter,

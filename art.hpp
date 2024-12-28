@@ -57,7 +57,7 @@ using db_inode_deleter =
 using art_policy = unodb::detail::basic_art_policy<
   unodb::db,
   unodb::in_fake_critical_section,
-  unodb::fake_read_critical_section,
+  unodb::fake_lock,
   unodb::detail::node_ptr,
   inode_defs,
   db_inode_deleter,

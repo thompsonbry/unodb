@@ -223,7 +223,7 @@ inline void basic_db_inode_deleter<INode, Db>::operator()(
 // type.
 template <class Db,
           template <class> class CriticalSectionPolicy,
-          class ReadCriticalSection,
+          class LockPolicy,
           class NodePtr,
           class INodeDefs,
           template <class> class INodeReclamator,
@@ -232,7 +232,7 @@ template <class Db,
 struct basic_art_policy final {
   using node_ptr = NodePtr;
   using header_type = typename NodePtr::header_type;
-  using read_critical_section = ReadCriticalSection;
+  using lock_policy = LockPolicy;
   using inode_defs = INodeDefs;
   using inode = typename inode_defs::inode;
   using inode4_type = typename inode_defs::n4;
@@ -602,7 +602,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
   using critical_section_policy =
       typename ArtPolicy::template critical_section_policy<T>;
 
-  using read_critical_section = typename ArtPolicy::read_critical_section;
+  using lock_policy = typename ArtPolicy::lock_policy;
   
   using db_leaf_unique_ptr = typename ArtPolicy::db_leaf_unique_ptr;
 
@@ -645,7 +645,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // much to pop off of the internal key buffer when popping something
   // off of the stack.  For OLC, that information must be read when
   // using the CS but you DO NOT check the CS for validity when
-  // popping something off of the key buffer.
+  // popping something off of the key buffer since you need to pop off
+  // just as many bytes as were pushed on.
   using iter_result = std::tuple
       < node_ptr        // node pointer (NP) TODO -- make this [const node_ptr]?
       , std::byte       // key byte     (KB)

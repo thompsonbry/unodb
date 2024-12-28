@@ -31,6 +31,13 @@ class [[nodiscard]] fake_read_critical_section final {
     
 }; // class fake_read_critical_section
 
+// fake class for taking a lock.
+class [[nodiscard]] fake_lock final {
+ public:
+  // Acquire and return a fake critical section for a fake lock.
+  [[nodiscard]] fake_read_critical_section try_read_lock() noexcept {return fake_read_critical_section{};}
+}; // class fake_policy
+
 // Provide access to T with in_critical_section<T>-like interface, except that
 // loads and stores are direct instead of relaxed atomic. It enables having a
 // common templatized implementation of single-threaded and OLC node algorithms.
