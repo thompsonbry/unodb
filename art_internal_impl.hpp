@@ -638,11 +638,6 @@ class basic_inode_impl : public ArtPolicy::header_type {
   // When overflow happens, the iter_result is not defined and the
   // outer std::optional will return false.
   //
-  // Note: The read_critical_section contains the version information
-  // that must be valid to use the KB and CI data read from the NP.
-  // The CS information is cached when when those data are read from
-  // the NP along with the KB and CI values that were read.
-  //
   // FIXME variable length keys: we need to track the prefix length
   // that was consumed from the key during the descent so we know how
   // much to pop off of the internal key buffer when popping something
@@ -654,14 +649,12 @@ class basic_inode_impl : public ArtPolicy::header_type {
       < node_ptr        // node pointer (NP) TODO -- make this [const node_ptr]?
       , std::byte       // key byte     (KB)
       , std::uint8_t    // child-index  (CI) (index into children[] except for N48, which is index into the child_indexes[], aka the same as the key byte)
-        // , read_critical_section  // read-critical-section (CS) (version information NP lock used to populate [KB] and [CI] fields in this tuple).
       >;
   using iter_result_opt = std::optional< iter_result >;
   
   static constexpr int NP = 0; // node pointer (to an internal node or leaf, can also be the root node or root leaf)
   static constexpr int KB = 1; // key byte     (when stepping down from that node)
   static constexpr int CI = 2; // child_index  (along which the path steps down from that node)
-  static constexpr int CS = 3; // read_critical_section (for that node when obtaining the child_index).
   
  protected:
   using inode_type = typename ArtPolicy::inode;

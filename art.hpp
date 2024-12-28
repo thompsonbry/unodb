@@ -176,7 +176,7 @@ class db final {
    protected:
     
     // Return true unless the stack is empty.
-    inline bool valid() const noexcept;
+    inline bool valid() const noexcept { return ! stack_.empty(); }
 
     // Push the given node onto the stack and traverse from the
     // caller's node to the left-most leaf under that node, pushing
@@ -190,17 +190,24 @@ class db final {
 
     // Return the node on the top of the stack, which will wrap
     // nullptr if the stack is empty.
-    inline detail::node_ptr current_node() noexcept;
+    inline detail::node_ptr current_node() noexcept {
+      return stack_.empty()
+          ? detail::node_ptr(nullptr)
+          : std::get<NP>( stack_.top() );
+      ;
+    }      
     
    private:
 
     static constexpr int NP = detail::inode_base::NP; // node pointer
     static constexpr int KB = detail::inode_base::KB; // key byte (on descent from NP)
     static constexpr int CI = detail::inode_base::CI; // child_index (on descent from NP)(
-    static constexpr int CS = detail::inode_base::CS; // (read)_critical_section (for NP, guards validity of KB and CI.)
     
     // invalidate the iterator (pops everything off of the stack).
-    inline iterator& invalidate() noexcept;
+    inline iterator& invalidate() noexcept {
+      while ( ! stack_.empty() ) stack_.pop(); // clear the stack
+      return *this;
+    }
 
     // The element (0) is the key byte, element (1) is child index in
     // the node, element (2) is the pointer to the child or nullptr if

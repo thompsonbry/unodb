@@ -8,11 +8,6 @@
 
 namespace unodb {
 
-inline db::iterator& db::iterator::invalidate() noexcept {
-  while ( ! stack_.empty() ) stack_.pop(); // clear the stack
-  return *this;
-}
-
 inline std::optional<const key> db::iterator::get_key() noexcept {
   // FIXME Eventually this will need to use the stack to reconstruct
   // the key from the path from the root to this leaf.  Right now it
@@ -36,8 +31,6 @@ inline std::optional<const value_view> db::iterator::get_val() const noexcept {
   return leaf->get_value_view();
 }
 
-inline bool db::iterator::valid() const noexcept { return ! stack_.empty(); }
-
 inline bool db::iterator::operator==(const iterator& other) const noexcept {
   if ( &db_ != &other.db_ ) return false;                     // different tree?
   if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?
@@ -54,13 +47,6 @@ inline bool db::iterator::operator==(const iterator& other) const noexcept {
 }
 
 inline bool db::iterator::operator!=(const iterator& other) const noexcept { return !(*this == other); }
-
-inline detail::node_ptr db::iterator::current_node() noexcept {
-  return stack_.empty()
-      ? detail::node_ptr(nullptr)
-      : std::get<NP>( stack_.top() );
-  ;
-}
 
 inline key db::visitor::get_key() noexcept {return it.get_key().value();}
 inline value_view db::visitor::get_value() const noexcept {return it.get_val().value();}

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <iosfwd>  // IWYU pragma: keep
 #include <optional>
+#include <stack>
 #include <tuple>
 
 #include "art_common.hpp"
@@ -103,14 +104,213 @@ class olc_db final {
   // Only legal in single-threaded context, as destructor
   void clear() noexcept;
 
+  ///
+  /// iterator (the iterator is an internal API, the public API is scan()).
+  ///
+  protected:
+  class iterator {
+    friend class olc_db;
+   public:
+
+    // Construct an empty iterator.
+    inline iterator(olc_db& tree):db_(tree) {}
+
+    // Position the iterator on the first entry in the index.
+    iterator& first() noexcept;
+    
+    // Advance the iterator to next entry in the index.
+    iterator& next() noexcept;
+    
+    // Position the iterator on the last entry in the index, which can
+    // be used to initiate a reverse traversal.
+    //
+    // Note: This is NOT the same as end(), which does not position
+    // the iterator on anything.
+    iterator& last() noexcept;
+    
+    // Position the iterator on the previous entry in the index.
+    iterator& prior() noexcept;
+
+    // Makes this the "end()" iterator (by clearing the stack).
+    inline iterator& end() noexcept {return invalidate();}
+    
+    // Position the iterator on, before, or after the caller's key.
+    // If the iterator can not be positioned, it will be set to end().
+    // For example, if [fwd:=true] and the [search_key] is GT any key
+    // in the index then the iterator will be positioned to end()
+    // since there is no index entry greater than the search key.
+    // Likewise, if [fwd:=false] and the [search_key] is LT any key in
+    // the index, then the iterator will be positioned to end() since
+    // there is no index entry LT the search key.
+    //
+    // @param search_key The internal key used to position the iterator.
+    //
+    // @param match Will be set to true iff the search key is an exact
+    // match in the index data.  Otherwise, the match is not exact and
+    // the iterator is positioned either before or after the
+    // search_key.
+    //
+    // @param fwd When true, the iterator will be positioned first
+    // entry which orders GTE the search_key and end() if there is no
+    // such entry.  Otherwise, the iterator will be positioned on the
+    // last key which orders LTE the search_key and end() if there is
+    // no such entry.
+    iterator& seek(const detail::art_key& search_key, bool& match, bool fwd = true) noexcept;
+    
+    // Iff the iterator is positioned on an index entry, then returns
+    // the key associated with that index entry.
+    //
+    // Note: std::optional does not allow reference types, hence going
+    // with pointer to buffer return semantics.
+    inline std::optional<const key> get_key() noexcept;
+    
+    // Iff the iterator is positioned on an index entry, then returns
+    // the value associated with that index entry.
+    inline std::optional<const value_view> get_val() const noexcept;
+    
+    inline bool operator==(const iterator& other) const noexcept;    
+    inline bool operator!=(const iterator& other) const noexcept;
+
+    // Debugging
+    [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const;
+
+   protected:
+    
+    // Return true unless the stack is empty.
+    inline bool valid() const noexcept { return ! stack_.empty(); }
+
+    // Push the given node onto the stack and traverse from the
+    // caller's node to the left-most leaf under that node, pushing
+    // nodes onto the stack as they are visited.
+    iterator& left_most_traversal(detail::olc_node_ptr node) noexcept;
+
+    // Descend from the current state of the stack to the right most
+    // child leaf, updating the state of the iterator during the
+    // descent.
+    iterator& right_most_traversal(detail::olc_node_ptr node) noexcept;
+
+    // Return the node on the top of the stack, which will wrap
+    // nullptr if the stack is empty.
+    inline detail::olc_node_ptr current_node() noexcept {
+      return stack_.empty()
+          ? detail::olc_node_ptr(nullptr)
+          : std::get<NP>( stack_.top() );
+      ;
+    }
+    
+   private:
+
+    // invalidate the iterator (pops everything off of the stack).
+    inline iterator& invalidate() noexcept {
+      while ( ! stack_.empty() ) stack_.pop(); // clear the stack
+      return *this;
+    }     
+
+    // The [node_ptr] is never [nullptr] and points to the internal
+    // node or leaf for that step in the path from the root to some
+    // leaf.  For the bottom of the stack, [node_ptr] is the root.
+    // For the top of the stack, [node_ptr] is the current leaf. In
+    // the degenerate case where the tree is a single root leaf, then
+    // the stack contains just that leaf.
+    //
+    // The [key] is the [std::byte] along which the path descends from
+    // that [node_ptr].  The [key] has no meaning for a leaf.  The key
+    // byte may be used to reconstruct the full key (along with any
+    // prefix bytes in the nodes along the path).  The key byte is
+    // tracked to avoid having to search the keys of some node types
+    // (N48) when the [child_index] does not directly imply the key
+    // byte.
+    //
+    // The [child_index] is the [std::uint8_t] index position in the
+    // parent at which the [child_ptr] was found.  The [child_index]
+    // has no meaning for a leaf.  In the special case of N48, the
+    // [child_index] is the index into the [child_indexes[]].  For all
+    // other internal node types, the [child_index] is a direct index
+    // into the [children[]].  When finding the successor (or
+    // predecessor) the [child_index] needs to be interpreted
+    // according to the node type.  For N4 and N16, you just look at
+    // the next slot in the children[] to find the successor.  For
+    // N256, you look at the next non-null slot in the children[].
+    // N48 is the oddest of the node types.  For N48, you have to look
+    // at the child_indexes[], find the next mapped key value greater
+    // than the current one, and then look at its entry in the
+    // children[].
+    //
+    // Note: The read_critical_section contains the version information
+    // that must be valid to use the KB and CI data read from the NP.
+    // The CS information is cached when when those data are read from
+    // the NP along with the KB and CI values that were read.
+    //
+    // FIXME variable length keys: we need to track the prefix length
+    // that was consumed from the key during the descent so we know
+    // how much to pop off of the internal key buffer when popping
+    // something off of the stack.  For OLC, that information must be
+    // read when using the CS but you DO NOT check the CS for validity
+    // when popping something off of the key buffer since you need to
+    // pop off just as many bytes as were pushed on.
+    using stack_entry = std::tuple
+      < detail::olc_node_ptr  // node pointer (NP) TODO -- make this [const node_ptr]?
+      , std::byte             // key byte     (KB)
+      , std::uint8_t          // child-index  (CI) (index into children[] except for N48, which is index into the child_indexes[], aka the same as the key byte)
+      , optimistic_lock::read_critical_section // read-critical-section (CS) (version information NP lock used to populate [KB] and [CI] fields in this tuple).
+      >;
+  
+    static constexpr int NP = 0; // node pointer (to an internal node or leaf, can also be the root node or root leaf)
+    static constexpr int KB = 1; // key byte     (when stepping down from that node)
+    static constexpr int CI = 2; // child_index  (along which the path steps down from that node)
+    static constexpr int CS = 3; // read_critical_section (for that node when obtaining the child_index).
+    
+    // The outer db instance.
+    olc_db& db_;
+
+    // A stack reflecting the parent path from the root of the tree to
+    // the current leaf.  An empty stack corresponds to the end()
+    // iterator.  The iterator for an empty tree is an empty stack.
+    //
+    std::stack<stack_entry> stack_ {};
+
+    // A buffer into which visited keys are decoded and materialized
+    // by get_key().
+    //
+    // Note: The internal key is a sequence of unsigned bytes having
+    // the appropriate lexicographic ordering.  The internal key needs
+    // to be decoded to the external key.
+    //
+    // FIXME The current implementation stores the entire key in the
+    // leaf. This works fine for simple primitive keys.  However, it
+    // needs to be modified when the implementation is modified to
+    // support variable length keys. In that situation, the full
+    // internal key needs to be constructed using the [key] byte from
+    // the path stack plus the prefix bytes from the internal nodes
+    // along that path.
+    key key_ {};
+    
+  }; // class iterator
+  
+  //
+  // end of the iterator API, which is an internal API.
+  //
+  
+ public:
+  
+  ///
+  /// public scan API
+  ///
+
+  // Note: The scan() interface is public.  The iterator and the
+  // methods to obtain an iterator are protected (except for tests).
+  // This encapsulation makes it easier to define methods which
+  // operate on external keys (scan()) and those which operate on
+  // internal keys (seek() and the iterator). It also makes life
+  // easier for mutex_db since scan() can take the lock.
+  
   // Alias for an object visited by the scan_api.
   struct visitor {
-    friend class db;
+    friend class olc_db;
    protected:
-    //iterator& it;
-    //inline visitor(iterator& it_):it(it_){}
+    iterator& it;
+    inline visitor(iterator& it_):it(it_){}
    public:
-    inline visitor() {}  // FIXME OLC VISITOR IMPLEMENTATION NEEDS DB AND STACK AND VERSION INFO
     inline key get_key() noexcept;  // visit the key (may side-effect the iterator so not const).
     inline value_view get_value() const noexcept; // visit the value.
   };
