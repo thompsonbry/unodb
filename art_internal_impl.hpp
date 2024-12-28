@@ -224,6 +224,7 @@ inline void basic_db_inode_deleter<INode, Db>::operator()(
 template <class Db,
           template <class> class CriticalSectionPolicy,
           class LockPolicy,
+          class ReadCriticalSection,
           class NodePtr,
           class INodeDefs,
           template <class> class INodeReclamator,
@@ -233,6 +234,7 @@ struct basic_art_policy final {
   using node_ptr = NodePtr;
   using header_type = typename NodePtr::header_type;
   using lock_policy = LockPolicy;
+  using read_critical_section = ReadCriticalSection;
   using inode_defs = INodeDefs;
   using inode = typename inode_defs::inode;
   using inode4_type = typename inode_defs::n4;
@@ -603,6 +605,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
       typename ArtPolicy::template critical_section_policy<T>;
 
   using lock_policy = typename ArtPolicy::lock_policy;
+  using read_critical_section = typename ArtPolicy::read_critical_section;
   
   using db_leaf_unique_ptr = typename ArtPolicy::db_leaf_unique_ptr;
 
@@ -651,7 +654,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
       < node_ptr        // node pointer (NP) TODO -- make this [const node_ptr]?
       , std::byte       // key byte     (KB)
       , std::uint8_t    // child-index  (CI) (index into children[] except for N48, which is index into the child_indexes[], aka the same as the key byte)
-//      , read_critical_section  // read-critical-section (CS) (version information NP lock used to populate [KB] and [CI] fields in this tuple).
+        // , read_critical_section  // read-critical-section (CS) (version information NP lock used to populate [KB] and [CI] fields in this tuple).
       >;
   using iter_result_opt = std::optional< iter_result >;
   

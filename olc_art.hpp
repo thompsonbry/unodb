@@ -30,7 +30,8 @@ namespace detail {
 
 template <class,  // Db
           template <class> class,  // CriticalSectionPolicy
-          class,                   // LockPolicy
+          class,                   // optimistic_lock
+          class,                   // read_critical_section
           class,                   // NodePtr
           class,                   // INodeDefs
           template <class> class,  // INodeReclamator
@@ -318,7 +319,7 @@ class olc_db final {
   template <class>
   friend class detail::db_inode_qsbr_deleter;
 
-  template <class, template <class> class, class, class, class, template <class> class,
+  template <class, template <class> class, class, class, class, class, template <class> class,
             template <class, class> class>
   friend struct detail::basic_art_policy;
 

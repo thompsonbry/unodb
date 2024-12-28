@@ -36,7 +36,8 @@ static_assert(std::is_empty_v<node_header>);
 
 template <class,  // Db
           template <class> class,  // CriticalSectionPolicy
-          class,                   // ReadCriticalSection
+          class,                   // Fake lock implementation
+          class,                   // Fake read_critical_section implementation
           class,                   // NodePtr
           class,                   // INodeDefs
           template <class> class,  // INodeReclamator
@@ -58,6 +59,7 @@ using art_policy = unodb::detail::basic_art_policy<
   unodb::db,
   unodb::in_fake_critical_section,
   unodb::fake_lock,
+  unodb::fake_read_critical_section,
   unodb::detail::node_ptr,
   inode_defs,
   db_inode_deleter,
