@@ -185,16 +185,23 @@ class [[nodiscard]] optimistic_lock final {
    public:
     read_critical_section() noexcept = default;
 
-    // required for std::stack<tuple> containing a read_critical_section.
-    //
-    // TODO Review why this is needed.  It appears to be required when we instantiate an OLC scan().
-    read_critical_section(const read_critical_section& other) noexcept
-        : lock{other.lock}, version{other.version} {}
-    
     read_critical_section(optimistic_lock &lock_,
                           version_type version_) noexcept
         : lock{&lock_}, version{version_} {}
 
+#if 1
+    // required for std::stack<tuple> containing a read_critical_section.
+    //
+    // TODO Review why this is needed.  It appears to be required when we instantiate an OLC scan().
+    read_critical_section(const read_critical_section& other) noexcept : lock{other.lock}, version{other.version} {}
+    read_critical_section(read_critical_section && other) noexcept : lock{other.lock}, version{other.version} {}
+    read_critical_section &operator=(const read_critical_section &other) noexcept {
+      lock = other.lock;
+      version = other.version;
+      return *this;
+    }
+#endif
+    
     read_critical_section &operator=(read_critical_section &&other) noexcept {
       lock = other.lock;
       // The current implementation does not need lock == nullptr in the
@@ -240,9 +247,6 @@ class [[nodiscard]] optimistic_lock final {
       if (lock != nullptr) std::ignore = lock->try_read_unlock(version);
 #endif
     }
-
-    read_critical_section(read_critical_section &&) = delete;
-    read_critical_section &operator=(const read_critical_section &) = delete;
 
    private:
     optimistic_lock *lock{nullptr};

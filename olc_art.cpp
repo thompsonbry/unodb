@@ -1301,18 +1301,7 @@ void olc_db::dump(std::ostream &os) const {
 /// unodb::olc_db::iterator
 ///
 
-#if 1
-void olc_db::iterator::dump(std::ostream &os) const {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::first() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::last() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::next() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::prior() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::left_most_traversal(detail::olc_node_ptr node) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::right_most_traversal(detail::olc_node_ptr node) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-olc_db::iterator& olc_db::iterator::seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
-
-#else
-void db::iterator::dump(std::ostream &os) const {
+void olc_db::iterator::dump(std::ostream &os) const {
   if ( stack_.empty() ) {
     os << "iter::stack:: empty\n";
     return;
@@ -1320,7 +1309,7 @@ void db::iterator::dump(std::ostream &os) const {
   // Create a new stack and copy everything there.  Using the new
   // stack, print out the stack in top-bottom order.  This avoids
   // modifications to the existing stack for the iterator.
-  std::stack<detail::inode_base::iter_result> tmp {};
+  std::stack<olc_db::iterator::stack_entry> tmp {};
   tmp = stack_;
   uint64_t level = tmp.size() - 1;
   while ( ! tmp.empty() ) {
@@ -1330,18 +1319,116 @@ void db::iterator::dump(std::ostream &os) const {
        << ", key_byte=0x"<<std::hex<<std::setfill('0')<<std::setw(2)<<static_cast<uint64_t>(std::get<KB>( e ))<<std::dec
        << ", child_index=0x"<<std::hex<<std::setfill('0')<<std::setw(2)<<static_cast<uint64_t>(std::get<CI>( e ))<<std::dec
        << ", ";
-    detail::art_policy::dump_node( os, np, false /*recursive*/ );
+    detail::olc_art_policy::dump_node( os, np, false /*recursive*/ );
     if ( np.type() != node_type::LEAF ) os << std::endl;
     tmp.pop();
     level--;
   }
 }
 
+olc_db::iterator& olc_db::iterator::first() noexcept {
+  while ( ! try_first() ) { }
+  return *this;
+}
+
+olc_db::iterator& olc_db::iterator::last() noexcept {
+  while ( ! try_last() ) { }
+  return *this;
+}
+
+olc_db::iterator& olc_db::iterator::next() noexcept {
+  auto node = current_node();
+  if ( node != nullptr ) {
+    UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
+    const auto * const aleaf{ node.ptr<detail::olc_leaf *>() }; // current leaf.
+    // FIXME Variable length keys: We need a temporary copy of the key
+    // since actions on the stack will make it impossible to
+    // reconstruct the key.  So maybe we have two internal buffers on
+    // the iterator to support this?
+    const auto & akey = aleaf->get_key(); // access the key on the leaf.
+    while ( ! try_next( akey ) ) { }
+  }
+  return *this;
+}
+
+olc_db::iterator& olc_db::iterator::prior() noexcept {
+ auto node = current_node();
+  if ( node != nullptr ) {
+    UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
+    const auto * const aleaf{ node.ptr<detail::olc_leaf *>() }; // current leaf.
+    // FIXME Variable length keys: We need a temporary copy of the key
+    // since actions on the stack will make it impossible to
+    // reconstruct the key.  So maybe we have two internal buffers on
+    // the iterator to support this?
+    const auto & akey = aleaf->get_key(); // access the key on the leaf.
+    while ( ! try_prior( akey ) ) { }
+  }
+  return *this;
+}
+
+olc_db::iterator& olc_db::iterator::seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept {
+  while ( ! try_seek( search_key, match, fwd ) ) { }
+  return *this;
+}
+
+#if 1
+bool olc_db::iterator::try_first() noexcept {return true;}
+#else
+// Do some work and return the [read_critical_section] which protected
+// that work iff the lambda was executed while a read critical section
+// remained valid.
+template <FN fn>
+std::optional<optimistic_lock::read_critical_section> doWithReadCriticalSection( in_critical_section<detail::olc_node_ptr>& node, FN fn ) {
+}
+template <FN fn>
+std::optional<optimistic_lock::read_critical_section> doWithReadCriticalSection(
+    optimistic_lock& alock,
+    in_critical_section<detail::olc_node_ptr>& node,
+    FN fn )
+{
+  auto cs = alock.try_read_lock();
+  if ( UNODB_DETAIL_UNLIKELY( cs.must_restart() ) ) {
+    // LCOV_EXCL_START
+    spin_wait_loop_body();
+    return {};
+    // LCOV_EXCL_STOP
+  }
+  fn( node );
+  if (UNODB_DETAIL_UNLIKELY( ! cs.try_read_unlock() ) ) {
+    // LCOV_EXCL_START
+    spin_wait_loop_body();
+    return {};
+    // LCOV_EXCL_STOP
+  }
+  return cs;
+}
+
 // Traverse to the left-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the left-most leaf.
 // If the tree is empty, then the result is the same as end().
-db::iterator& db::iterator::first() noexcept {  // TODO reuse left_most_traversal() here?
+bool olc_db::iterator::try_first() noexcept {  // TODO reuse left_most_traversal() here?
   invalidate();  // clear the stack
+  auto parent_critical_section = doWithReadCriticalSection( root_pointer_lock, 
+  if (UNODB_DETAIL_UNLIKELY(parent_critical_section.must_restart())) {
+    // LCOV_EXCL_START
+    spin_wait_loop_body();
+    return {};
+    // LCOV_EXCL_STOP
+  }
+
+  auto node{root.load()};
+
+  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) {
+    if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) {
+      // LCOV_EXCL_START
+      spin_wait_loop_body();
+      return {};
+      // LCOV_EXCL_STOP
+    }
+    return std::make_optional<get_result>(std::nullopt);
+  }
+
+  
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
   while ( true ) {
@@ -1360,7 +1447,16 @@ db::iterator& db::iterator::first() noexcept {  // TODO reuse left_most_traversa
   }
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
-
+#endif
+      
+#if 1
+bool olc_db::iterator::try_last() noexcept {return true;}
+bool olc_db::iterator::try_next(const detail::art_key&) noexcept {return true;}
+bool olc_db::iterator::try_prior(const detail::art_key&) noexcept {return true;}
+bool olc_db::iterator::try_seek(const detail::art_key& search_key, bool& match, bool fwd)  noexcept {return true;}
+olc_db::iterator& olc_db::iterator::left_most_traversal(detail::olc_node_ptr) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::right_most_traversal(detail::olc_node_ptr) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+#else
 // Traverse to the right-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the right-most leaf.
 // If the tree is empty, then the result is the same as end().

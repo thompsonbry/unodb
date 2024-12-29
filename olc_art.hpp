@@ -245,9 +245,6 @@ class olc_db final {
     // Note: std::optional does not allow reference types, hence going
     // with pointer to buffer return semantics.
     inline std::optional<const key> get_key() noexcept {
-#if 1
-      return {}; // FIXME This is running into problems with partial type information.
-#else
       // Note: If the iterator is on a leaf, we return the key for that
       // leaf regardless of whether the leaf has been deleted.  This is
       // part of the design semantics for the OLC ART scan.
@@ -263,15 +260,11 @@ class olc_db final {
       const auto *const aleaf{ node.ptr<detail::olc_leaf *>() }; // current leaf.
       key_ = aleaf->get_key().decode(); // decode the key into the iterator's buffer.
       return key_; // return pointer to the internal key buffer.
-#endif
     }
     
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
     inline std::optional<const value_view> get_val() const noexcept {
-#if 1
-      return {}; // FIXME This is running into problems with partial type information.
-#else
       // Note: If the iterator is on a leaf, we return the value for
       // that leaf regardless of whether the leaf has been deleted.
       // This is part of the design semantics for the OLC ART scan.
@@ -282,7 +275,6 @@ class olc_db final {
       UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
       const auto *const aleaf{ node.ptr<detail::olc_leaf *>() }; // current leaf.
       return aleaf->get_value_view();
-#endif
     }
     
     inline bool operator==(const iterator& other) const noexcept {
@@ -335,6 +327,12 @@ class olc_db final {
       return *this;
     }     
 
+    bool try_first() noexcept; // Core logic invoked from retry loop.
+    bool try_last()  noexcept; // Core logic invoked from retry loop.
+    bool try_next(const detail::art_key& current_key)  noexcept; // Core logic invoked from retry loop.
+    bool try_prior(const detail::art_key& current_key) noexcept; // Core logic invoked from retry loop.
+    bool try_seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept; // Core logic invoked from retry loop.
+    
     // The [node_ptr] is never [nullptr] and points to the internal
     // node or leaf for that step in the path from the root to some
     // leaf.  For the bottom of the stack, [node_ptr] is the root.
