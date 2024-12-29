@@ -27,23 +27,6 @@
 
 namespace unodb::detail {
 
-struct [[nodiscard]] olc_node_header {
-  [[nodiscard]] constexpr optimistic_lock &lock() const noexcept {
-    return m_lock;
-  }
-
-#ifndef NDEBUG
-  static void check_on_dealloc(const void *ptr) noexcept {
-    static_cast<const olc_node_header *>(ptr)->m_lock.check_on_dealloc();
-  }
-#endif
-
- private:
-  mutable optimistic_lock m_lock;
-};
-
-static_assert(std::is_standard_layout_v<olc_node_header>);
-
 template <class Header, class Db>
 class db_leaf_qsbr_deleter {
  public:
@@ -131,33 +114,33 @@ class db_inode_qsbr_deleter : public db_inode_qsbr_deleter_parent<INode> {
 
 namespace {
 
-class olc_inode;
-class olc_inode_4;
-class olc_inode_16;
-class olc_inode_48;
-class olc_inode_256;
+// class olc_inode;
+// class olc_inode_4;
+// class olc_inode_16;
+// class olc_inode_48;
+// class olc_inode_256;
 
-using olc_inode_defs =
-    unodb::detail::basic_inode_def<olc_inode, olc_inode_4, olc_inode_16,
-                                   olc_inode_48, olc_inode_256>;
+// using olc_inode_defs =
+//     unodb::detail::basic_inode_def<olc_inode, olc_inode_4, olc_inode_16,
+//                                    olc_inode_48, olc_inode_256>;
 
-using olc_art_policy =
-    unodb::detail::basic_art_policy<unodb::olc_db,
-                                    unodb::in_critical_section,
-                                    unodb::optimistic_lock,
-                                    unodb::optimistic_lock::read_critical_section,
-                                    unodb::detail::olc_node_ptr,
-                                    olc_inode_defs,
-                                    unodb::detail::db_inode_qsbr_deleter,
-                                    unodb::detail::db_leaf_qsbr_deleter>;
+// using olc_art_policy =
+//     unodb::detail::basic_art_policy<unodb::olc_db,
+//                                     unodb::in_critical_section,
+//                                     unodb::optimistic_lock,
+//                                     unodb::optimistic_lock::read_critical_section,
+//                                     unodb::detail::olc_node_ptr,
+//                                     olc_inode_defs,
+//                                     unodb::detail::db_inode_qsbr_deleter,
+//                                     unodb::detail::db_leaf_qsbr_deleter>;
 
-using olc_db_leaf_unique_ptr = olc_art_policy::db_leaf_unique_ptr;
+// using olc_db_leaf_unique_ptr = olc_art_policy::db_leaf_unique_ptr;
 
-using leaf = olc_art_policy::leaf_type;
+// using leaf = olc_art_policy::leaf_type;
 
-using olc_inode_base = unodb::detail::basic_inode_impl<olc_art_policy>;
+// using olc_inode_base = unodb::detail::basic_inode_impl<olc_art_policy>;
 
-class olc_inode : public olc_inode_base {};
+// class olc_inode : public olc_inode_base {};
 
 [[nodiscard]] auto &node_ptr_lock(
     const unodb::detail::olc_node_ptr
@@ -168,7 +151,7 @@ class olc_inode : public olc_inode_base {};
 #ifndef NDEBUG
 
 [[nodiscard]] auto &node_ptr_lock(
-    const leaf *const node UNODB_DETAIL_LIFETIMEBOUND) noexcept {
+    const unodb::detail::olc_leaf *const node UNODB_DETAIL_LIFETIMEBOUND) noexcept {
   return node->lock();
 }
 
@@ -221,6 +204,8 @@ constexpr void olc_db::increment_inode_count() noexcept {
 
 namespace unodb::detail {
 
+using leaf = unodb::detail::olc_art_policy::leaf_type;
+
 // Wrap olc_inode_add in a struct so that the latter and not the former could be
 // declared as friend of olc_db, avoiding the need to forward declare the likes
 // of olc_db_leaf_unique_ptr.
@@ -254,9 +239,9 @@ struct olc_impl_helpers {
   olc_impl_helpers() = delete;
 };
 
-}  // namespace unodb::detail
-
-namespace {
+// }  // namespace unodb::detail
+//
+// namespace {
 
 ///
 /// OLC inode classes extend the basic inode classes and wrap them
@@ -271,13 +256,13 @@ namespace {
 ///
 
 class [[nodiscard]] olc_inode_4 final
-    : public unodb::detail::basic_inode_4<olc_art_policy> {
-  using parent_class = basic_inode_4<olc_art_policy>;
+    : public unodb::detail::basic_inode_4<unodb::detail::olc_art_policy> {
+  using parent_class = basic_inode_4<unodb::detail::olc_art_policy>;
 
  public:
   using parent_class::parent_class;
 
-  void init(db &db_instance, olc_inode_16 &source_node,
+  void init(db &db_instance, unodb::detail::olc_inode_16 &source_node,
             unodb::optimistic_lock::write_guard &source_node_guard,
             std::uint8_t child_to_delete,
             unodb::optimistic_lock::write_guard &child_guard);
@@ -285,15 +270,15 @@ class [[nodiscard]] olc_inode_4 final
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
 
   void init(unodb::detail::art_key k1, unodb::detail::art_key shifted_k2,
-            unodb::detail::tree_depth depth, leaf *child1,
-            olc_db_leaf_unique_ptr &&child2) noexcept {
+            unodb::detail::tree_depth depth, unodb::detail::leaf *child1,
+            unodb::detail::olc_db_leaf_unique_ptr &&child2) noexcept {
     UNODB_DETAIL_ASSERT(node_ptr_lock(child1).is_write_locked());
 
     parent_class::init(k1, shifted_k2, depth, child1, std::move(child2));
   }
 
   void init(unodb::detail::olc_node_ptr source_node, unsigned len,
-            unodb::detail::tree_depth depth, olc_db_leaf_unique_ptr &&child1) {
+            unodb::detail::tree_depth depth, unodb::detail::olc_db_leaf_unique_ptr &&child1) {
     UNODB_DETAIL_ASSERT(node_ptr_lock(source_node).is_write_locked());
 
     parent_class::init(source_node, len, depth, std::move(child1));
@@ -356,17 +341,17 @@ static_assert(sizeof(olc_inode_4) == 56 + 24);
 #endif  // #ifndef _MSC_VER
 
 class [[nodiscard]] olc_inode_16 final
-    : public unodb::detail::basic_inode_16<olc_art_policy> {
-  using parent_class = basic_inode_16<olc_art_policy>;
+    : public unodb::detail::basic_inode_16<unodb::detail::olc_art_policy> {
+  using parent_class = basic_inode_16<unodb::detail::olc_art_policy>;
 
  public:
   using parent_class::parent_class;
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
 
-  void init(db &db_instance, olc_inode_4 &source_node,
+  void init(db &db_instance, unodb::detail::olc_inode_4 &source_node,
             unodb::optimistic_lock::write_guard &source_node_guard,
-            olc_db_leaf_unique_ptr &&child,
+            unodb::detail::olc_db_leaf_unique_ptr &&child,
             unodb::detail::tree_depth depth) noexcept {
     UNODB_DETAIL_ASSERT(source_node_guard.guards(::lock(source_node)));
     parent_class::init(db_instance, obsolete(source_node, source_node_guard),
@@ -374,7 +359,7 @@ class [[nodiscard]] olc_inode_16 final
     UNODB_DETAIL_ASSERT_INACTIVE(source_node_guard);
   }
 
-  void init(db &db_instance, olc_inode_48 &source_node,
+  void init(db &db_instance, unodb::detail::olc_inode_48 &source_node,
             unodb::optimistic_lock::write_guard &source_node_guard,
             std::uint8_t child_to_delete,
             unodb::optimistic_lock::write_guard &child_guard) noexcept;
@@ -433,7 +418,7 @@ static_assert(sizeof(olc_inode_16) == 160 + 32);
 
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26434)
 
-void olc_inode_4::init(db &db_instance, olc_inode_16 &source_node,
+void olc_inode_4::init(db &db_instance, unodb::detail::olc_inode_16 &source_node,
                        unodb::optimistic_lock::write_guard &source_node_guard,
                        std::uint8_t child_to_delete,
                        unodb::optimistic_lock::write_guard &child_guard) {
@@ -625,9 +610,9 @@ void create_leaf_if_needed(olc_db_leaf_unique_ptr &cached_leaf,
   }
 }
 
-}  // namespace
-
-namespace unodb::detail {
+// }  // namespace
+//
+// namespace unodb::detail {
 
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
 template <class INode>
@@ -727,8 +712,8 @@ template <class INode>
     return true;
   }
 
-  const auto *const leaf{child->ptr<::leaf *>()};
-  if (!leaf->matches(k)) {
+  const auto *const aleaf{child->ptr<unodb::detail::leaf *>()};
+  if (!aleaf->matches(k)) {
     if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
       return {};  // LCOV_EXCL_LINE
     if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
@@ -914,9 +899,9 @@ olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
     const auto node_type = node.type();
 
     if (node_type == node_type::LEAF) {
-      const auto *const leaf{node.ptr<::leaf *>()};
-      if (leaf->matches(k)) {
-        const auto val_view{leaf->get_value_view()};
+      const auto *const aleaf{node.ptr<unodb::detail::leaf *>()};
+      if (aleaf->matches(k)) {
+        const auto val_view{aleaf->get_value_view()};
         if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE
         return qsbr_ptr_span<const std::byte>{val_view};
@@ -926,7 +911,7 @@ olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
       return std::make_optional<get_result>(std::nullopt);
     }
 
-    auto *const inode{node.ptr<olc_inode *>()};
+    auto *const inode{node.ptr<unodb::detail::olc_inode *>()};
     const auto &key_prefix{inode->get_key_prefix()};
     const auto key_prefix_length{key_prefix.length()};
     const auto shared_key_prefix_length{
@@ -965,7 +950,7 @@ bool olc_db::insert(key insert_key, value_view v) {
   const auto bin_comparable_key = detail::art_key{insert_key};
 
   try_update_result_type result;
-  olc_db_leaf_unique_ptr cached_leaf{
+  unodb::detail::olc_db_leaf_unique_ptr cached_leaf{
       nullptr,
       detail::basic_db_leaf_deleter<detail::olc_node_header, olc_db>{*this}};
 
@@ -978,7 +963,7 @@ bool olc_db::insert(key insert_key, value_view v) {
 }
 
 olc_db::try_update_result_type olc_db::try_insert(
-    detail::art_key k, value_view v, olc_db_leaf_unique_ptr &cached_leaf) {
+    detail::art_key k, value_view v, unodb::detail::olc_db_leaf_unique_ptr &cached_leaf) {
   auto parent_critical_section = root_pointer_lock.try_read_lock();
   if (UNODB_DETAIL_UNLIKELY(parent_critical_section.must_restart())) {
     // LCOV_EXCL_START
@@ -1021,8 +1006,8 @@ olc_db::try_update_result_type olc_db::try_insert(
     const auto node_type = node.type();
 
     if (node_type == node_type::LEAF) {
-      auto *const leaf{node.ptr<::leaf *>()};
-      const auto existing_key{leaf->get_key()};
+      auto *const aleaf{node.ptr<unodb::detail::leaf *>()};
+      const auto existing_key{aleaf->get_key()};
       if (UNODB_DETAIL_UNLIKELY(k == existing_key)) {
         if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE
@@ -1037,7 +1022,7 @@ olc_db::try_update_result_type olc_db::try_insert(
 
       create_leaf_if_needed(cached_leaf, k, v, *this);
       auto new_node{
-          olc_inode_4::create(*this, existing_key, remaining_key, depth)};
+          unodb::detail::olc_inode_4::create(*this, existing_key, remaining_key, depth)};
 
       {
         const optimistic_lock::write_guard parent_guard{
@@ -1048,7 +1033,7 @@ olc_db::try_update_result_type olc_db::try_insert(
             std::move(node_critical_section)};
         if (UNODB_DETAIL_UNLIKELY(node_guard.must_restart())) return {};
 
-        new_node->init(existing_key, remaining_key, depth, leaf,
+        new_node->init(existing_key, remaining_key, depth, aleaf,
                        std::move(cached_leaf));
         *node_in_parent =
             detail::olc_node_ptr{new_node.release(), node_type::I4};
@@ -1062,7 +1047,7 @@ olc_db::try_update_result_type olc_db::try_insert(
     UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
     UNODB_DETAIL_ASSERT(depth < detail::art_key::size);
 
-    auto *const inode{node.ptr<olc_inode *>()};
+    auto *const inode{node.ptr<unodb::detail::olc_inode *>()};
     const auto &key_prefix{inode->get_key_prefix()};
     const auto key_prefix_length{key_prefix.length()};
     const auto shared_prefix_length{
@@ -1070,7 +1055,7 @@ olc_db::try_update_result_type olc_db::try_insert(
 
     if (shared_prefix_length < key_prefix_length) {
       create_leaf_if_needed(cached_leaf, k, v, *this);
-      auto new_node{olc_inode_4::create(*this, node, shared_prefix_length)};
+      auto new_node{unodb::detail::olc_inode_4::create(*this, node, shared_prefix_length)};
 
       {
         const optimistic_lock::write_guard parent_guard{
@@ -1168,8 +1153,8 @@ olc_db::try_update_result_type olc_db::try_remove(detail::art_key k) {
   auto node_type = node.type();
 
   if (node_type == node_type::LEAF) {
-    auto *const leaf{node.ptr<::leaf *>()};
-    if (leaf->matches(k)) {
+    auto *const aleaf{node.ptr<unodb::detail::leaf *>()};
+    if (aleaf->matches(k)) {
       const optimistic_lock::write_guard parent_guard{
           std::move(parent_critical_section)};
       // Do not call spin_wait_loop_body from this point on - assume the above
@@ -1181,7 +1166,7 @@ olc_db::try_update_result_type olc_db::try_remove(detail::art_key k) {
 
       node_guard.unlock_and_obsolete();
 
-      const auto r{olc_art_policy::reclaim_leaf_on_scope_exit(leaf, *this)};
+      const auto r{detail::olc_art_policy::reclaim_leaf_on_scope_exit(aleaf, *this)};
       root = detail::olc_node_ptr{nullptr};
       return true;
     }
@@ -1200,7 +1185,7 @@ olc_db::try_update_result_type olc_db::try_remove(detail::art_key k) {
     UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
     UNODB_DETAIL_ASSERT(depth < detail::art_key::size);
 
-    auto *const inode{node.ptr<olc_inode *>()};
+    auto *const inode{node.ptr<unodb::detail::olc_inode *>()};
     const auto &key_prefix{inode->get_key_prefix()};
     const auto key_prefix_length{key_prefix.length()};
     const auto shared_prefix_length{
@@ -1252,7 +1237,7 @@ void olc_db::delete_root_subtree() noexcept {
   UNODB_DETAIL_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
 
-  if (root != nullptr) olc_art_policy::delete_subtree(root, *this);
+  if (root != nullptr) detail::olc_art_policy::delete_subtree(root, *this);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   // It is possible to reset the counter to zero instead of decrementing it for
@@ -1309,7 +1294,382 @@ void olc_db::dump(std::ostream &os) const {
 #else
   os << "olc_db dump\n";
 #endif  // UNODB_DETAIL_WITH_STATS
-  olc_art_policy::dump_node(os, root.load());
+  detail::olc_art_policy::dump_node(os, root.load());
 }
+
+///
+/// unodb::olc_db::iterator
+///
+
+#if 1
+void olc_db::iterator::dump(std::ostream &os) const {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::first() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::last() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::next() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::prior() noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::left_most_traversal(detail::olc_node_ptr node) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::right_most_traversal(detail::olc_node_ptr node) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+olc_db::iterator& olc_db::iterator::seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept {UNODB_DETAIL_CANNOT_HAPPEN();}
+
+#else
+void db::iterator::dump(std::ostream &os) const {
+  if ( stack_.empty() ) {
+    os << "iter::stack:: empty\n";
+    return;
+  }
+  // Create a new stack and copy everything there.  Using the new
+  // stack, print out the stack in top-bottom order.  This avoids
+  // modifications to the existing stack for the iterator.
+  std::stack<detail::inode_base::iter_result> tmp {};
+  tmp = stack_;
+  uint64_t level = tmp.size() - 1;
+  while ( ! tmp.empty() ) {
+    const auto& e = tmp.top();
+    const auto np = std::get<NP>( e );
+    os << "iter::stack:: level = " << level
+       << ", key_byte=0x"<<std::hex<<std::setfill('0')<<std::setw(2)<<static_cast<uint64_t>(std::get<KB>( e ))<<std::dec
+       << ", child_index=0x"<<std::hex<<std::setfill('0')<<std::setw(2)<<static_cast<uint64_t>(std::get<CI>( e ))<<std::dec
+       << ", ";
+    detail::art_policy::dump_node( os, np, false /*recursive*/ );
+    if ( np.type() != node_type::LEAF ) os << std::endl;
+    tmp.pop();
+    level--;
+  }
+}
+
+// Traverse to the left-most leaf. The stack is cleared first and then
+// re-populated as we step down along the path to the left-most leaf.
+// If the tree is empty, then the result is the same as end().
+db::iterator& db::iterator::first() noexcept {  // TODO reuse left_most_traversal() here?
+  invalidate();  // clear the stack
+  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
+  auto node{ db_.root };
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->begin( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Traverse to the right-most leaf. The stack is cleared first and then
+// re-populated as we step down along the path to the right-most leaf.
+// If the tree is empty, then the result is the same as end().
+db::iterator& db::iterator::last() noexcept { // TODO reuse right_most_traversal() here?
+  invalidate();  // clear the stack
+  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
+  auto node{ db_.root };
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->last( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Position the iterator on the next leaf in the index.
+db::iterator& db::iterator::next() noexcept {
+  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
+  while ( ! stack_.empty() ) {
+    auto e = stack_.top();
+    auto node{ std::get<NP>( e ) };
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      stack_.pop(); // pop off the leaf
+      continue; // continue (if just a root leaf, we will fall through the loop since the stack will now be empty).
+    }
+    auto* inode{ node.ptr<detail::inode *>() };
+    auto nxt = inode->next( node_type, std::get<CI>( e ) ); // next child of that parent.
+    if ( ! nxt ) {
+      stack_.pop();  // Nothing more for that inode.
+      continue;      // We will look for the right sibling of the parent inode.
+    }
+    { // Recursive left descent.
+      UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
+      auto e2 = nxt.value();
+      stack_.pop();
+      stack_.push( e2 );
+      node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
+      while ( true ) {
+        UNODB_DETAIL_ASSERT( node != nullptr );
+        node_type = node.type();
+        if ( node_type == node_type::LEAF ) {
+          // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+          return *this;  // done
+        }
+        // recursive left descent.
+        inode = node.ptr<detail::inode *>();
+        auto tmp = inode->begin( node_type );  // first child of the current internal node.
+        stack_.push( tmp );                    // push the entry on the stack.
+        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
+      }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+  }
+  return *this; // stack is empty, so iterator == end().
+}
+
+// Position the iterator on the prior leaf in the index.
+db::iterator& db::iterator::prior() noexcept {
+  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
+  while ( ! stack_.empty() ) {
+    auto e = stack_.top();
+    auto node{ std::get<NP>( e ) };
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      stack_.pop(); // pop off the leaf
+      continue; // continue (if just a root leaf, we will fall through the loop since the stack will now be empty).
+    }
+    auto* inode{ node.ptr<detail::inode *>() };
+    auto nxt = inode->prior( node_type, std::get<CI>( e ) ); // previous child of that parent.
+    if ( ! nxt ) {
+      stack_.pop();  // Nothing more for that inode.
+      continue;      // We will look for the left sibling of the parent inode.
+    }
+    { // Recursive right descent.
+      UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
+      auto e2 = nxt.value();
+      stack_.pop();
+      stack_.push( e2 );
+      node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
+      while ( true ) {
+        UNODB_DETAIL_ASSERT( node != nullptr );
+        node_type = node.type();
+        if ( node_type == node_type::LEAF ) {
+          // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+          return *this;  // done
+        }
+        // recursive right descent.
+        inode = node.ptr<detail::inode *>();
+        auto tmp = inode->last( node_type );  // last child of the current internal node.
+        stack_.push( tmp );                   // push the entry on the stack.
+        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
+      }
+    }
+    UNODB_DETAIL_CANNOT_HAPPEN();
+  }
+  return *this; // stack is empty, so iterator == end().
+}
+
+// Push the given node onto the stack and traverse from the caller's
+// node to the left-most leaf under that node, pushing nodes onto the
+// stack as they are visited.
+inline db::iterator& db::iterator::left_most_traversal(detail::node_ptr node) noexcept {
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->begin( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Push the given node onto the stack and traverse from the caller's
+// node to the right-most leaf under that node, pushing nodes onto the
+// stack as they are visited.
+inline db::iterator& db::iterator::right_most_traversal(detail::node_ptr node) noexcept {
+  while ( true ) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
+    const auto node_type = node.type();
+    if ( node_type == node_type::LEAF ) {
+      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      return *this; // done
+    }
+    // recursive descent.
+    auto *const inode{ node.ptr<detail::inode *>() };
+    auto e = inode->last( node_type );  // first child of the current internal node.
+    stack_.push( e );                    // push the entry on the stack.
+    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+  }
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+
+// Note: The basic seek() logic is similar to ::get() as long as the
+// search_key exists in the data.  However, the iterator is positioned
+// instead of returning the value for the key.  Life gets a lot more
+// complicated when the search_key is not in the data and we have to
+// consider the cases for both forward traversal and reverse traversal
+// from a key that is not in the data.
+db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept {
+
+  invalidate();  // invalidate the iterator (clear the stack).
+  match = false; // unless we wind up with an exact match.
+  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // aka end()
+
+  auto node{db_.root};
+  const detail::art_key k = search_key;
+  auto remaining_key{k};
+
+  while (true) {
+    const auto node_type = node.type();
+    if (node_type == node_type::LEAF) {
+      const auto *const leaf{node.ptr<detail::leaf *>()};
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
+      const auto cmp = leaf->cmp( k );
+      if ( cmp == 0 ) {
+        match = true;
+        return *this;
+      } else if ( fwd ) { // GTE semantics
+        return ( cmp < 0 ) ? *this :next();  // if search_key < leaf, use the leaf, else next().
+      } else {  // LTE semantics
+        return ( cmp > 0 ) ? *this :prior(); // if search_key > leaf, use the leaf, else prior().
+      }
+      UNODB_DETAIL_CANNOT_HAPPEN();
+    }
+    UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
+    auto *const inode{node.ptr<detail::inode *>()};  // some internal node.
+    const auto &key_prefix{inode->get_key_prefix()}; // prefix for that node.
+    const auto key_prefix_length{key_prefix.length()}; // length of that prefix.
+    const auto shared_length = key_prefix.get_shared_length( remaining_key ); // #of prefix bytes matched.
+    if ( shared_length < key_prefix_length ) {
+      // We have visited an internal node whose prefix is longer than
+      // the bytes in the key that we need to match.  To figure out
+      // whether the search key would be located before or after the
+      // current internal node, we need to compare the respective key
+      // spans lexicographically.  Since we have [shared_length] bytes
+      // in common, we know that the next byte will tell us the
+      // relative ordering of the key vs the prefix.
+      const auto cmp = static_cast<std::int16_t>(remaining_key[ shared_length ])
+                     - static_cast<std::int16_t>(key_prefix   [ shared_length ]); // compare prefix and key and the first byte where they differ.
+      //std::cerr<<"shared_length="<<shared_length<<", cmp(remaining_key,key_prefix)="<<cmp<<", fwd="<<fwd; key_prefix.dump(std::cerr); std::cerr<<std::endl;
+      UNODB_DETAIL_ASSERT( cmp != 0 );
+      if ( fwd ) {
+        if ( cmp < 0 ) {
+          // FWD and the search key is ordered before this node.  We
+          // want the left-most leaf under the node.
+          return left_most_traversal( node );
+        } else {
+          // FWD and the search key is ordered after this node.  Right
+          // most descent and then next().
+          return right_most_traversal( node ).next();
+        }
+      } else {  // reverse traversal
+        if ( cmp < 0 ) {
+          // REV and the search key is ordered before this node.  We
+          // want the preceeding key.
+        return left_most_traversal( node ).prior();
+        } else {
+          // REV and the search key is ordered after this node. 
+          return right_most_traversal( node );
+        }
+      }
+      UNODB_DETAIL_CANNOT_HAPPEN();
+    }
+    remaining_key.shift_right(key_prefix_length);
+    auto res = inode->find_child( node_type, remaining_key[0] );
+    if ( res.second == nullptr ) {
+      // We are on a key byte during the descent that is not mapped by
+      // the current node.  Where we go next depends on whether we are
+      // doing forward or reverse traversal.
+      if ( fwd ) {
+        // FWD: Take the next child_index that is mapped in the data
+        // and then do a left-most descent to land on the key that is
+        // the immediate successor of the desired key in the data.
+        //    
+        // Note: We are probing with a key byte which does not appear
+        // in our list of keys (this was verified above) so this will
+        // always be the index the first entry whose key byte is
+        // greater-than the probe value and [false] if there is no
+        // such entry.
+        auto nxt = inode->gte_key_byte( node_type, remaining_key[0] ); // Note: [node] has not been pushed onto the stack yet!
+        if ( ! nxt ) {
+          // Pop entries off the stack until we find one with a
+          // right-sibling of the path we took to this node and then
+          // do a left-most descent under that right-sibling. If there
+          // is no such parent, we will wind up with an empty stack
+          // (aka the end() iterator) and return that state.
+          if ( ! stack_.empty() ) stack_.pop();
+          while ( ! stack_.empty() ) {
+            const auto centry = stack_.top();
+            const auto cnode = std::get<NP>( centry );
+            auto *const icnode{cnode.ptr<detail::inode *>()};
+            const auto cnxt = icnode->next( cnode.type(), std::get<CI>(centry) ); // right-sibling.
+            if ( cnxt ) {
+              auto nchild = icnode->get_child( cnode.type(), std::get<CI>(centry) );
+              return left_most_traversal( nchild );
+            }
+            stack_.pop();
+          }
+          return *this; // stack is empty (aka end()).
+        }
+        auto tmp = nxt.value(); // unwrap.
+        const auto child_index = std::get<CI>( tmp );
+        const auto child = inode->get_child( node_type, child_index );
+        stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
+        return left_most_traversal( child );                       // left most traversal
+      } else {
+        // REV: Take the prior child_index that is mapped and then do
+        // a right-most descent to land on the key that is the
+        // immediate precessor of the desired key in the data.
+        auto nxt = inode->lte_key_byte( node_type, remaining_key[0] );
+        if ( ! nxt ) {
+          // Pop off the current entry until we find one with a
+          // left-sibling and then do a right-most descent under that
+          // left-sibling.  In the extreme case there is no such
+          // previous entry and we will wind up with an empty stack.
+          if ( ! stack_.empty() ) stack_.pop();
+          while ( ! stack_.empty() ) {
+            const auto centry = stack_.top();
+            const auto cnode = std::get<NP>( centry );
+            auto *const icnode{cnode.ptr<detail::inode *>()};
+            const auto cnxt = icnode->prior( cnode.type(), std::get<CI>(centry) ); // left-sibling.
+            if ( cnxt ) {
+              auto nchild = icnode->get_child( cnode.type(), std::get<CI>(centry) );
+              return right_most_traversal( nchild );
+            }
+            stack_.pop();
+          }
+          return *this; // stack is empty (aka end()).
+        }
+        auto tmp = nxt.value();           // unwrap.
+        const auto child_index = std::get<CI>( tmp );
+        const auto child = inode->get_child( node_type, child_index );
+        stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
+        return right_most_traversal( child ); // right most traversal
+      }
+      UNODB_DETAIL_CANNOT_HAPPEN();
+    } else {
+      // Simple case. There is a child for the current key byte.
+      const auto child_index { res.first };
+      const auto *const child { res.second };
+      stack_.push( { node, remaining_key[0], child_index } );
+      node = *child;
+      remaining_key.shift_right(1);
+    }
+  } // while ( true )
+  UNODB_DETAIL_CANNOT_HAPPEN();
+}
+#endif
 
 }  // namespace unodb

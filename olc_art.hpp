@@ -17,7 +17,7 @@
 
 #include "art_common.hpp"
 #include "art_internal.hpp"
-//#include "art_internal_impl.hpp"
+#include "art_internal_impl.hpp"
 #include "assert.hpp"
 #include "node_type.hpp"
 #include "optimistic_lock.hpp"
@@ -30,24 +30,43 @@ class olc_db;
 
 namespace detail {
 
-template <class,  // Db
-          template <class> class,  // CriticalSectionPolicy
-          class,                   // optimistic_lock
-          class,                   // read_critical_section
-          class,                   // NodePtr
-          class,                   // INodeDefs
-          template <class> class,  // INodeReclamator
-          template <class, class> class>  // LeadReclamator
-struct basic_art_policy;  // IWYU pragma: keep
+struct [[nodiscard]] olc_node_header {
+  [[nodiscard]] constexpr optimistic_lock &lock() const noexcept {
+    return m_lock;
+  }
 
-struct olc_node_header;
+#ifndef NDEBUG
+  static void check_on_dealloc(const void *ptr) noexcept {
+    static_cast<const olc_node_header *>(ptr)->m_lock.check_on_dealloc();
+  }
+#endif
+
+ private:
+  mutable optimistic_lock m_lock;
+};
+static_assert(std::is_standard_layout_v<olc_node_header>);
+
+class olc_inode;
+class olc_inode_4;
+class olc_inode_16;
+class olc_inode_48;
+class olc_inode_256;
+
+using olc_inode_defs =
+    unodb::detail::basic_inode_def<olc_inode, olc_inode_4, olc_inode_16,
+                                   olc_inode_48, olc_inode_256>;
+
+// template <class,  // Db
+//           template <class> class,  // CriticalSectionPolicy
+//           class,                   // optimistic_lock
+//           class,                   // read_critical_section
+//           class,                   // NodePtr
+//           class,                   // INodeDefs
+//           template <class> class,  // INodeReclamator
+//           template <class, class> class>  // LeadReclamator
+// struct basic_art_policy;  // IWYU pragma: keep
 
 using olc_node_ptr = basic_node_ptr<olc_node_header>;
-
-    // // FIXME THIS IS HACKED IN.  A PROPER REFACTOR IS REQUIRED.
-    // using node_ptr = unodb::detail::olc_node_ptr; // NodePtr;
-    // using header_type = typename node_ptr::header_type;
-    // using leaf = detail::basic_leaf<header_type>;
 
 template <class>
 class db_inode_qsbr_deleter;  // IWYU pragma: keep
@@ -59,6 +78,28 @@ template <class Header, class Db>
 [[nodiscard]] auto make_db_leaf_ptr(art_key, value_view, Db &);
 
 struct olc_impl_helpers;
+
+using olc_art_policy =
+    unodb::detail::basic_art_policy<unodb::olc_db,
+                                    unodb::in_critical_section,
+                                    unodb::optimistic_lock,
+                                    unodb::optimistic_lock::read_critical_section,
+                                    unodb::detail::olc_node_ptr,
+                                    olc_inode_defs,
+                                    unodb::detail::db_inode_qsbr_deleter,
+                                    unodb::detail::db_leaf_qsbr_deleter>;
+
+using olc_db_leaf_unique_ptr = olc_art_policy::db_leaf_unique_ptr;
+
+using olc_inode_base = unodb::detail::basic_inode_impl<olc_art_policy>;
+
+class olc_inode : public olc_inode_base {};
+
+using olc_leaf = unodb::detail::olc_art_policy::leaf_type;
+
+//
+//
+//
 
 template <class AtomicArray>
 using non_atomic_array =
@@ -90,6 +131,7 @@ using qsbr_value_view = qsbr_ptr_span<const std::byte>;
 class olc_db final {
  public:
   using get_result = std::optional<qsbr_value_view>;
+  //using leaf = detail::olc_leaf;
 
   // Creation and destruction
   olc_db() noexcept = default;
@@ -218,8 +260,8 @@ class olc_db final {
       const auto& e = stack_.top();
       const auto& node = std::get<NP>( e );
       UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
-      const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
-      key_ = leaf->get_key().decode(); // decode the key into the iterator's buffer.
+      const auto *const aleaf{ node.ptr<detail::olc_leaf *>() }; // current leaf.
+      key_ = aleaf->get_key().decode(); // decode the key into the iterator's buffer.
       return key_; // return pointer to the internal key buffer.
 #endif
     }
@@ -238,13 +280,25 @@ class olc_db final {
       const auto& e = stack_.top();
       const auto& node = std::get<NP>( e );
       UNODB_DETAIL_ASSERT( node.type() == node_type::LEAF ); // On a leaf.
-      const auto *const leaf{ node.ptr<detail::leaf *>() }; // current leaf.
-      return leaf->get_value_view();
+      const auto *const aleaf{ node.ptr<detail::olc_leaf *>() }; // current leaf.
+      return aleaf->get_value_view();
 #endif
     }
     
-    inline bool operator==(const iterator& other) const noexcept;    
-    inline bool operator!=(const iterator& other) const noexcept;
+    inline bool operator==(const iterator& other) const noexcept {
+      if ( &db_ != &other.db_ ) return false;                     // different tree?
+      if ( stack_.empty() != other.stack_.empty() ) return false; // one stack is empty and the other is not?
+      if ( stack_.empty() ) return true;                          // both empty.
+      // The main reason to compare iterators is to detect the end().
+      //
+      // This is looking at all components in the element on the top
+      // of the stack (including the read_critical_section).
+      const auto& a = stack_.top();
+      const auto& b = other.stack_.top();
+      return a == b; // top of stack is same (inode, key, and child_index).
+    }
+    
+    inline bool operator!=(const iterator& other) const noexcept {return !(*this == other);}
 
     // Debugging
     [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream &os) const;
@@ -516,6 +570,13 @@ class olc_db final {
       }
     }
   }
+  
+  //
+  // TEST ONLY METHODS
+  //
+
+  // Used to write the iterator tests.
+  auto __test_only_iterator__() noexcept {return iterator(*this);}
   
   // Stats
 

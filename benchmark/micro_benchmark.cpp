@@ -139,7 +139,7 @@ void dense_iter_full_fwd_scan(benchmark::State &state) {
           sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
           return false;
         };
-        test_db.scan( fn );
+        test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.
       } else {
         auto fn = [&sum](unodb::db::visitor& v) {
           sum += v.get_key();

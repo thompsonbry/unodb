@@ -185,6 +185,12 @@ class [[nodiscard]] optimistic_lock final {
    public:
     read_critical_section() noexcept = default;
 
+    // required for std::stack<tuple> containing a read_critical_section.
+    //
+    // TODO Review why this is needed.  It appears to be required when we instantiate an OLC scan().
+    read_critical_section(const read_critical_section& other) noexcept
+        : lock{other.lock}, version{other.version} {}
+    
     read_critical_section(optimistic_lock &lock_,
                           version_type version_) noexcept
         : lock{&lock_}, version{version_} {}
@@ -201,6 +207,11 @@ class [[nodiscard]] optimistic_lock final {
       return *this;
     }
 
+    // Point to the same lock and have the same version for that lock.
+    bool operator==(const read_critical_section &other) const noexcept {
+      return lock == other.lock && version == other.version;
+    }
+    
     [[nodiscard, gnu::flatten]] UNODB_DETAIL_FORCE_INLINE bool try_read_unlock()
         UNODB_DETAIL_RELEASE_CONST noexcept {
       const auto result = lock->try_read_unlock(version);
@@ -230,7 +241,6 @@ class [[nodiscard]] optimistic_lock final {
 #endif
     }
 
-    read_critical_section(const read_critical_section &) = delete;
     read_critical_section(read_critical_section &&) = delete;
     read_critical_section &operator=(const read_critical_section &) = delete;
 
@@ -421,6 +431,7 @@ static_assert(sizeof(optimistic_lock) == 8);
 static_assert(sizeof(optimistic_lock) == 24);
 #endif
 
+// A gloss for the atomic semantics used to guard loads and stores.
 template <typename T>
 class [[nodiscard]] in_critical_section final {
  public:

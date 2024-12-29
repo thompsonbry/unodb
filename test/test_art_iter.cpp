@@ -41,7 +41,7 @@ class ARTIteratorTest : public ::testing::Test {
 #define last(db) db.__test_only_iterator__().last()
 #define end(db) db.__test_only_iterator__()
 
-using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db/*, unodb::olc_db>*/>;     // FIXME Restore all ART types.
+using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db, unodb::olc_db>;
 
 UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 

@@ -449,7 +449,7 @@ void db::dump(std::ostream &os) const {
 }
 
 ///
-/// iterator
+/// unodb::db::iterator
 ///
 
 void db::iterator::dump(std::ostream &os) const {
