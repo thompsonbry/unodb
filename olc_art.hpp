@@ -30,7 +30,10 @@ class olc_db;
 
 namespace detail {
 
+// The OLC header contains an [optimistic_lock].
 struct [[nodiscard]] olc_node_header {
+
+  // Return a reference to the [optimistic_lock].
   [[nodiscard]] constexpr optimistic_lock &lock() const noexcept {
     return m_lock;
   }
@@ -42,7 +45,7 @@ struct [[nodiscard]] olc_node_header {
 #endif
 
  private:
-  mutable optimistic_lock m_lock;
+  mutable optimistic_lock m_lock;  // The lock.
 };
 static_assert(std::is_standard_layout_v<olc_node_header>);
 
@@ -55,16 +58,6 @@ class olc_inode_256;
 using olc_inode_defs =
     unodb::detail::basic_inode_def<olc_inode, olc_inode_4, olc_inode_16,
                                    olc_inode_48, olc_inode_256>;
-
-// template <class,  // Db
-//           template <class> class,  // CriticalSectionPolicy
-//           class,                   // optimistic_lock
-//           class,                   // read_critical_section
-//           class,                   // NodePtr
-//           class,                   // INodeDefs
-//           template <class> class,  // INodeReclamator
-//           template <class, class> class>  // LeadReclamator
-// struct basic_art_policy;  // IWYU pragma: keep
 
 using olc_node_ptr = basic_node_ptr<olc_node_header>;
 
@@ -264,6 +257,10 @@ class olc_db final {
     
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
+    //
+    // FIXME OLC THIS MUST BE A qsbr_value_view. See get_result!!!!
+    // (because in the general case the value is not something small
+    // and trivially copyable).
     inline std::optional<const value_view> get_val() const noexcept {
       // Note: If the iterator is on a leaf, we return the value for
       // that leaf regardless of whether the leaf has been deleted.

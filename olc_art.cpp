@@ -114,34 +114,9 @@ class db_inode_qsbr_deleter : public db_inode_qsbr_deleter_parent<INode> {
 
 namespace {
 
-// class olc_inode;
-// class olc_inode_4;
-// class olc_inode_16;
-// class olc_inode_48;
-// class olc_inode_256;
-
-// using olc_inode_defs =
-//     unodb::detail::basic_inode_def<olc_inode, olc_inode_4, olc_inode_16,
-//                                    olc_inode_48, olc_inode_256>;
-
-// using olc_art_policy =
-//     unodb::detail::basic_art_policy<unodb::olc_db,
-//                                     unodb::in_critical_section,
-//                                     unodb::optimistic_lock,
-//                                     unodb::optimistic_lock::read_critical_section,
-//                                     unodb::detail::olc_node_ptr,
-//                                     olc_inode_defs,
-//                                     unodb::detail::db_inode_qsbr_deleter,
-//                                     unodb::detail::db_leaf_qsbr_deleter>;
-
-// using olc_db_leaf_unique_ptr = olc_art_policy::db_leaf_unique_ptr;
-
-// using leaf = olc_art_policy::leaf_type;
-
-// using olc_inode_base = unodb::detail::basic_inode_impl<olc_art_policy>;
-
-// class olc_inode : public olc_inode_base {};
-
+// Return a reference to the [optimistic_lock] from the node header.
+//
+// Note: This returns the lock rather than trying to acquire the lock.
 [[nodiscard]] auto &node_ptr_lock(
     const unodb::detail::olc_node_ptr
         &node UNODB_DETAIL_LIFETIMEBOUND) noexcept {
@@ -238,10 +213,6 @@ struct olc_impl_helpers {
 
   olc_impl_helpers() = delete;
 };
-
-// }  // namespace unodb::detail
-//
-// namespace {
 
 ///
 /// OLC inode classes extend the basic inode classes and wrap them
@@ -846,6 +817,35 @@ olc_db::~olc_db() noexcept {
   delete_root_subtree();
 }
 
+//
+// olc helpers (help you write correct OLC patterns).
+//
+
+// Do some work and return true iff the lambda was executed while
+// the read critical section remained valid.
+template <typename FN>
+bool doWithReadCriticalSection( optimistic_lock::read_critical_section& cs, FN fn )
+{
+  if ( UNODB_DETAIL_UNLIKELY( cs.must_restart() ) ) {
+    // LCOV_EXCL_START
+    spin_wait_loop_body();
+    return false;
+    // LCOV_EXCL_STOP
+  }
+  fn();
+  if ( UNODB_DETAIL_UNLIKELY( ! cs.check() ) ) {
+    // LCOV_EXCL_START
+    spin_wait_loop_body();
+    return false;
+    // LCOV_EXCL_STOP
+  }
+  return true;
+}
+
+//
+// olc_db implementation
+//
+
 olc_db::get_result olc_db::get(key search_key) const noexcept {
   try_get_result_type result;
   const detail::art_key bin_comparable_key{search_key};
@@ -861,6 +861,16 @@ olc_db::get_result olc_db::get(key search_key) const noexcept {
 }
 
 olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
+#if 1
+  // TODO This is an alternative pattern for writing OLC actions under invariants.
+  detail::olc_node_ptr node{};
+  auto parent_critical_section = root_pointer_lock.try_read_lock();
+  if ( ! doWithReadCriticalSection( parent_critical_section, [=,&node]() mutable {node = root.load();} ) ) return {};
+  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) { // special path if the tree is empty.
+    if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) return {}; // data race - retry.
+    return std::make_optional<get_result>(std::nullopt);  // return an empty result (breaks out of the while(true) {try_get();}
+  }
+#else
   auto parent_critical_section = root_pointer_lock.try_read_lock();
   if (UNODB_DETAIL_UNLIKELY(parent_critical_section.must_restart())) {
     // LCOV_EXCL_START
@@ -881,15 +891,15 @@ olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
     return std::make_optional<get_result>(std::nullopt);
   }
 
-  auto remaining_key{k};
-
-  if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.check())) { // FIXME This should be (and is) checked after getting the node_ptr_lock. It does not need to be here too.
+  if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.check())) {
     // LCOV_EXCL_START
     spin_wait_loop_body();
     return {};
     // LCOV_EXCL_STOP
   }
+#endif
 
+  auto remaining_key{k};
   while (true) {
     auto node_critical_section = node_ptr_lock(node).try_read_lock();
     if (UNODB_DETAIL_UNLIKELY(node_critical_section.must_restart())) return {}; // Lock version chaining (node and parent)
@@ -1371,79 +1381,44 @@ olc_db::iterator& olc_db::iterator::seek(const detail::art_key& search_key, bool
   return *this;
 }
 
-#if 1
+#if 0
 bool olc_db::iterator::try_first() noexcept {return true;}
 #else
-// Do some work and return the [read_critical_section] which protected
-// that work iff the lambda was executed while a read critical section
-// remained valid.
-template <FN fn>
-std::optional<optimistic_lock::read_critical_section> doWithReadCriticalSection( in_critical_section<detail::olc_node_ptr>& node, FN fn ) {
-}
-template <FN fn>
-std::optional<optimistic_lock::read_critical_section> doWithReadCriticalSection(
-    optimistic_lock& alock,
-    in_critical_section<detail::olc_node_ptr>& node,
-    FN fn )
-{
-  auto cs = alock.try_read_lock();
-  if ( UNODB_DETAIL_UNLIKELY( cs.must_restart() ) ) {
-    // LCOV_EXCL_START
-    spin_wait_loop_body();
-    return {};
-    // LCOV_EXCL_STOP
-  }
-  fn( node );
-  if (UNODB_DETAIL_UNLIKELY( ! cs.try_read_unlock() ) ) {
-    // LCOV_EXCL_START
-    spin_wait_loop_body();
-    return {};
-    // LCOV_EXCL_STOP
-  }
-  return cs;
-}
 
 // Traverse to the left-most leaf. The stack is cleared first and then
 // re-populated as we step down along the path to the left-most leaf.
 // If the tree is empty, then the result is the same as end().
 bool olc_db::iterator::try_first() noexcept {  // TODO reuse left_most_traversal() here?
   invalidate();  // clear the stack
-  auto parent_critical_section = doWithReadCriticalSection( root_pointer_lock, 
-  if (UNODB_DETAIL_UNLIKELY(parent_critical_section.must_restart())) {
-    // LCOV_EXCL_START
-    spin_wait_loop_body();
-    return {};
-    // LCOV_EXCL_STOP
-  }
-
-  auto node{root.load()};
-
+  detail::olc_node_ptr node{};
+  auto parent_critical_section = db_.root_pointer_lock.try_read_lock();
+  if ( ! doWithReadCriticalSection( parent_critical_section, [=,&node]() mutable {node = db_.root.load();} ) ) return false;
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) {
-    if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) {
-      // LCOV_EXCL_START
-      spin_wait_loop_body();
-      return {};
-      // LCOV_EXCL_STOP
-    }
-    return std::make_optional<get_result>(std::nullopt);
+    if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) return {}; // data race - retry.
+    return true; // empty tree.
   }
-
-  
-  if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
-  auto node{ db_.root };
   while ( true ) {
     UNODB_DETAIL_ASSERT( node != nullptr );
+    auto node_critical_section = node_ptr_lock(node).try_read_lock();
+    if (UNODB_DETAIL_UNLIKELY(node_critical_section.must_restart())) return {}; // Lock version chaining (node and parent)
+    if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
+      return {};  // LCOV_EXCL_LINE
     const auto node_type = node.type();
     if ( node_type == node_type::LEAF ) {
       // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
-      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-      return *this; // done
+      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU), node_critical_section } ); // push onto the stack.
+      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))
+        return false;  // LCOV_EXCL_LINE
+      return true;
     }
     // recursive descent.
-    auto *const inode{ node.ptr<detail::inode *>() };
-    auto e = inode->begin( node_type );  // first child of the current internal node.
+    auto *const inode{ node.ptr<detail::olc_inode *>() };
+    auto t = inode->begin( node_type );  // first child of the current internal node.
+    stack_entry e{ std::get<NP>(t), std::get<KB>(t), std::get<CI>(t), node_critical_section}; // FIXME Try with tie() instead.
     stack_.push( e );                    // push the entry on the stack.
     node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
+    if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))
+      return {};  // LCOV_EXCL_LINE
   }
   UNODB_DETAIL_CANNOT_HAPPEN();
 }
