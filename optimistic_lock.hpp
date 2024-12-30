@@ -279,10 +279,12 @@ class [[nodiscard]] optimistic_lock final {
 
   // // A lexical scoping for a read_critical_section.  The critical
   // // section will be unlocked when this class is destroyed.
+  // //
+  // // This is NOT a good idea since you are forced to ignore the try_read_unlock() result.
   // class read_guard {
   //  public:
-  //   //read_guard(optimistic_lock::read_critical_section& cs):cs_(cs){}
-  //   read_guard(optimistic_lock& lock): cs_(lock.try_read_lock()) {}
+  //   read_guard(optimistic_lock::read_critical_section& cs):cs_(cs){} // construct guard using caller's lock.
+  //   // read_guard(optimistic_lock& lock): cs_(lock.try_read_lock()) {} // lock and construct guard.
   //   // unlock iff it is still locked.
   //   ~read_guard() {
   //     if ( cs_.lock != nullptr ) {

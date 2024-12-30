@@ -732,12 +732,13 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
             stack_.pop();
           }
           return *this; // stack is empty (aka end()).
+        } else {
+          auto tmp = nxt.value(); // unwrap.
+          const auto child_index = std::get<CI>( tmp );
+          const auto child = inode->get_child( node_type, child_index );
+          stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
+          return left_most_traversal( child );                       // left most traversal
         }
-        auto tmp = nxt.value(); // unwrap.
-        const auto child_index = std::get<CI>( tmp );
-        const auto child = inode->get_child( node_type, child_index );
-        stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
-        return left_most_traversal( child );                       // left most traversal
       } else {
         // REV: Take the prior child_index that is mapped and then do
         // a right-most descent to land on the key that is the
@@ -761,12 +762,13 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
             stack_.pop();
           }
           return *this; // stack is empty (aka end()).
+        } else {
+          auto tmp = nxt.value();           // unwrap.
+          const auto child_index = std::get<CI>( tmp );
+          const auto child = inode->get_child( node_type, child_index );
+          stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
+          return right_most_traversal( child ); // right most traversal
         }
-        auto tmp = nxt.value();           // unwrap.
-        const auto child_index = std::get<CI>( tmp );
-        const auto child = inode->get_child( node_type, child_index );
-        stack_.push( { node, std::get<KB>( tmp), child_index } );  // the path we took
-        return right_most_traversal( child ); // right most traversal
       }
       UNODB_DETAIL_CANNOT_HAPPEN();
     } else {
