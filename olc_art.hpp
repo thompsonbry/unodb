@@ -297,16 +297,6 @@ class olc_db final {
     // Return true unless the stack is empty.
     inline bool valid() const noexcept { return ! stack_.empty(); }
 
-    // Push the given node onto the stack and traverse from the
-    // caller's node to the left-most leaf under that node, pushing
-    // nodes onto the stack as they are visited.
-    iterator& left_most_traversal(detail::olc_node_ptr node) noexcept;
-
-    // Descend from the current state of the stack to the right most
-    // child leaf, updating the state of the iterator during the
-    // descent.
-    iterator& right_most_traversal(detail::olc_node_ptr node) noexcept;
-
     // Return the node on the top of the stack, which will wrap
     // nullptr if the stack is empty.
     inline detail::olc_node_ptr current_node() noexcept {
@@ -328,6 +318,14 @@ class olc_db final {
     bool try_last()  noexcept; // Core logic invoked from retry loop.
     bool try_next()  noexcept; // Core logic invoked from retry loop.
     bool try_prior() noexcept; // Core logic invoked from retry loop.
+    // Push the given node onto the stack and traverse from the
+    // caller's node to the left-most leaf under that node, pushing
+    // nodes onto the stack as they are visited.
+    bool try_left_most_traversal(detail::olc_node_ptr node, optimistic_lock::read_critical_section& parent_critical_section) noexcept;
+    // Descend from the current state of the stack to the right most
+    // child leaf, updating the state of the iterator during the
+    // descent.
+    bool try_right_most_traversal(detail::olc_node_ptr node, optimistic_lock::read_critical_section& parent_critical_section) noexcept;
     bool try_seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept; // Core logic invoked from retry loop.
     
     // The [node_ptr] is never [nullptr] and points to the internal

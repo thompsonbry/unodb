@@ -238,6 +238,19 @@ class [[nodiscard]] optimistic_lock final {
       return UNODB_DETAIL_LIKELY(result);
     }
 
+    // FIXME This should be reviewed carefully.  The only case it can
+    // catch is when the lock ptr has been cleared.  However, other
+    // methods such as check do lock->check() without checking for
+    // whether the lock pointer has been cleared. This makes the code
+    // subject to null pointer dereference faults.  If the lock can be
+    // cleared to a null pointer, then we need to systematically guard
+    // against that.
+    //
+    // FIXME This method is invoked in at least one place (olc::get())
+    // where the read_critical_section has just been obtained and the
+    // lock can not be a nullptr.  We should look at all uses of
+    // must_restart() and figure out whether this is evolutionary
+    // cruft that needs to be cleaned up.
     [[nodiscard]] bool must_restart() const noexcept {
       return UNODB_DETAIL_UNLIKELY(lock == nullptr);
     }

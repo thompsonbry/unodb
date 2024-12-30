@@ -484,21 +484,7 @@ db::iterator& db::iterator::first() noexcept {  // TODO reuse left_most_traversa
   invalidate();  // clear the stack
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
-  while ( true ) {
-    UNODB_DETAIL_ASSERT( node != nullptr );
-    const auto node_type = node.type();
-    if ( node_type == node_type::LEAF ) {
-      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
-      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-      return *this; // done
-    }
-    // recursive descent.
-    auto *const inode{ node.ptr<detail::inode *>() };
-    auto e = inode->begin( node_type );  // first child of the current internal node.
-    stack_.push( e );                    // push the entry on the stack.
-    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
-  }
-  UNODB_DETAIL_CANNOT_HAPPEN();
+  return left_most_traversal( node );
 }
 
 // Traverse to the right-most leaf. The stack is cleared first and then
@@ -508,21 +494,7 @@ db::iterator& db::iterator::last() noexcept { // TODO reuse right_most_traversal
   invalidate();  // clear the stack
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // empty tree.
   auto node{ db_.root };
-  while ( true ) {
-    UNODB_DETAIL_ASSERT( node != nullptr );
-    const auto node_type = node.type();
-    if ( node_type == node_type::LEAF ) {
-      // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
-      stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-      return *this; // done
-    }
-    // recursive descent.
-    auto *const inode{ node.ptr<detail::inode *>() };
-    auto e = inode->last( node_type );  // first child of the current internal node.
-    stack_.push( e );                    // push the entry on the stack.
-    node = inode->get_child( node_type, std::get<CI>( e ) ); // get the child
-  }
-  UNODB_DETAIL_CANNOT_HAPPEN();
+  return right_most_traversal( node );
 }
 
 // Position the iterator on the next leaf in the index.
