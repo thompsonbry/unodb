@@ -1413,7 +1413,6 @@ olc_db::iterator& olc_db::iterator::seek(const detail::art_key& search_key, bool
 }
 
 #if 1
-bool olc_db::iterator::try_prior() noexcept {return true;}
 bool olc_db::iterator::try_seek(const detail::art_key&, bool&, bool)  noexcept {return true;}
 olc_db::iterator& olc_db::iterator::left_most_traversal(detail::olc_node_ptr) noexcept {if(true)UNODB_DETAIL_CANNOT_HAPPEN(); return *this;}
 olc_db::iterator& olc_db::iterator::right_most_traversal(detail::olc_node_ptr) noexcept {if(true)UNODB_DETAIL_CANNOT_HAPPEN(); return *this;}
@@ -1546,21 +1545,22 @@ bool olc_db::iterator::try_next() noexcept {
   return true; // stack is empty, so iterator == end().
 }
 
-#if 0
 // Position the iterator on the prior leaf in the index.
-db::iterator& db::iterator::prior() noexcept {
-  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
+bool olc_db::iterator::try_prior() noexcept {
   while ( ! stack_.empty() ) {
     auto e = stack_.top();
-    auto node{ std::get<NP>( e ) };
+    auto node{ std::get<NP>( e ) };  // the node on the top of the stack.
     UNODB_DETAIL_ASSERT( node != nullptr );
+    auto node_critical_section( node_ptr_lock( node ).rehydrate_read_lock( std::get<VT>( e ) ) );
+    if ( ! node_critical_section.check() ) return false; // restart check
     auto node_type = node.type();
     if ( node_type == node_type::LEAF ) {
       stack_.pop(); // pop off the leaf
       continue; // continue (if just a root leaf, we will fall through the loop since the stack will now be empty).
     }
-    auto* inode{ node.ptr<detail::inode *>() };
+    auto* inode{ node.ptr<detail::olc_inode *>() };
     auto nxt = inode->prior( node_type, std::get<CI>( e ) ); // previous child of that parent.
+    if ( ! node_critical_section.check() ) return false; // restart check
     if ( ! nxt ) {
       stack_.pop();  // Nothing more for that inode.
       continue;      // We will look for the left sibling of the parent inode.
@@ -1569,28 +1569,39 @@ db::iterator& db::iterator::prior() noexcept {
       UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
       auto e2 = nxt.value();
       stack_.pop();
-      stack_.push( e2 );
+      stack_.push( make_stack_entry( e2, node_critical_section ) );
+      optimistic_lock::read_critical_section parent_critical_section {};
+      parent_critical_section = std::move(node_critical_section);
       node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
       while ( true ) {
         UNODB_DETAIL_ASSERT( node != nullptr );
+        node_critical_section = node_ptr_lock(node).try_read_lock(); // Lock version chaining (node and parent)
+        if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) // parent invariant failed.
+          return false;  // LCOV_EXCL_LINE
         node_type = node.type();
         if ( node_type == node_type::LEAF ) {
           // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
-          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-          return *this;  // done
+          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU), node_critical_section.get() } ); // push onto the stack.
+          if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
+            return false;  // LCOV_EXCL_LINE
+          return true;  // done
         }
         // recursive right descent.
-        inode = node.ptr<detail::inode *>();
-        auto tmp = inode->last( node_type );  // last child of the current internal node.
-        stack_.push( tmp );                   // push the entry on the stack.
-        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
+        inode = node.ptr<detail::olc_inode *>();
+        auto t = inode->last( node_type );  // last child of the current internal node.
+        if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))
+          return false;  // LCOV_EXCL_LINE
+        stack_.push( make_stack_entry( t, node_critical_section ) ); // push the entry on the stack.
+        node = inode->get_child( node_type, std::get<CI>( t ) ); // get the child
+        parent_critical_section = std::move(node_critical_section); // move RCS (will check invariant at top of loop)
       }
     }
     UNODB_DETAIL_CANNOT_HAPPEN();
   }
-  return *this; // stack is empty, so iterator == end().
+  return true; // stack is empty, so iterator == end().
 }
 
+#if 0
 // Push the given node onto the stack and traverse from the caller's
 // node to the left-most leaf under that node, pushing nodes onto the
 // stack as they are visited.
