@@ -326,8 +326,8 @@ class olc_db final {
 
     bool try_first() noexcept; // Core logic invoked from retry loop.
     bool try_last()  noexcept; // Core logic invoked from retry loop.
-    bool try_next(const detail::art_key& current_key)  noexcept; // Core logic invoked from retry loop.
-    bool try_prior(const detail::art_key& current_key) noexcept; // Core logic invoked from retry loop.
+    bool try_next()  noexcept; // Core logic invoked from retry loop.
+    bool try_prior() noexcept; // Core logic invoked from retry loop.
     bool try_seek(const detail::art_key& search_key, bool& match, bool fwd) noexcept; // Core logic invoked from retry loop.
     
     // The [node_ptr] is never [nullptr] and points to the internal
