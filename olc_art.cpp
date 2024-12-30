@@ -1658,8 +1658,8 @@ bool olc_db::iterator::try_seek(const detail::art_key& search_key, bool& match, 
   auto remaining_key{k};
   while (true) {
     auto node_critical_section = node_ptr_lock(node).try_read_lock(); // Lock version chaining (node and parent)
-    // if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.check())) // parent invariant failed.
-    //   return false;  // LCOV_EXCL_LINE
+    // Note: We DO NOT unlock the parent_critical_section here.  It is
+    // done below along all code paths.
     const auto node_type = node.type();
     if (node_type == node_type::LEAF) {
       if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) // unlock parent

@@ -73,6 +73,7 @@ class inode : public inode_base {};
 
 }  // namespace detail
 
+// A non-thread-safe implementation of the Adaptive Radix Tree (ART).
 class db final {
  public:
   using get_result = std::optional<value_view>;
@@ -106,14 +107,17 @@ class db final {
   ///
   /// iterator (the iterator is an internal API, the public API is scan()).
   ///
-  protected:
   class iterator {
     friend class db;
-   public:
+    template <class> friend class visitor;
+
+  protected:
 
     // Construct an empty iterator.
     inline iterator(db& tree):db_(tree) {}
 
+   public: // EXPOSED TO THE TESTS
+    
     // Position the iterator on the first entry in the index.
     iterator& first() noexcept;
     
@@ -155,7 +159,7 @@ class db final {
     // last key which orders LTE the search_key and end() if there is
     // no such entry.
     iterator& seek(const detail::art_key& search_key, bool& match, bool fwd = true) noexcept;
-    
+
     // Iff the iterator is positioned on an index entry, then returns
     // the key associated with that index entry.
     //
@@ -294,17 +298,6 @@ class db final {
   // internal keys (seek() and the iterator). It also makes life
   // easier for mutex_db since scan() can take the lock.
 
-  // Alias for an object visited by the scan_api.
-  struct visitor {
-    friend class db;
-   protected:
-    iterator& it;
-    inline visitor(iterator& it_):it(it_){}
-   public:
-    inline key get_key() noexcept {return it.get_key().value();}  // visit the key (may side-effect the iterator so not const).
-    inline value_view get_value() const noexcept {return it.get_val().value();} // visit the value.
-  };
-  
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //
   // @param fn A function f(visitor&) returning [bool::halt].  The

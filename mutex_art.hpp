@@ -56,8 +56,11 @@ class mutex_db final {
     db_.clear();
   }
 
-  // visitor typedef for the scan() API
-  using visitor = unodb::db::visitor;
+  //
+  // scan API.
+  //
+
+  using iterator = unodb::db::iterator;
   
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //

@@ -271,4 +271,24 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 }  // namespace unodb::detail
 
+namespace unodb {
+
+class olc_db;
+class db;
+
+  // Alias for an object visited by the scan_api.
+  template <typename Iterator>
+  class visitor {
+    friend class olc_db;
+    friend class db;
+   protected:
+    Iterator& it;
+    inline visitor(Iterator& it_):it(it_){}
+   public:
+    inline auto get_key() noexcept {return it.get_key().value();}  // visit the key (may side-effect the iterator so not const).
+    inline auto get_value() const noexcept {return it.get_val().value();} // visit the value.
+  };
+ 
+}
+
 #endif  // UNODB_DETAIL_ART_INTERNAL_HPP

@@ -41,19 +41,13 @@ class ARTIteratorTest : public ::testing::Test {
 #define last(db) db.__test_only_iterator__().last()
 #define end(db) db.__test_only_iterator__()
 
-//using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db>;
-using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db, unodb::olc_db>; // FIXME ENABLE ALL TYPES
+using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db, unodb::olc_db>;
 
 UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 
 UNODB_START_TYPED_TESTS()
 
-// FIXME unit tests for gsl::span<std::byte>
-//
-// FIXME Develop a thread-safe version of the iterator based on mutex
-// and OLC and extend microbenchmarks and unit tests.  For OLC, do a
-// microbenchmark for parallel scaling with and w/o mutation.
-//
+// FIXME variable length keys :: unit tests for gsl::span<std::byte>
 
 // unit test with an empty tree.
 TYPED_TEST(ARTIteratorTest, empty_tree__forward_scan) {

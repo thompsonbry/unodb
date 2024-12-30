@@ -133,21 +133,12 @@ void dense_iter_full_fwd_scan(benchmark::State &state) {
   for (const auto _ : state) {
     for (auto i = 0; i < full_scan_multiplier; ++i) {
       std::uint64_t sum = 0;
-      if constexpr( std::is_same<Db, unodb::olc_db>::value ) {
-        auto fn = [&sum](unodb::olc_db::visitor& v) {
-          sum += v.get_key();
-          sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
-          return false;
-        };
-        test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.
-      } else {
-        auto fn = [&sum](unodb::db::visitor& v) {
-          sum += v.get_key();
-          sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
-          return false;
-        };
-        test_db.scan( fn );
-      }
+      auto fn = [&sum](unodb::visitor<typename Db::iterator>& v) {
+        sum += v.get_key();
+        sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
+        return false;
+      };
+      test_db.scan( fn );
       ::benchmark::DoNotOptimize(sum);  // ensure that the keys were retrieved.
     }
   }
@@ -178,21 +169,12 @@ void dense_iter_keyrange_fwd_scan(benchmark::State &state) {
   for (const auto _ : state) {
     for (auto i = 0; i < full_scan_multiplier; ++i) {
       std::uint64_t sum = 0;
-      if constexpr( std::is_same<Db, unodb::olc_db>::value ) {
-        auto fn = [&sum](unodb::olc_db::visitor& v) {
-          sum += v.get_key();
-          sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
-          return false;
-        };
-        test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.
-      } else {
-        auto fn = [&sum](unodb::db::visitor& v) {
-          sum += v.get_key();
-          sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
-          return false;
-        };
-        test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.
-      }
+      auto fn = [&sum](unodb::visitor<typename Db::iterator>& v) {
+        sum += v.get_key();
+        sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
+        return false;
+      };
+      test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.
       ::benchmark::DoNotOptimize(sum);  // ensure that the keys were retrieved.
     }
   }
