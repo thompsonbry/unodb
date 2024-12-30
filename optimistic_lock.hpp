@@ -55,6 +55,9 @@ inline void spin_wait_loop_body() noexcept {
 }
 // LCOV_EXCL_STOP
 
+// The bare data for the version information on a node.
+using version_tag = std::uint64_t;
+
 // Optimistic lock as described in V. Leis, F. Schneiber, A. Kemper and T.
 // Neumann, "The ART of Practical Synchronization," 2016 Proceedings of the 12th
 // International Workshop on Data Management on New Hardware(DaMoN), pages
@@ -84,10 +87,12 @@ inline void spin_wait_loop_body() noexcept {
 // All bool-returning try_ functions return true on success and false on
 // lock version change, which indicates the need to restart
 class [[nodiscard]] optimistic_lock final {
- private:
+ public:
+
+  // Class for operations with a version_tag.
   class [[nodiscard]] version_type final {
    public:
-    explicit constexpr version_type(std::uint64_t version_val) noexcept
+    explicit constexpr version_type(version_tag version_val) noexcept
         : version{version_val} {}
 
     [[nodiscard, gnu::const]] constexpr bool is_write_locked() const noexcept {
@@ -115,7 +120,8 @@ class [[nodiscard]] optimistic_lock final {
       return version_type{version + 2};
     }
 
-    [[nodiscard]] constexpr std::uint64_t get() const noexcept {
+    // Return the version_tag (just the data).
+    [[nodiscard]] constexpr version_tag get() const noexcept {
       return version;
     }
 
@@ -131,15 +137,20 @@ class [[nodiscard]] optimistic_lock final {
     }
 
    private:
-    std::uint64_t version{0};
+    version_tag version{0};
   }; // class version_type
 
+ private:
+  
   class [[nodiscard]] atomic_version_type final {
    public:
+
+    // load-acquire
     [[nodiscard]] version_type load() const noexcept {
       return version_type{version.load(std::memory_order_acquire)};
     }
 
+    // load-relaxed
     [[nodiscard]] version_type load_relaxed() const noexcept {
       return version_type{version.load(std::memory_order_relaxed)};
     }
@@ -191,19 +202,6 @@ class [[nodiscard]] optimistic_lock final {
                           version_type version_) noexcept
         : lock{&lock_}, version{version_} {}
 
-#if 1
-    // required for std::stack<tuple> containing a read_critical_section.
-    //
-    // TODO Review why this is needed.  It appears to be required when we instantiate an OLC scan().
-    read_critical_section(const read_critical_section& other) noexcept : lock{other.lock}, version{other.version} {}
-    read_critical_section(read_critical_section && other) noexcept : lock{other.lock}, version{other.version} {}
-    read_critical_section &operator=(const read_critical_section &other) noexcept {
-      lock = other.lock;
-      version = other.version;
-      return *this;
-    }
-#endif
-    
     read_critical_section &operator=(read_critical_section &&other) noexcept {
       lock = other.lock;
       // The current implementation does not need lock == nullptr in the
@@ -252,6 +250,13 @@ class [[nodiscard]] optimistic_lock final {
 #endif
     }
 
+    // The version tag backing the read_critical_section.
+    [[nodiscard]] inline constexpr version_tag get() const noexcept {return version.get();}
+    
+    read_critical_section(const read_critical_section &) = delete;
+    read_critical_section(read_critical_section &&) = delete;
+    read_critical_section &operator=(const read_critical_section &) = delete;
+    
    private:
     optimistic_lock *lock{nullptr};
     version_type version{0};
@@ -353,6 +358,20 @@ class [[nodiscard]] optimistic_lock final {
     }
   }
 
+  // Return a read_critical_section for this optimistic_lock using a
+  // version_tag which had been obtained previously.  The use case for
+  // this is to fix up the optimistic_lock when a version_tag is read
+  // from the stack for an OLC itertor.  It bumps the read lock count
+  // to make the code happy but does not do any spin waits or even
+  // look at the current version_tag associated with the lock.  When
+  // the caller calls read_critical_section::check() on the returned
+  // lock they will figure out whether or not the version is still
+  // valid.
+  [[nodiscard]] read_critical_section rehydrate_read_lock(version_tag version_tag_) noexcept {
+    inc_read_lock_count();
+    return read_critical_section{*this, version_type( version_tag_ )};
+  }
+  
 #ifndef NDEBUG
   void check_on_dealloc() const noexcept {
     UNODB_DETAIL_ASSERT(read_lock_count.load(std::memory_order_acquire) == 0);
@@ -377,6 +396,16 @@ class [[nodiscard]] optimistic_lock final {
        << read_lock_count.load(std::memory_order_acquire);
 #endif
   }
+
+  // // return true if the version has not changed.
+  // //
+  // // Note: For this use case, we do not need to wait/spin if the lock
+  // // is in an exclusive state since it is being modified and hence
+  // // will fail this condition check.  It is enough to use the
+  // // atomic_version_tag to load the current version of the lock.
+  // [[nodiscard]] bool quick_check(version_tag locked_version) const noexcept {
+  //   return version.load().get() == locked_version; // load-acquire
+  // }
 
  private:
   // return true if the version has not changed.

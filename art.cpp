@@ -527,7 +527,6 @@ db::iterator& db::iterator::last() noexcept { // TODO reuse right_most_traversal
 
 // Position the iterator on the next leaf in the index.
 db::iterator& db::iterator::next() noexcept {
-  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
   while ( ! stack_.empty() ) {
     auto e = stack_.top();
     auto node{ std::get<NP>( e ) };
@@ -571,7 +570,6 @@ db::iterator& db::iterator::next() noexcept {
 
 // Position the iterator on the prior leaf in the index.
 db::iterator& db::iterator::prior() noexcept {
-  if ( ! valid() ) return *this;  // the iterator is not positioned on anything.
   while ( ! stack_.empty() ) {
     auto e = stack_.top();
     auto node{ std::get<NP>( e ) };

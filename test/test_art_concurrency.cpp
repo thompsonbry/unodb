@@ -23,6 +23,7 @@
 
 namespace {
 
+// FIXME ITERATOR CONCURRENCY TESTS!!!!
 template <class Db>
 class ARTConcurrencyTest : public ::testing::Test {
  public:

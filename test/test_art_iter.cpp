@@ -41,7 +41,8 @@ class ARTIteratorTest : public ::testing::Test {
 #define last(db) db.__test_only_iterator__().last()
 #define end(db) db.__test_only_iterator__()
 
-using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db, unodb::olc_db>;
+//using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db>;
+using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db, unodb::olc_db>; // FIXME ENABLE ALL TYPES
 
 UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 
@@ -83,6 +84,8 @@ TYPED_TEST(ARTIteratorTest, single_leaf_iterator_one_value) {
   verifier.insert( 0, unodb::test::test_values[0] );
   auto b = begin(db); // obtain iterators.
   const auto e = end(db);
+  // std::cerr<<"db state::\n"; db.dump(std::cerr);
+  // std::cerr<<"begin()::\n"; b.dump(std::cerr);
   UNODB_EXPECT_TRUE( b != e );
   UNODB_EXPECT_TRUE( b.get_key() && b.get_key().value() == 0 );
   UNODB_EXPECT_TRUE( b.get_val() && b.get_val().value() == unodb::test::test_values[0] );
