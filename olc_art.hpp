@@ -385,20 +385,6 @@ class olc_db final {
     static constexpr int CI = 2; // child_index  (along which the path steps down from that node)
     static constexpr int VT = 3; // version tag  (for that node when obtaining the key_byte and child_index).
 
-    // class detail::inode_base;
-    // class detail::inode_base::iter_result;
-    // [[nodiscard]] inline stack_entry make_stack_entry( detail::inode_base::iter_result& t
-    //                                                    , opportunistic_lock::read_critical_section& node_critical_section);
-    // // {
-    // //   stack_entry e{
-    // //     std::get<NP>(t)/*(node)*/,
-    // //     std::get<KB>(t),
-    // //     std::get<CI>(t),
-    // //     node_critical_section.get()
-    // //   };
-    // //   return e;
-    // // }
-    
     // The outer db instance.
     olc_db& db_;
 

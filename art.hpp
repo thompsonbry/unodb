@@ -257,10 +257,6 @@ class db final {
     // at the child_indexes[], find the next mapped key value greater
     // than the current one, and then look at its entry in the
     // children[].
-    //
-    // FIXME For OLC, the child_index is only valid if the parent
-    // version tag remains valid.  For that purpose, this tuple needs
-    // to be expanded to also include the version tag of the parent.
     std::stack<stack_entry> stack_ {};
 
     // A buffer into which visited keys are decoded and materialized

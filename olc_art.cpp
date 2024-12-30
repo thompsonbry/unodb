@@ -818,31 +818,6 @@ olc_db::~olc_db() noexcept {
 }
 
 //
-// olc helpers (help you write correct OLC patterns).
-//
-
-// // Do some work and return true iff the lambda was executed while
-// // the read critical section remained valid.
-// template <typename FN>
-// bool doWithReadCriticalSection( optimistic_lock::read_critical_section& cs, FN fn )
-// {
-//   if ( UNODB_DETAIL_UNLIKELY( cs.must_restart() ) ) {
-//     // LCOV_EXCL_START
-//     spin_wait_loop_body();
-//     return false;
-//     // LCOV_EXCL_STOP
-//   }
-//   fn();
-//   if ( UNODB_DETAIL_UNLIKELY( ! cs.check() ) ) {
-//     // LCOV_EXCL_START
-//     spin_wait_loop_body();
-//     return false;
-//     // LCOV_EXCL_STOP
-//   }
-//   return true;
-// }
-
-//
 // olc_db implementation
 //
 
@@ -861,53 +836,12 @@ olc_db::get_result olc_db::get(key search_key) const noexcept {
 }
 
 olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
-#if 1
-// #if 0
-//   // TODO This is an alternative pattern for writing OLC actions under invariants.
-//   detail::olc_node_ptr node{};
-//   auto parent_critical_section = root_pointer_lock.try_read_lock();
-//   if ( ! doWithReadCriticalSection( parent_critical_section, [=,&node]() mutable {node = root.load();} ) ) return {};
-//   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) { // special path if the tree is empty.
-//     if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) return {}; // data race - retry.
-//     return std::make_optional<get_result>(std::nullopt);  // return an empty result (breaks out of the while(true) {try_get();}
-//   }
-// #else
-  // TODO This is an alternative pattern for writing OLC actions under invariants.
   auto parent_critical_section = root_pointer_lock.try_read_lock();
   detail::olc_node_ptr node{ root.load() };
   if (UNODB_DETAIL_UNLIKELY(node == nullptr)) { // special path if the tree is empty.
     if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) return {}; // data race - retry.
     return std::make_optional<get_result>(std::nullopt);  // return an empty result (breaks out of the while(true) {try_get();}
   }
-//#endif
-#else
-  auto parent_critical_section = root_pointer_lock.try_read_lock();
-  if (UNODB_DETAIL_UNLIKELY(parent_critical_section.must_restart())) {
-    // LCOV_EXCL_START
-    spin_wait_loop_body();
-    return {};
-    // LCOV_EXCL_STOP
-  }
-
-  auto node{root.load()};
-
-  if (UNODB_DETAIL_UNLIKELY(node == nullptr)) {
-    if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock())) {
-      // LCOV_EXCL_START
-      spin_wait_loop_body();
-      return {};
-      // LCOV_EXCL_STOP
-    }
-    return std::make_optional<get_result>(std::nullopt);
-  }
-
-  if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.check())) {
-    // LCOV_EXCL_START
-    spin_wait_loop_body();
-    return {};
-    // LCOV_EXCL_STOP
-  }
-#endif
 
   auto remaining_key{k};
   while (true) {

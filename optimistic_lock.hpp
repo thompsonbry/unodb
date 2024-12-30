@@ -189,12 +189,10 @@ class [[nodiscard]] optimistic_lock final {
 
  public:
   class write_guard;
-  //class read_guard;
 
   // Encapsulates a lock on some node and the version information that
   // was read for that lock.
   class [[nodiscard]] read_critical_section final {
-    //friend class read_guard;
    public:
     read_critical_section() noexcept = default;
 
@@ -276,25 +274,6 @@ class [[nodiscard]] optimistic_lock final {
 
     friend class write_guard;
   }; // class read_critical_section
-
-  // // A lexical scoping for a read_critical_section.  The critical
-  // // section will be unlocked when this class is destroyed.
-  // //
-  // // This is NOT a good idea since you are forced to ignore the try_read_unlock() result.
-  // class read_guard {
-  //  public:
-  //   read_guard(optimistic_lock::read_critical_section& cs):cs_(cs){} // construct guard using caller's lock.
-  //   // read_guard(optimistic_lock& lock): cs_(lock.try_read_lock()) {} // lock and construct guard.
-  //   // unlock iff it is still locked.
-  //   ~read_guard() {
-  //     if ( cs_.lock != nullptr ) {
-  //       std::ignore = cs_.try_read_unlock();
-  //     }
-  //   }
-  //   optimistic_lock::read_critical_section& get() {return cs_;} // return the critical section.
-  //  private:
-  //   optimistic_lock::read_critical_section cs_;    
-  // };
 
   class [[nodiscard]] write_guard final {
    public:
