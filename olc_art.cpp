@@ -1310,14 +1310,12 @@ olc_db::iterator& olc_db::iterator::next() noexcept {
     // the iterator to support this?
     const auto & akey = aleaf->get_key(); // access the key on the leaf.
     if ( try_next() ) return *this;
-    invalidate();
     while ( true ) {
       bool match {};
-      if ( ! try_seek( akey, match, true/*fwd*/ ) ) {  // seek to the current key (or its successor)
-        invalidate();
-        continue;
-      }
-      if ( ! match ) return *this; // key no longer exists, so its successor is the next leaf.
+      if ( ! try_seek( akey, match, true/*fwd*/ ) ) continue;  // seek to the current key (or its successor)
+      if ( ! match ) return *this;  // key no longer exists, so its successor is the next leaf and we are done.
+      if ( ! try_next() ) continue; // seek to the successor
+      return *this;                 // done.
     }
   }
   return *this;
@@ -1334,14 +1332,12 @@ olc_db::iterator& olc_db::iterator::prior() noexcept {
     // the iterator to support this?
     const auto & akey = aleaf->get_key(); // access the key on the leaf.
     if ( try_prior() ) return *this;
-    invalidate();
     while ( true ) {
       bool match {};
-      if ( ! try_seek( akey, match, false/*fwd*/ ) ) {  // seek to the current key (or its predecessor)
-        invalidate();
-        continue;
-      }
-      if ( ! match ) return *this; // key no longer exists, so its predecessor is the prior leaf.
+      if ( ! try_seek( akey, match, false/*fwd*/ ) ) continue;  // seek to the current key (or its predecessor)
+      if ( ! match ) return *this;  // key no longer exists, so its predecessor is the prior leaf and we are done.
+      if ( ! try_prior() ) continue; // seek to the predecessor
+      return *this;                 // done.
     }
   }
   return *this;
@@ -1587,6 +1583,7 @@ bool olc_db::iterator::try_seek(const detail::art_key& search_key, bool& match, 
   const detail::art_key k = search_key;
   auto remaining_key{k};
   while (true) {
+    UNODB_DETAIL_ASSERT( node != nullptr );
     auto node_critical_section = node_ptr_lock(node).try_read_lock(); // Lock version chaining (node and parent)
     // Note: We DO NOT unlock the parent_critical_section here.  It is
     // done below along all code paths.
@@ -1697,6 +1694,8 @@ bool olc_db::iterator::try_seek(const detail::art_key& search_key, bool& match, 
           const auto child_index = std::get<CI>( tmp );
           const auto child = inode->get_child( node_type, child_index );
           stack_.push( { node, std::get<KB>( tmp), child_index, node_critical_section.get() } );  // the path we took
+          if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) // before using [child]
+            return false;  // LCOV_EXCL_LINE
           return UNLOCK( node_critical_section, try_left_most_traversal( child, parent_critical_section ) ); // left most traversal
         }
       } else {
@@ -1734,6 +1733,8 @@ bool olc_db::iterator::try_seek(const detail::art_key& search_key, bool& match, 
           const auto child_index = std::get<CI>( tmp );
           const auto child = inode->get_child( node_type, child_index );
           stack_.push( { node, std::get<KB>( tmp), child_index, node_critical_section.get() } );  // the path we took
+          if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) // before using [child]
+            return false;  // LCOV_EXCL_LINE
           return UNLOCK( node_critical_section, try_right_most_traversal( child, parent_critical_section ) ); // right most traversal
         }
       }
