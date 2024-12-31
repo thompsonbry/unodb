@@ -514,26 +514,13 @@ db::iterator& db::iterator::next() noexcept {
       stack_.pop();  // Nothing more for that inode.
       continue;      // We will look for the right sibling of the parent inode.
     }
-    { // Recursive left descent.
+    { // Fix up stack for new parent node state and left-most descent.
       UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
       auto e2 = nxt.value();
       stack_.pop();
       stack_.push( e2 );
-      node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
-      while ( true ) {
-        UNODB_DETAIL_ASSERT( node != nullptr );
-        node_type = node.type();
-        if ( node_type == node_type::LEAF ) {
-          // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
-          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-          return *this;  // done
-        }
-        // recursive left descent.
-        inode = node.ptr<detail::inode *>();
-        auto tmp = inode->begin( node_type );  // first child of the current internal node.
-        stack_.push( tmp );                    // push the entry on the stack.
-        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
-      }
+      auto child = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
+      return left_most_traversal( child );
     }
     UNODB_DETAIL_CANNOT_HAPPEN();
   }
@@ -557,26 +544,13 @@ db::iterator& db::iterator::prior() noexcept {
       stack_.pop();  // Nothing more for that inode.
       continue;      // We will look for the left sibling of the parent inode.
     }
-    { // Recursive right descent.
+    { // Fix up stack for new parent node state and right-most descent.
       UNODB_DETAIL_ASSERT( nxt );  // value exists for std::optional.
       auto e2 = nxt.value();
       stack_.pop();
       stack_.push( e2 );
-      node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
-      while ( true ) {
-        UNODB_DETAIL_ASSERT( node != nullptr );
-        node_type = node.type();
-        if ( node_type == node_type::LEAF ) {
-          // Mock up an iter_result for the leaf. The [key] and [child_index] are ignored for a leaf.
-          stack_.push( { node, static_cast<std::byte>(0xFFU), static_cast<std::uint8_t>(0xFFU) } ); // push onto the stack.
-          return *this;  // done
-        }
-        // recursive right descent.
-        inode = node.ptr<detail::inode *>();
-        auto tmp = inode->last( node_type );  // last child of the current internal node.
-        stack_.push( tmp );                   // push the entry on the stack.
-        node = inode->get_child( node_type, std::get<CI>( tmp ) ); // get the child
-      }
+      auto child = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
+      return right_most_traversal( child );
     }
     UNODB_DETAIL_CANNOT_HAPPEN();
   }

@@ -71,6 +71,7 @@ static void dump(const std::vector<unodb::key>& x) {
 // @param limit The largest key to be installed (if EVEN, then the largest key is limit-1).
 template <typename TypeParam>
 void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t limit) {
+  constexpr bool debug = false;
   unodb::test::tree_verifier<TypeParam> verifier;
   TypeParam& db = verifier.get_db(); // reference to the database instance under test.
   // Insert odd keys into the database and into an ordered container.
@@ -81,8 +82,10 @@ void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t
       expected.push_back( i );
     }
   }
+  if constexpr( debug ) {
+    std::cerr<<"db state::\n"; verifier.get_db().dump(std::cerr);
+  }
   const uint64_t nexpected = expected.size();
-  constexpr bool debug = false;
   if constexpr( debug ) {
     std::cerr<<"scan_test"
            <<": fromKey="<<fromKey<<", toKey="<<toKey<<", limit="<<limit
@@ -98,7 +101,10 @@ void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t
     }
     const auto ekey = *eit;  // expected key to visit
     const auto akey = v.get_key(); // actual key visited.
-    if constexpr( debug ) {std::cerr<< "nactual="<<nactual<<", ekey="<<ekey<<", akey="<<akey<<std::endl;}
+    if constexpr( debug ) {
+      std::cerr<< "nactual="<<nactual<<", ekey="<<ekey<<", akey="<<akey<<std::endl;
+      v.dump(std::cerr);
+    }
     if ( ekey != akey ) {
       EXPECT_EQ( ekey, akey );
       return true;  // halt early.

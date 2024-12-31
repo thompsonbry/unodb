@@ -410,16 +410,6 @@ class [[nodiscard]] optimistic_lock final {
 #endif
   }
 
-  // // return true if the version has not changed.
-  // //
-  // // Note: For this use case, we do not need to wait/spin if the lock
-  // // is in an exclusive state since it is being modified and hence
-  // // will fail this condition check.  It is enough to use the
-  // // atomic_version_tag to load the current version of the lock.
-  // [[nodiscard]] bool quick_check(version_tag locked_version) const noexcept {
-  //   return version.load().get() == locked_version; // load-acquire
-  // }
-
  private:
   // return true if the version has not changed.
   [[nodiscard]] bool check(version_type locked_version) const noexcept {

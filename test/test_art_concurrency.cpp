@@ -227,7 +227,19 @@ TYPED_TEST(ARTConcurrencyTest, Node256ParallelOps) {
 TYPED_TEST(ARTConcurrencyTest, ParallelRandomInsertDeleteGetScan) {
   constexpr auto thread_count = 4 * 3;
   constexpr auto initial_keys = 2048;
-  constexpr auto ops_per_thread = 1'000'000;  // FIXME CHANGE BACK TO 10'000 before merging to [master].
+  constexpr auto ops_per_thread = 10'000; // configured at 10'000 for normal builds.
+
+  this->verifier.insert_key_range(0, initial_keys, true);
+  this->template parallel_test<thread_count, ops_per_thread>(
+      TestFixture::random_op_thread);
+}
+
+// Optionally enable this for more confidence in debug builds and set
+// the thread_count for your machine.
+TYPED_TEST(ARTConcurrencyTest, DISABLED_ParallelRandomInsertDeleteGetScan_StressTest) {
+  constexpr auto thread_count = 48;
+  constexpr auto initial_keys = 1024; // fewer keys and more threads is more challenging
+  constexpr auto ops_per_thread = 1'000'000;  // Running at 1M gives you extra confidence in debug builds.
 
   this->verifier.insert_key_range(0, initial_keys, true);
   this->template parallel_test<thread_count, ops_per_thread>(

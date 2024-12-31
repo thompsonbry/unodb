@@ -287,6 +287,7 @@ class db;
    public:
     inline auto get_key() noexcept {return it.get_key().value();}  // visit the key (may side-effect the iterator so not const).
     inline auto get_value() const noexcept {return it.get_val().value();} // visit the value.
+    inline void dump(std::ostream& os) noexcept {it.dump(os);}  // TEST ONLY
   };
  
 }
