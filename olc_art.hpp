@@ -111,6 +111,11 @@ inline non_atomic_array<T> copy_atomic_to_nonatomic(T &atomic_array) noexcept {
 using olc_leaf_unique_ptr =
     detail::basic_db_leaf_unique_ptr<detail::olc_node_header, olc_db>;
 
+// Declare internal methods to quiet compiler warnings.
+void create_leaf_if_needed(olc_db_leaf_unique_ptr &cached_leaf,
+                           unodb::detail::art_key k, unodb::value_view v,
+                           unodb::olc_db &db_instance);
+
 }  // namespace detail
 
 using qsbr_value_view = qsbr_ptr_span<const std::byte>;
@@ -130,18 +135,38 @@ class olc_db final {
 
   ~olc_db() noexcept;
 
-  // Querying
+  // Querying for a value given a key.
   [[nodiscard]] get_result get(key search_key) const noexcept;
 
+  // Return true iff the tree is empty (no root leaf).
+  //
+  // FIXME Should this be using the same pattern as get() to detect
+  // races around the existance of the root node and to have a proper
+  // memory barrier when looking to see if the root node exists?
   [[nodiscard]] auto empty() const noexcept { return root == nullptr; }
 
-  // Modifying
-  // Cannot be called during stack unwinding with std::uncaught_exceptions() > 0
+  // Insert a value under a key iff there is no entry for that key.
+  //
+  // Note: Cannot be called during stack unwinding with std::uncaught_exceptions() > 0
+  //
+  // @return true if the key value pair was inserted.
+  //
+  // FIXME There should be a lambda variant of this to handle
+  // conflicts and support upsert or delete-upsert semantics. This
+  // would call the caller's lambda once the method was positioned on
+  // the leaf.  The caller could then update the value or perhaps
+  // delete the entry under the key.  
   [[nodiscard]] bool insert(key insert_key, value_view v);
 
+  // Remove the entry associated with the key.
+  //
+  // @return true if the delete was successful (i.e. the key was found
+  // in the tree and the associated index entry was removed).
   [[nodiscard]] bool remove(key remove_key);
 
-  // Only legal in single-threaded context, as destructor
+  // Removes all entries in the index.
+  //
+  // Note: Only legal in single-threaded context, as destructor
   void clear() noexcept;
 
   ///

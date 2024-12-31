@@ -23,7 +23,6 @@
 
 namespace {
 
-// FIXME ITERATOR CONCURRENCY TESTS!!!!
 template <class Db>
 class ARTConcurrencyTest : public ::testing::Test {
  public:
@@ -116,7 +115,7 @@ class ARTConcurrencyTest : public ::testing::Test {
     std::geometric_distribution<unodb::key> key_generator{0.5};
     for (decltype(ops_per_thread) i = 0; i < ops_per_thread; ++i) {
       const auto key{key_generator(gen)};
-      switch (thread_i % 3) {
+      switch (thread_i % 4) {
         case 0: /* insert */
           verifier->try_insert(key, unodb::test::test_value_2);
           break;
@@ -126,6 +125,21 @@ class ARTConcurrencyTest : public ::testing::Test {
         case 2: /* get */
           verifier->try_get(key);
           break;
+        case 3: { /* scan */
+          uint64_t n = 0;
+          uint64_t sum = 0;
+          auto fn = [&n,&sum](unodb::visitor<typename Db::iterator>& v) {
+            n++;
+            sum += v.get_key();
+            std::ignore = v.get_value();  // TODO Does this ensure that the value is read?
+            return false;
+          };
+          auto fromKey = ( key > 100 ) ? (key - 100) : key;
+          auto toKey = key + 100;
+          verifier->get_db().scan( fromKey, toKey, fn);
+          std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl;
+          break;
+        }
         default:
           UNODB_DETAIL_CANNOT_HAPPEN();
       }
@@ -186,7 +200,7 @@ TYPED_TEST(ARTConcurrencyTest, Node256ParallelOps) {
   this->template key_range_op_test<152, 9, 208>();
 }
 
-TYPED_TEST(ARTConcurrencyTest, ParallelRandomInsertDeleteGet) {
+TYPED_TEST(ARTConcurrencyTest, ParallelRandomInsertDeleteGetScan) {
   constexpr auto thread_count = 4 * 3;
   constexpr auto initial_keys = 2048;
   constexpr auto ops_per_thread = 10000;

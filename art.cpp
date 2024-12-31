@@ -722,7 +722,7 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
           if ( ! stack_.empty() ) stack_.pop();
           while ( ! stack_.empty() ) {
             const auto centry = stack_.top();
-            const auto cnode = std::get<NP>( centry );
+            const auto cnode = std::get<NP>( centry );  // a possible parent from the stack
             auto *const icnode{cnode.ptr<detail::inode *>()};
             const auto cnxt = icnode->next( cnode.type(), std::get<CI>(centry) ); // right-sibling.
             if ( cnxt ) {
@@ -752,7 +752,7 @@ db::iterator& db::iterator::seek(const detail::art_key& search_key, bool& match,
           if ( ! stack_.empty() ) stack_.pop();
           while ( ! stack_.empty() ) {
             const auto centry = stack_.top();
-            const auto cnode = std::get<NP>( centry );
+            const auto cnode = std::get<NP>( centry );  // a possible parent from the stack
             auto *const icnode{cnode.ptr<detail::inode *>()};
             const auto cnxt = icnode->prior( cnode.type(), std::get<CI>(centry) ); // left-sibling.
             if ( cnxt ) {

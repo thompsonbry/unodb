@@ -229,20 +229,6 @@ class [[nodiscard]] tree_verifier final {
     } catch (...) {
       if (!parallel_test) {
         UNODB_ASSERT_EQ(empty_before, test_db.empty());
-        // FIXME Causes problems with test_art_oom?
-        // FIXME Why is the code not testing the post-condition of remove()?
-        if constexpr( false && std::is_same_v<Db, unodb::db> ) {  // FIXME mutex_db and olc_db support.
-          // Compare the total orderings of the two iterators.
-          auto eit = values.begin();  // ground truth
-          auto ait = test_db.begin(); // db under test
-          while ( eit != values.end() ) {
-            UNODB_ASSERT_TRUE( eit->first == ait.get_key().value() );
-            UNODB_ASSERT_TRUE( eit->second == ait.get_val().value() );
-            eit++;
-            ait.next();
-          }
-          UNODB_ASSERT_TRUE( ait == test_db.end() );
-        }
 #ifdef UNODB_DETAIL_WITH_STATS
         UNODB_ASSERT_EQ(mem_use_before, test_db.get_current_memory_use());
         UNODB_ASSERT_THAT(test_db.get_node_counts(),

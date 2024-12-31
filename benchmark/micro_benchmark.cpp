@@ -135,7 +135,7 @@ void dense_iter_full_fwd_scan(benchmark::State &state) {
       std::uint64_t sum = 0;
       auto fn = [&sum](unodb::visitor<typename Db::iterator>& v) {
         sum += v.get_key();
-        sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
+        std::ignore = v.get_value();  // TODO Does this ensure that the value is read?
         return false;
       };
       test_db.scan( fn );
@@ -171,7 +171,7 @@ void dense_iter_keyrange_fwd_scan(benchmark::State &state) {
       std::uint64_t sum = 0;
       auto fn = [&sum](unodb::visitor<typename Db::iterator>& v) {
         sum += v.get_key();
-        sum += static_cast<std::uint64_t>(v.get_value()[0]);  // value is gsl::span<byte> so this reads a byte from the value.
+        std::ignore = v.get_value();  // TODO Does this ensure that the value is read?
         return false;
       };
       test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.

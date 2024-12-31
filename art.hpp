@@ -89,19 +89,28 @@ class db final {
   db &operator=(const db &) = delete;
   db &operator=(db &&) = delete;
 
-  // Querying
+  // Querying for a value associated with a key.
   [[nodiscard, gnu::pure]] get_result get(key search_key) const noexcept;
 
+  // Return true iff the index is empty.
   [[nodiscard, gnu::pure]] auto empty() const noexcept {
     return root == nullptr;
   }
 
-  // Modifying
-  // Cannot be called during stack unwinding with std::uncaught_exceptions() > 0
+  // Insert a value under a key iff there is no entry for that key.
+  //
+  // Note: Cannot be called during stack unwinding with std::uncaught_exceptions() > 0
+  //
+  // @return true iff the key value pair was inserted.
   [[nodiscard]] bool insert(key insert_key, value_view v);
 
+  // Remove the entry associated with the key.
+  //
+  // @return true if the delete was successful (i.e. the key was found
+  // in the tree and the associated index entry was removed).
   [[nodiscard]] bool remove(key remove_key);
-  
+
+  // Removes all entries in the index.
   void clear() noexcept;
 
   ///

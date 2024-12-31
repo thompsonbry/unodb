@@ -581,10 +581,6 @@ void create_leaf_if_needed(olc_db_leaf_unique_ptr &cached_leaf,
   }
 }
 
-// }  // namespace
-//
-// namespace unodb::detail {
-
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
 template <class INode>
 [[nodiscard]] std::optional<in_critical_section<olc_node_ptr> *>
