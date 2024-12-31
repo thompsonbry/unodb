@@ -1401,7 +1401,7 @@ bool olc_db::iterator::try_next() noexcept {
       stack_.pop();
       stack_.push( make_stack_entry( e2, node_critical_section ) );
       node = inode->get_child( node_type, std::get<CI>( e2 ) );  // descend
-      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock())) // before using [child]
+      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) // before using [child]
         return false;  // LCOV_EXCL_LINE
       optimistic_lock::read_critical_section parent_critical_section {};
       parent_critical_section = std::move(node_critical_section);
@@ -1461,7 +1461,7 @@ bool olc_db::iterator::try_prior() noexcept {
       stack_.pop();
       stack_.push( make_stack_entry( e2, node_critical_section ) );
       node = inode->get_child( node_type, std::get<CI>( e2 ) );  // get the child
-      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock())) // before using [child]
+      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) // before using [child]
         return false;  // LCOV_EXCL_LINE
       optimistic_lock::read_critical_section parent_critical_section {};
       parent_critical_section = std::move(node_critical_section);

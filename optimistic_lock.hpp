@@ -218,6 +218,13 @@ class [[nodiscard]] optimistic_lock final {
     }
 
     // Unlock iff it is not yet unlocked.
+    //
+    // Note: In a DEBUG build, this clears the [lock] pointer,
+    // rendering the RCS unusable, and decrements the read_lock_count.
+    //
+    // @return true iff the [version] on the optimistic_lock is still
+    // the version that was used to construct this
+    // read_critical_section.
     [[nodiscard, gnu::flatten]] UNODB_DETAIL_FORCE_INLINE bool try_read_unlock()
         UNODB_DETAIL_RELEASE_CONST noexcept {
       //const auto result = ( lock == nullptr ?false :lock->try_read_unlock(version) ); // FIXME Prefer this version?  Avoids nullptr dereference.
@@ -231,6 +238,15 @@ class [[nodiscard]] optimistic_lock final {
     // Return true iff the version on the optimistic lock is still the
     // same version that was used to construct this
     // read_critical_section.
+    //
+    // Note: By contract, it is not legal to call this method if the
+    // check has already failed.  To help catch such situations, in a
+    // DEBUG build, this will clear the [lock] pointer if the check
+    // fails.  A subsequent check() call will then dereference a
+    // nullptr and fault the process.
+    //
+    // @return true if the version is unchanged and false if the
+    // caller MUST restart because the version has been changed.
     [[nodiscard]] bool check() UNODB_DETAIL_RELEASE_CONST noexcept {
       const auto result = lock->check(version);
 #ifndef NDEBUG
