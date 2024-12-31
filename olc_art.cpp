@@ -1423,6 +1423,8 @@ bool olc_db::iterator::try_next() noexcept {
           return false;  // LCOV_EXCL_LINE
         stack_.push( make_stack_entry( t, node_critical_section ) ); // push the entry on the stack.
         node = inode->get_child( node_type, std::get<CI>( t ) ); // get the child
+        if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) // verify before using the child.
+          return false;  // LCOV_EXCL_LINE
         parent_critical_section = std::move(node_critical_section); // move RCS (will check invariant at top of loop)
       }
     }
@@ -1479,6 +1481,8 @@ bool olc_db::iterator::try_prior() noexcept {
           return false;  // LCOV_EXCL_LINE
         stack_.push( make_stack_entry( t, node_critical_section ) ); // push the entry on the stack.
         node = inode->get_child( node_type, std::get<CI>( t ) ); // get the child
+        if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) // verify before using the child.
+          return false;  // LCOV_EXCL_LINE
         parent_critical_section = std::move(node_critical_section); // move RCS (will check invariant at top of loop)
       }
     }
@@ -1743,12 +1747,12 @@ bool olc_db::iterator::try_seek(const detail::art_key& search_key, bool& match, 
       // Simple case. There is a child for the current key byte.
       const auto child_index { res.first };
       const auto *const child { res.second };
-      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))
-        return false;  // LCOV_EXCL_LINE
       stack_.push( { node, remaining_key[0], child_index, node_critical_section.get() } );
       node = *child;
       parent_critical_section = std::move(node_critical_section); // move RCS (will check invariant at top of loop)
       remaining_key.shift_right(1);
+      if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))  // before using [child]
+        return false;  // LCOV_EXCL_LINE
     }
   } // while ( true )
   UNODB_DETAIL_CANNOT_HAPPEN();

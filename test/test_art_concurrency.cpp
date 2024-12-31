@@ -88,7 +88,7 @@ class ARTConcurrencyTest : public ::testing::Test {
   static void key_range_op_thread(unodb::test::tree_verifier<Db> *verifier,
                                   std::size_t thread_i,
                                   std::size_t ops_per_thread) {
-    constexpr auto ntasks = 4;  // FIXME 4 to enable scan tests.
+    constexpr auto ntasks = 4;  // Note: 4 to enable scan tests.
     unodb::key key = thread_i / ntasks * ntasks;
     for (decltype(ops_per_thread) i = 0; i < ops_per_thread; ++i) {
       switch (thread_i % ntasks) {
@@ -113,7 +113,7 @@ class ARTConcurrencyTest : public ::testing::Test {
           auto fromKey = ( key > 100 ) ? (key - 100) : key;
           auto toKey = key + 100;
           verifier->get_db().scan( fromKey, toKey, fn);
-          //std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl; // FIXME REMOVE THIS LINE.
+          //std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl;
           break;
         }
         default:
@@ -130,7 +130,7 @@ class ARTConcurrencyTest : public ::testing::Test {
     std::random_device rd;
     std::mt19937 gen{rd()};
     std::geometric_distribution<unodb::key> key_generator{0.5};
-    constexpr auto ntasks = 4;  // FIXME 4 to enable scan tests.
+    constexpr auto ntasks = 4;  // Note: 4 to enable scan tests.
     for (decltype(ops_per_thread) i = 0; i < ops_per_thread; ++i) {
       const auto key{key_generator(gen)};
       switch (thread_i % ntasks) {
@@ -155,7 +155,7 @@ class ARTConcurrencyTest : public ::testing::Test {
           auto fromKey = ( key > 100 ) ? (key - 100) : key;
           auto toKey = key + 100;
           verifier->get_db().scan( fromKey, toKey, fn);
-          //std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl; // FIXME REMOVE THIS LINE.
+          //std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl;
           break;
         }
         default:
@@ -227,8 +227,7 @@ TYPED_TEST(ARTConcurrencyTest, Node256ParallelOps) {
 TYPED_TEST(ARTConcurrencyTest, ParallelRandomInsertDeleteGetScan) {
   constexpr auto thread_count = 4 * 3;
   constexpr auto initial_keys = 2048;
-  constexpr auto ops_per_thread = 1000000;  // FIXME Original value is 10000
-  //constexpr auto ops_per_thread = 10000;
+  constexpr auto ops_per_thread = 1'000'000;  // FIXME CHANGE BACK TO 10'000 before merging to [master].
 
   this->verifier.insert_key_range(0, initial_keys, true);
   this->template parallel_test<thread_count, ops_per_thread>(

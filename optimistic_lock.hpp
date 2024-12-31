@@ -228,6 +228,9 @@ class [[nodiscard]] optimistic_lock final {
       return UNODB_DETAIL_LIKELY(result);
     }
 
+    // Return true iff the version on the optimistic lock is still the
+    // same version that was used to construct this
+    // read_critical_section.
     [[nodiscard]] bool check() UNODB_DETAIL_RELEASE_CONST noexcept {
       const auto result = lock->check(version);
 #ifndef NDEBUG
