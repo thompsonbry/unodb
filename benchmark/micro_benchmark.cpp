@@ -174,7 +174,7 @@ void dense_iter_keyrange_fwd_scan(benchmark::State &state) {
         std::ignore = v.get_value();  // TODO Does this ensure that the value is read?
         return false;
       };
-      test_db.scan( 0, key_limit, fn );  // scan all keys, but using a key-range.
+      test_db.scan_range( 0, key_limit, fn );  // scan all keys, but using a key-range.
       ::benchmark::DoNotOptimize(sum);  // ensure that the keys were retrieved.
     }
   }

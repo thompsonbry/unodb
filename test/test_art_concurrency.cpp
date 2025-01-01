@@ -23,6 +23,8 @@
 
 namespace {
 
+static inline bool odd(const unodb::key x) {return x % 2;}
+  
 template <class Db>
 class ARTConcurrencyTest : public ::testing::Test {
  public:
@@ -36,6 +38,7 @@ class ARTConcurrencyTest : public ::testing::Test {
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
  protected:
+
   // NOLINTNEXTLINE(bugprone-exception-escape)
   ARTConcurrencyTest() noexcept {
     if constexpr (std::is_same_v<Db, unodb::olc_db>)
@@ -112,7 +115,11 @@ class ARTConcurrencyTest : public ::testing::Test {
           };
           auto fromKey = ( key > 100 ) ? (key - 100) : key;
           auto toKey = key + 100;
-          verifier->get_db().scan( fromKey, toKey, fn);
+          if ( odd( key ) ) {
+            verifier->get_db().scan_range( fromKey, toKey, fn); // forward scan
+          } else {
+            verifier->get_db().scan_range( toKey, fromKey, fn); // reverse scan
+          }
           //std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl;
           break;
         }
@@ -154,7 +161,11 @@ class ARTConcurrencyTest : public ::testing::Test {
           };
           auto fromKey = ( key > 100 ) ? (key - 100) : key;
           auto toKey = key + 100;
-          verifier->get_db().scan( fromKey, toKey, fn);
+          if ( odd( key ) ) {
+            verifier->get_db().scan_range( fromKey, toKey, fn); // forward scan
+          } else {
+            verifier->get_db().scan_range( toKey, fromKey, fn); // reverse scan
+          }
           //std::cerr<<"scan: fromKey="<<fromKey<<", toKey="<<toKey<<", n="<<n<<", sum="<<sum<<std::endl;
           break;
         }

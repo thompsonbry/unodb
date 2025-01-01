@@ -69,7 +69,7 @@ inline void db::scan(FN fn, bool fwd) noexcept {
 }
 
 template <typename FN>
-inline void db::scan(const key fromKey_, FN fn, bool fwd) noexcept {
+inline void db::scan_from(const key fromKey_, FN fn, bool fwd) noexcept {
   if ( empty() ) return;
   const detail::art_key fromKey{fromKey_};  // convert to internal key
   bool match {};
@@ -96,7 +96,7 @@ inline void db::scan(const key fromKey_, FN fn, bool fwd) noexcept {
 // avoid the decoding.  But it would be nice to know the leaf that we
 // will not visit and just halt when we get there.
 template <typename FN>
-inline void db::scan(const key fromKey_, const key toKey_, FN fn) noexcept {
+inline void db::scan_range(const key fromKey_, const key toKey_, FN fn) noexcept {
   constexpr bool debug = false;  // set true to debug scan. FIXME REMOVE [debug]?
   if ( empty() ) return;
   const detail::art_key fromKey{fromKey_};  // convert to internal key

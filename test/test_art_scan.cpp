@@ -33,9 +33,9 @@ using unodb::test::test_values;
 // tested since they are independent.  The existing test coverage is
 // enough to make sure that each of them compiles.
 //
-// FIXME Tests which focus on scan(fromKey,toKey) and insure proper
-// upper bound and reordering of the keys to determine forward or
-// reverse traversal.
+// FIXME Tests which focus on scan_range(fromKey,toKey) and insure
+// proper upper bound and reordering of the keys to determine forward
+// or reverse traversal.
 //
 // FIXME unit tests for gsl::span<std::byte>
 //
@@ -60,11 +60,11 @@ static void dump(const std::vector<unodb::key>& x) {
 
 // Test help creates an index and populates it with the ODD keys in
 // [0:limit-1] so the first key is always ONE (1).  It then verifies
-// the correct behavior of scan(fromKey,toKey) against that index.
-// Since the data only contains the ODD keys, you can probe with EVEN
-// keys and verify that the scan() is carried out from the appropriate
-// key in the data when the fromKey and/or toKey do not exist in the
-// data.
+// the correct behavior of scan_range(fromKey,toKey) against that
+// index.  Since the data only contains the ODD keys, you can probe
+// with EVEN keys and verify that the scan() is carried out from the
+// appropriate key in the data when the fromKey and/or toKey do not
+// exist in the data.
 //
 // @param fromKey
 // @param toKey
@@ -113,7 +113,7 @@ void doScanTest(const unodb::key fromKey, const unodb::key toKey, const uint64_t
     eit++;        // advance iterator over the expected keys.
     return false; // !halt (aka continue scan).
   };
-  db.scan( fromKey, toKey, fn );
+  db.scan_range( fromKey, toKey, fn );
   EXPECT_TRUE( eit == eit2 ) << "Expected iterator should have been fully consumed, but was not (ART scan visited too little).";
   EXPECT_EQ( nactual, nexpected )<<", fromKey="<<fromKey<<", toKey="<<toKey<<", limit="<<limit;
 }
@@ -143,13 +143,13 @@ TYPED_TEST(ARTScanTest, scan_forward__empty_tree_keys_and_values) {
   {
     uint64_t n = 0;
     auto fn = [&n](unodb::visitor<typename TypeParam::iterator>&) {n++; return false;};
-    db.scan( 0x0000, fn );
+    db.scan_from( 0x0000, fn );
     UNODB_EXPECT_EQ( 0, n );
   }
   {
     uint64_t n = 0;
     auto fn = [&n](unodb::visitor<typename TypeParam::iterator>&) {n++; return false;};
-    db.scan( 0x0000, 0xffff, fn );
+    db.scan_range( 0x0000, 0xffff, fn );
     UNODB_EXPECT_EQ( 0, n );
   }
 }

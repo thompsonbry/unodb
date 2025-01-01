@@ -64,8 +64,9 @@ class mutex_db final {
   
   // Scan the tree, applying the caller's lambda to each visited leaf.
   //
-  // @param fn A function f(visitor&) returning [bool::halt].  The
-  // traversal will halt if the function returns [true].
+  // @param fn A function f(unodb::visitor<unodb::mutex_db::iterator>&)
+  // returning [bool::halt].  The traversal will halt if the function
+  // returns [true].
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
   // a reverse scan.
@@ -78,24 +79,28 @@ class mutex_db final {
   // Scan in the indicated direction, applying the caller's lambda to
   // each visited leaf.
   //
-  // @param fromKey is an inclusive bound for the starting point of
-  // the scan.
+  // @param fromKey is an inclusive lower bound for the starting point
+  // of the scan.
   //
-  // @param fn A function f(visitor&) returning [bool::halt].  The
-  // traversal will halt if the function returns [true].
+  // @param fn A function f(unodb::visitor<unodb::mutex_db::iterator>&)
+  // returning [bool::halt].  The traversal will halt if the function
+  // returns [true].
   //
   // @param fwd When [true] perform a forward scan, otherwise perform
   // a reverse scan.
   template <typename FN>
-  inline void scan(const key fromKey, FN fn, bool fwd = true) noexcept {
+  inline void scan_from(const key fromKey, FN fn, bool fwd = true) noexcept {
     const std::lock_guard guard{mutex};
-    db_.scan( fromKey, fn, fwd );
+    db_.scan_from( fromKey, fn, fwd );
   }
   
-  // Scan the key range, applying the caller's lambda to each visited
-  // leaf.  The scan will proceed in lexicographic order iff fromKey
-  // is less than toKey and in reverse lexicographic order iff toKey
-  // is less than fromKey.
+  // Scan a half-open key range, applying the caller's lambda to each
+  // visited leaf.  The scan will proceed in lexicographic order iff
+  // fromKey is less than toKey and in reverse lexicographic order iff
+  // toKey is less than fromKey.  When fromKey < toKey, the scan will
+  // visit all index entries in the half-open range [fromKey,toKey) in
+  // forward order.  Otherwise the scan will visit all index entries
+  // in the half-open range (fromKey,toKey] in reverse order.
   //
   // @param fromKey is an inclusive bound for the starting point of
   // the scan.
@@ -103,12 +108,13 @@ class mutex_db final {
   // @param toKey is an exclusive bound for the ending point of the
   // scan.
   //
-  // @param fn A function f(visitor&) returning [bool::halt].  The
-  // traversal will halt if the function returns [true].
+  // @param fn A function f(unodb::visitor<unodb::mutex_db::iterator>&)
+  // returning [bool::halt].  The traversal will halt if the function
+  // returns [true].
   template <typename FN>
-  inline void scan(const key fromKey, const key toKey, FN fn) noexcept {
+  inline void scan_range(const key fromKey, const key toKey, FN fn) noexcept {
     const std::lock_guard guard{mutex};
-    db_.scan( fromKey, toKey, fn );
+    db_.scan_range( fromKey, toKey, fn );
   }
   
   //
