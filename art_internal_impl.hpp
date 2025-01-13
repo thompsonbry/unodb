@@ -110,17 +110,25 @@ class [[nodiscard]] basic_leaf final : public Header {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  // return the binary comparable key stored in the leaf (TODO This
-  // should be changed to a method comparing a caller's key suffix
-  // against the key suffix stored in the leaf).
+  // return the binary comparable key stored in the leaf
+  //
+  // TODO(thompsonbry) : variable length keys.  This should be changed
+  // to a method comparing a caller's key suffix against the key
+  // suffix stored in the leaf.
   [[nodiscard, gnu::pure]] constexpr auto get_key() const noexcept {
     return key;
   }
 
+  // TODO(thompsonbry) : variable length keys.  This should be changed
+  // to a method comparing a caller's key suffix against the key
+  // suffix stored in the leaf.
   [[nodiscard, gnu::pure]] constexpr auto matches(art_key k) const noexcept {
     return k == get_key();
   }
 
+  // TODO(thompsonbry) : variable length keys.  This should be changed
+  // to a method comparing a caller's key suffix against the key
+  // suffix stored in the leaf.
   [[nodiscard, gnu::pure]] constexpr auto cmp(art_key k) const noexcept {
     return k.cmp(get_key());
   }
