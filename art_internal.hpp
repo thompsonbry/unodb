@@ -124,6 +124,7 @@ using art_key = basic_art_key<unodb::key>;
 [[gnu::cold]] UNODB_DETAIL_NOINLINE std::ostream &operator<<(
     std::ostream &os UNODB_DETAIL_LIFETIMEBOUND, art_key key);
 
+// typed class representing the depth of the tree.
 class [[nodiscard]] tree_depth final {
  public:
   using value_type = unsigned;

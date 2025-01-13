@@ -51,6 +51,8 @@ class olc_db;
 namespace unodb::detail {
 
 // encode an external key into an internal key.
+//
+// TODO(thompsonbry) : variable length keys.  change to a key builder class.
 template <>
 [[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
 basic_art_key<std::uint64_t>::make_binary_comparable(std::uint64_t k) noexcept {
@@ -62,6 +64,9 @@ basic_art_key<std::uint64_t>::make_binary_comparable(std::uint64_t k) noexcept {
 }
 
 // decode an internal key into an external key.
+//
+// TODO(thompsonbry) : variable length keys. change to a key decoder
+// class.  Maybe as part of the key builder class.
 template <>
 [[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
 basic_art_key<std::uint64_t>::make_external(std::uint64_t k) noexcept {
@@ -453,9 +458,9 @@ struct basic_art_policy final {
   basic_art_policy() = delete;
 };  // class basic_art_policy
 
-// The key_prefix is a sequence of bytes that are a prefix on the path
-// from the parent of some node to a child of that node (used for
-// prefix compression).
+// The key_prefix is a sequence of zero or more bytes for a given node
+// that are a common prefix shared by all children of that node and
+// supports prefix compression in the index.
 template <template <class> class CriticalSectionPolicy>
 union [[nodiscard]] key_prefix {
  private:
