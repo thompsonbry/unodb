@@ -31,7 +31,8 @@ namespace {
 
 // Test suite for scan() API for the ART.
 //
-// FIXME variable length keys: unit tests for gsl::span<std::byte>
+// TODO(thompsonbry) : variable length keys.  We need unit tests for
+// gsl::span<std::byte>
 //
 template <class Db>
 class ARTScanTest : public ::testing::Test {

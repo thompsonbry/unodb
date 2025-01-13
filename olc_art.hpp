@@ -323,10 +323,14 @@ class olc_db final {
 
     // Iff the iterator is positioned on an index entry, then returns
     // the decoded key associated with that index entry.
+    //
+    // TODO(thompsonbry) : iterator should not return optional.
     [[nodiscard]] std::optional<const key> get_key();
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
+    //
+    // TODO(thompsonbry) : iterator should not return optional.
     [[nodiscard, gnu::pure]] std::optional<const qsbr_value_view> get_val()
         const;
 
@@ -353,7 +357,7 @@ class olc_db final {
 
     // Push an entry onto the stack.
     //
-    // TODO(thompsonbry) handle variable length keys here.
+    // TODO(thompsonbry) : variable length keys.
     void push(const detail::olc_inode_base::iter_result& e,
               const optimistic_lock::read_critical_section& rcs) {
       push(e.node, e.key_byte, e.child_index, rcs);
@@ -377,7 +381,7 @@ class olc_db final {
 
     // Pop an entry from the stack.
     //
-    // TODO(thompsonbry) handle variable length keys here.
+    // TODO(thompsonbry) : variable length keys.
     void pop() { stack_.pop(); }
 
     // Return the entry (if any) on the top of the stack.
@@ -442,13 +446,14 @@ class olc_db final {
     // the appropriate lexicographic ordering.  The internal key needs
     // to be decoded to the external key.
     //
-    // TODO(thompsonbry) The current implementation stores the entire
-    // key in the leaf. This works fine for simple primitive keys.
-    // However, it needs to be modified when the implementation is
-    // modified to support variable length keys. In that situation,
-    // the full internal key needs to be constructed using the [key]
-    // byte from the path stack plus the prefix bytes from the
-    // internal nodes along that path.
+    // TODO(thompsonbry) : variable length keys.  The current
+    // implementation stores the entire key in the leaf. This works
+    // fine for simple primitive keys.  However, it needs to be
+    // modified when the implementation is modified to support
+    // variable length keys. In that situation, the full internal key
+    // needs to be constructed using the [key] byte from the path
+    // stack plus the prefix bytes from the internal nodes along that
+    // path.
     key key_{};
   };  // class iterator
 
@@ -551,9 +556,9 @@ class olc_db final {
   // returns [true].
   template <typename FN>
   inline void scan_range(key from_key, key to_key, FN fn) noexcept {
-    // TODO(thompsonbry) Explore a cheaper way to handle the exclusive
-    // bound case when developing variable length key support based on
-    // the maintained key buffer.
+    // TODO(thompsonbry) : variable length keys. Explore a cheaper way
+    // to handle the exclusive bound case when developing variable
+    // length key support based on the maintained key buffer.
     constexpr bool debug = false;               // set true to debug scan.
     const detail::art_key from_key_{from_key};  // convert to internal key
     const detail::art_key to_key_{to_key};      // convert to internal key
@@ -783,10 +788,10 @@ inline std::optional<const unodb::key> olc_db::iterator::get_key() {
   // leaf regardless of whether the leaf has been deleted.  This is
   // part of the design semantics for the OLC ART scan.
   //
-  // TODO(thompsonbry) Eventually this will need to use the stack to
-  // reconstruct the key from the path from the root to this leaf.
-  // Right now it is relying on the fact that simple fixed width keys
-  // are stored directly in the leaves.
+  // TODO(thompsonbry) : variable length keys.  Eventually this will
+  // need to use the stack to reconstruct the key from the path from
+  // the root to this leaf.  Right now it is relying on the fact that
+  // simple fixed width keys are stored directly in the leaves.
   if (!valid()) return {};  // not positioned on anything.
   const auto& e = stack_.top();
   const auto& node = e.node;
@@ -809,9 +814,9 @@ inline std::optional<const qsbr_value_view> olc_db::iterator::get_val() const {
 }
 
 inline int olc_db::iterator::cmp(const detail::art_key& akey) const {
-  // TODO(thompsonbry) Explore a cheaper way to handle the exclusive
-  // bound case when developing variable length key support based on
-  // the maintained key buffer.
+  // TODO(thompsonbry) : variable length keys. Explore a cheaper way
+  // to handle the exclusive bound case when developing variable
+  // length key support based on the maintained key buffer.
   UNODB_DETAIL_ASSERT(!stack_.empty());
   auto& node = stack_.top().node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);

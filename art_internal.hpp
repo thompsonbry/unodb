@@ -63,7 +63,7 @@ struct [[nodiscard]] basic_art_key final {
 
   [[nodiscard, gnu::pure]] constexpr bool operator==(
       basic_art_key<KeyType> key2) const noexcept {
-    // FIXME This is wrong for variable length keys.  It needs to
+    // TODO(thompsonbry) : variable length keys.  This needs to
     // consider no more bytes than the shorter key and if the two keys
     // have the same prefix, then they are != if one is longer (and
     // for == we can just compare the size as a short cut for this).
@@ -74,10 +74,11 @@ struct [[nodiscard]] basic_art_key final {
   // @return -1, 0, or 1 if this key is LT, EQ, or GT the other key.
   [[nodiscard, gnu::pure]] constexpr int cmp(
       basic_art_key<KeyType> key2) const noexcept {
-    // FIXME This is wrong for variable length keys.  It needs to
+    // TODO(thompsonbry) : variable length keys.  This needs to
     // consider no more bytes than the shorter key and if the two keys
-    // have the same prefix, then they are != if one is longer.  Also
-    // needs unit tests for variable length keys.
+    // have the same prefix, then they are != if one is longer (and
+    // for == we can just compare the size as a short cut for this).
+    // Also needs unit tests for variable length keys.
     return std::memcmp(&key, &key2.key, size);
   }
 

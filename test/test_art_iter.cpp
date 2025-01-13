@@ -28,7 +28,7 @@ namespace unodb {
 
 // Test suite for an ART iterator.
 //
-// TODO(thompsonbry) variable length keys :: unit tests for
+// TODO(thompsonbry) : variable length keys :: unit tests for
 // gsl::span<std::byte>
 template <class Db>
 class ARTIteratorTest : public ::testing::Test {

@@ -186,10 +186,14 @@ class db final {
 
     // Iff the iterator is positioned on an index entry, then returns
     // the decoded key associated with that index entry.
+    //
+    // TODO(thompsonbry) : iterator should not return optional.
     [[nodiscard]] std::optional<const key> get_key();
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
+    //
+    // TODO(thompsonbry) : iterator should not return optional.
     [[nodiscard, gnu::pure]] std::optional<const value_view> get_val() const;
 
     // Debugging
@@ -215,9 +219,10 @@ class db final {
     //
     // @return -1, 0, or 1 if this key is LT, EQ, or GT the other key.
     [[nodiscard]] int cmp(const detail::art_key& akey) const {
-      // TODO(thompsonbry) Explore a cheaper way to handle the
-      // exclusive bound case when developing variable length key
-      // support based on the maintained key buffer.
+      // TODO(thompsonbry) : variable length keys.  Explore a cheaper
+      // way to handle the exclusive bound case when developing
+      // variable length key support based on the maintained key
+      // buffer.
       UNODB_DETAIL_ASSERT(!stack_.empty());
       auto& node = stack_.top().node;
       UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);
@@ -237,7 +242,7 @@ class db final {
 
     // Push an entry onto the stack.
     //
-    // TODO(thompsonbry) handle variable length keys here.
+    // TODO(thompsonbry) variable length keys.
     void push(detail::node_ptr node, std::byte key_byte,
               std::uint8_t child_index) {
       stack_.push({node, key_byte, child_index});
@@ -253,7 +258,7 @@ class db final {
 
     // Pop an entry from the stack.
     //
-    // TODO(thompsonbry) handle variable length keys here.
+    // TODO(thompsonbry) variable length keys.
     void pop() { stack_.pop(); }
 
     // Return the entry (if any) on the top of the stack.
@@ -321,13 +326,14 @@ class db final {
     // the appropriate lexicographic ordering.  The internal key needs
     // to be decoded to the external key.
     //
-    // FIXME The current implementation stores the entire key in the
-    // leaf. This works fine for simple primitive keys.  However, it
-    // needs to be modified when the implementation is modified to
-    // support variable length keys. In that situation, the full
-    // internal key needs to be constructed using the [key] byte from
-    // the path stack plus the prefix bytes from the internal nodes
-    // along that path.
+    // TODO(thompsonbry) : variable length keys. The current
+    // implementation stores the entire key in the leaf. This works
+    // fine for simple primitive keys.  However, it needs to be
+    // modified when the implementation is modified to support
+    // variable length keys. In that situation, the full internal key
+    // needs to be constructed using the [key] byte from the path
+    // stack plus the prefix bytes from the internal nodes along that
+    // path.
     key key_{};
   };  // class iterator
 
@@ -550,10 +556,10 @@ class db final {
 ///
 
 inline std::optional<const key> db::iterator::get_key() {
-  // FIXME Eventually this will need to use the stack to reconstruct
-  // the key from the path from the root to this leaf.  Right now it
-  // is relying on the fact that simple fixed width keys are stored
-  // directly in the leaves.
+  // TODO(thompsonbry) : variable length keys. Eventually this will
+  // need to use the stack to reconstruct the key from the path from
+  // the root to this leaf.  Right now it is relying on the fact that
+  // simple fixed width keys are stored directly in the leaves.
   if (!valid()) return {};  // not positioned on anything.
   const auto& e = stack_.top();
   const auto& node = e.node;
@@ -622,6 +628,9 @@ inline void db::scan_from(key from_key, FN fn, bool fwd) {
 
 template <typename FN>
 inline void db::scan_range(key from_key, const key to_key, FN fn) {
+  // TODO(thompsonbry) : variable length keys. Explore a cheaper way
+  // to handle the exclusive bound case when developing variable
+  // length key support based on the maintained key buffer.
   constexpr bool debug = false;               // set true to debug scan.
   const detail::art_key from_key_{from_key};  // convert to internal key
   const detail::art_key to_key_{to_key};      // convert to internal key

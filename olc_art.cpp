@@ -1361,10 +1361,10 @@ olc_db::iterator &olc_db::iterator::next() {
   if (node != nullptr) {
     UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);      // On a leaf.
     const auto *const aleaf{node.ptr<detail::olc_leaf *>()};  // current leaf
-    // FIXME Variable length keys: We need a temporary copy of the key
-    // since actions on the stack will make it impossible to
-    // reconstruct the key.  So maybe we have two internal buffers on
-    // the iterator to support this?
+    // TODO(thompsonbry) : variable length keys: We need a temporary
+    // copy of the key since actions on the stack will make it
+    // impossible to reconstruct the key.  So maybe we have two
+    // internal buffers on the iterator to support this?
     const auto &akey = aleaf->get_key();  // access the key on the leaf.
     if (UNODB_DETAIL_LIKELY(try_next())) return *this;
     while (true) {
@@ -1388,10 +1388,10 @@ olc_db::iterator &olc_db::iterator::prior() {
   if (node != nullptr) {
     UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);      // On a leaf.
     const auto *const aleaf{node.ptr<detail::olc_leaf *>()};  // current leaf
-    // FIXME Variable length keys: We need a temporary copy of the key
-    // since actions on the stack will make it impossible to
-    // reconstruct the key.  So maybe we have two internal buffers on
-    // the iterator to support this?
+    // TODO(thompsonbry) : variable length keys: We need a temporary
+    // copy of the key since actions on the stack will make it
+    // impossible to reconstruct the key.  So maybe we have two
+    // internal buffers on the iterator to support this?
     const auto &akey = aleaf->get_key();  // access the key on the leaf.
     if (UNODB_DETAIL_LIKELY(try_prior())) return *this;
     while (true) {
