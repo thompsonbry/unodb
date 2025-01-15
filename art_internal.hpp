@@ -97,7 +97,9 @@ struct [[nodiscard]] basic_art_key final {
   // lexicographically ordered key.
   //
   // Note: Use a key_encoder for complex keys, including multiple key
-  // components or Unicode data..
+  // components or Unicode data.
+  template <typename U = KeyType,
+            typename std::enable_if<std::is_integral<U>::value, int>::type = 0>
   UNODB_DETAIL_CONSTEXPR_NOT_MSVC explicit basic_art_key(KeyType key_) noexcept
       : key{make_binary_comparable(key_)} {}
 
@@ -489,10 +491,12 @@ class key_encoder {
   }
 
   key_encoder &encode(std::int64_t v) {
+    constexpr auto msb = static_cast<std::int64_t>(0x8000000000000000L);
     v = (v < 0)  // fix up lexicographic ordering.
-            ? v - static_cast<std::int64_t>(0x8000000000000000L)
-            : v + static_cast<std::int64_t>(0x8000000000000000L);
-    return encode(reinterpret_cast<std::uint64_t &>(v));
+            ? v - msb
+            : v + msb;
+    auto u = reinterpret_cast<std::uint64_t &>(v);
+    return encode(u);
   }
 
   key_encoder &encode(std::uint64_t v) {
@@ -530,30 +534,36 @@ class key_encoder {
 // components.
 class key_decoder {
  private:
-  const key_view buf;
-  size_t offset{};
+  const key_view buf;  // the data to be decoded
+  size_t off{};        // the byte offset into that data.
 
  public:
-  key_decoder(const key_view data) : buf(data) {}
+  // Build a decoder for the key_view.
+  key_decoder(const key_view kv) : buf(kv), off(0) {}
 
-  // Convert an internal key into an external key. This is only
-  // intended for key types for which simple conversions are possible.
-  // For complex keys, including multiple key components or Unicode
-  // data, the application should use a gsl::space<std::byte> which
-  // already supports lexicographic comparison.
-  //
-  // TODO(thompsonbry) variable length keys. pull decode() out into a
-  // key decoder.  Note that key decoding is best effort only.
-  void decode(std::uint64_t &) {
-    // #ifdef UNODB_DETAIL_LITTLE_ENDIAN
-    //     out = unodb::detail::bswap(
-    //         *reinterpret_cast<const std::uint64_t*>( buf.data() + offset ) //
-    //         TODO(thompsonbry) Is this safe for unaligned data?
-    //                                );
-    // #else
-    // #error Needs implementing
-    // #endif
-    //     offset += sizeof(out);
+  // Decode a component of the indicated type from the key.
+  key_decoder &decode(std::int64_t &v) {
+    constexpr auto msb = static_cast<std::int64_t>(0x8000000000000000L);
+    std::uint64_t u;
+    decode(u);
+    v = reinterpret_cast<std::int64_t &>(u);
+    v = (v < 0) ? v + msb : v - msb;
+    return *this;
+  }
+
+  // Decode a component of the indicated type from the key.
+  key_decoder &decode(std::uint64_t &v) {
+    using T = std::uint64_t;
+    v = 0;
+    v += static_cast<T>(buf[off++]) << 56;
+    v += static_cast<T>(buf[off++]) << 48;
+    v += static_cast<T>(buf[off++]) << 40;
+    v += static_cast<T>(buf[off++]) << 32;
+    v += static_cast<T>(buf[off++]) << 24;
+    v += static_cast<T>(buf[off++]) << 16;
+    v += static_cast<T>(buf[off++]) << 8;
+    v += static_cast<T>(buf[off++]) << 0;
+    return *this;
   }
 
 };  // class key_decoder

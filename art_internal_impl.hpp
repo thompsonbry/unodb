@@ -987,7 +987,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
 
   template <class>
   friend class basic_inode_256;
-};
+};  // class basic_inode_impl
 
 // The class basic_inode is the last common ancestor (both for
 // templates and inheritance) for all inode types for both OLC and

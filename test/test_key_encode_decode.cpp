@@ -58,6 +58,27 @@ class my_key_encoder : public unodb::key_encoder {
 
 static constexpr auto INITIAL_CAPACITY = my_key_encoder::get_initial_capacity();
 
+// Test helper verifies that [ekey1] < [ekey2].
+template <typename T>
+void do_encode_decode_order_test(const T ekey1, const T ekey2) {
+  unodb::key_encoder enc1{};
+  unodb::key_encoder enc2{};  // separate decoder (backed by different span).
+  const auto ikey1 = enc1.encode(ekey1).get_key_view();  // into encoder buf!
+  const auto ikey2 = enc2.encode(ekey2).get_key_view();  // into encoder buf!
+  EXPECT_TRUE(compare(ikey1, ikey1) == 0);
+  EXPECT_TRUE(compare(ikey2, ikey2) == 0);
+  EXPECT_TRUE(compare(ikey1, ikey2) != 0);
+  EXPECT_TRUE(compare(ikey1, ikey2) < 0);
+  EXPECT_TRUE(compare(ikey2, ikey1) > 0);
+  unodb::key_decoder dec1{ikey1};
+  unodb::key_decoder dec2{ikey2};
+  T akey1, akey2;
+  dec1.decode(akey1);
+  dec2.decode(akey2);
+  EXPECT_EQ(ekey1, akey1);
+  EXPECT_EQ(ekey2, akey2);
+}
+
 UNODB_START_TESTS()
 
 // basic memory management - initial buffer case.
@@ -99,39 +120,89 @@ TEST(ARTKeyEncodeDecodeTest, C00002) {
   EXPECT_EQ(enc.get_key_view().size_bytes(), 0);    // key_view is empty
 }
 
-// std::uint64_t
-TEST(ARTKeyEncodeDecodeTest, C00010) {
-  constexpr std::uint64_t ekey = 0x0102030405060708;
+// Encode/decode round trip test.
+template <typename T>
+void do_encode_decode_test(const T ekey) {
   my_key_encoder enc{};
   enc.encode(ekey);
-  const unodb::key_view kv = enc.get_key_view();   // encode
-  EXPECT_EQ(kv.size_bytes(), sizeof(ekey));        // check size
-  EXPECT_EQ(static_cast<std::byte>(0x01), kv[0]);  // check order.
-  EXPECT_EQ(static_cast<std::byte>(0x02), kv[1]);
-  EXPECT_EQ(static_cast<std::byte>(0x03), kv[2]);
-  EXPECT_EQ(static_cast<std::byte>(0x04), kv[3]);
-  EXPECT_EQ(static_cast<std::byte>(0x05), kv[4]);
-  EXPECT_EQ(static_cast<std::byte>(0x06), kv[5]);
-  EXPECT_EQ(static_cast<std::byte>(0x07), kv[6]);
-  EXPECT_EQ(static_cast<std::byte>(0x08), kv[7]);
+  const unodb::key_view kv = enc.get_key_view();  // encode
+  EXPECT_EQ(kv.size_bytes(), sizeof(ekey));       // check size
+  // decode check
+  unodb::key_decoder dec{kv};
+  T akey;
+  dec.decode(akey);
+  EXPECT_EQ(akey, ekey);
 }
 
-// check lexicographic ordering for two std::uint64_t keys.
-//
-// TODO(thompsonbry) we need a torture test for lexicographic ordering
-// focused on the edge cases of signed and unsigned types.
-TEST(ARTKeyEncodeDecodeTest, C00011) {
-  const std::uint64_t ekey1 = 0x0102030405060708ULL;  // external key
-  const std::uint64_t ekey2 = 0x090A0B0C0D0F1011ULL;  // external key
-  unodb::key_encoder enc1{};
-  unodb::key_encoder enc2{};
-  const auto ikey1 = enc1.encode(ekey1).get_key_view();  // into encoder buf!
-  const auto ikey2 = enc2.encode(ekey2).get_key_view();  // into encoder buf!
-  EXPECT_TRUE(compare(ikey1, ikey1) == 0);
-  EXPECT_TRUE(compare(ikey2, ikey2) == 0);
-  EXPECT_TRUE(compare(ikey1, ikey2) != 0);
-  EXPECT_TRUE(compare(ikey1, ikey2) < 0);
-  EXPECT_TRUE(compare(ikey2, ikey1) > 0);
+// Encode/decode round trip test which also verifies the encoded byte sequence.
+template <typename T>
+void do_encode_decode_test(const T ekey,
+                           std::array<const std::byte, sizeof(T)> ikey) {
+  my_key_encoder enc{};
+  enc.encode(ekey);
+  const unodb::key_view kv = enc.get_key_view();  // encode
+  EXPECT_EQ(kv.size_bytes(), sizeof(ekey));       // check size
+  // check order.
+  size_t i = 0;
+  for (auto it = ikey.begin(); it != ikey.end(); it++) {
+    EXPECT_EQ(*it, kv[i++]);
+  }
+  // decode check
+  unodb::key_decoder dec{kv};
+  T akey;
+  dec.decode(akey);
+  EXPECT_EQ(akey, ekey);
+}
+
+TEST(ARTKeyEncodeDecodeTest, std_uint64_C00010) {
+  using T = std::uint64_t;
+  // Check the encoder byte order.
+  std::array<const std::byte, sizeof(T)> ikey{
+      static_cast<std::byte>(0x01), static_cast<std::byte>(0x02),
+      static_cast<std::byte>(0x03), static_cast<std::byte>(0x04),
+      static_cast<std::byte>(0x05), static_cast<std::byte>(0x06),
+      static_cast<std::byte>(0x07), static_cast<std::byte>(0x08)};
+  do_encode_decode_test(static_cast<T>(0x0102030405060708), ikey);
+  // round-trip tests.
+  do_encode_decode_test(static_cast<T>(0));
+  do_encode_decode_test(static_cast<T>(~0));
+  do_encode_decode_test(static_cast<T>(0 + 1));
+  do_encode_decode_test(static_cast<T>(0 - 1));
+  do_encode_decode_test(static_cast<T>(~0 + 1));
+  do_encode_decode_test(static_cast<T>(~0 - 1));
+  // check lexicographic ordering for std::uint64_t pairs.
+  do_encode_decode_order_test(static_cast<T>(0x0102030405060708ULL),
+                              static_cast<T>(0x090A0B0C0D0F1011ULL));
+  do_encode_decode_order_test(static_cast<T>(0), static_cast<T>(1));
+  do_encode_decode_order_test(static_cast<T>(0x7FFFFFFFFFFFFFFFULL),
+                              static_cast<T>(0x8000000000000000ULL));
+  do_encode_decode_order_test(static_cast<T>(0xFFFFFFFFFFFFFFFEULL),
+                              static_cast<T>(~0));
+}
+
+TEST(ARTKeyEncodeDecodeTest, std_int64_C00010) {
+  using T = std::int64_t;
+  // Check the encoder byte order.
+  std::array<const std::byte, sizeof(T)> ikey{
+      static_cast<std::byte>(0x81), static_cast<std::byte>(0x02),
+      static_cast<std::byte>(0x03), static_cast<std::byte>(0x04),
+      static_cast<std::byte>(0x05), static_cast<std::byte>(0x06),
+      static_cast<std::byte>(0x07), static_cast<std::byte>(0x08)};
+  do_encode_decode_test(static_cast<T>(0x0102030405060708LL), ikey);
+  // round-trip tests.
+  do_encode_decode_test(static_cast<T>(0));
+  do_encode_decode_test(static_cast<T>(~0));
+  do_encode_decode_test(static_cast<T>(0 + 1));
+  do_encode_decode_test(static_cast<T>(0 - 1));
+  do_encode_decode_test(static_cast<T>(~0 + 1));
+  do_encode_decode_test(static_cast<T>(~0 - 1));
+  // check lexicographic ordering for std::uint64_t pairs.
+  do_encode_decode_order_test(static_cast<T>(0), static_cast<T>(1));
+  do_encode_decode_order_test(static_cast<T>(5), static_cast<T>(7));
+  do_encode_decode_order_test(std::numeric_limits<T>::min(),
+                              std::numeric_limits<T>::min() + 1);
+  do_encode_decode_order_test(std::numeric_limits<T>::max() - 1,
+                              std::numeric_limits<T>::max());
 }
 
 UNODB_END_TESTS()
