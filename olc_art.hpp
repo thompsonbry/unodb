@@ -135,36 +135,101 @@ class olc_db final {
   using value_view = unodb::qsbr_value_view;
   using get_result = std::optional<value_view>;
 
-  // Creation and destruction
-  olc_db() noexcept = default;
-
-  ~olc_db() noexcept;
-
-  // Querying for a value given a key.
-  [[nodiscard]] get_result get(key search_key) const noexcept;
-
-  // Return true iff the tree is empty (no root leaf).
-  [[nodiscard]] auto empty() const noexcept { return root == nullptr; }
+ protected:
+  // Query for a value associated with a key.
+  [[nodiscard, gnu::pure]] get_result get0(
+      detail::art_key search_key) const noexcept;
 
   // Insert a value under a key iff there is no entry for that key.
   //
   // Note: Cannot be called during stack unwinding with
   // std::uncaught_exceptions() > 0
   //
-  // @return true if the key value pair was inserted.
-  //
-  // FIXME There should be a lambda variant of this to handle
-  // conflicts and support upsert or delete-upsert semantics. This
-  // would call the caller's lambda once the method was positioned on
-  // the leaf.  The caller could then update the value or perhaps
-  // delete the entry under the key.
-  [[nodiscard]] bool insert(key insert_key, unodb::value_view v);
+  // @return true iff the key value pair was inserted.
+  [[nodiscard]] bool insert0(detail::art_key insert_key, unodb::value_view v);
 
   // Remove the entry associated with the key.
   //
   // @return true if the delete was successful (i.e. the key was found
   // in the tree and the associated index entry was removed).
-  [[nodiscard]] bool remove(key remove_key);
+  [[nodiscard]] bool remove0(detail::art_key remove_key);
+
+ public:
+  // Creation and destruction
+  olc_db() noexcept = default;
+
+  ~olc_db() noexcept;
+
+  // Query for a value associated with a binary comparable key.
+  [[nodiscard, gnu::pure]] get_result get(key_view search_key) const noexcept {
+    detail::art_key k{search_key};
+    return get0(k);
+  }
+
+  // Query for a value associated with an external key.  The key is
+  // converted to a binary comparable key.
+  [[nodiscard, gnu::pure]]
+  typename std::enable_if<std::is_integral<key>::value, get_result>::type
+  get(key search_key) const noexcept {
+    const detail::art_key k{search_key};  // fast path conversion.
+    return get0(k);
+  }
+
+  // Return true iff the tree is empty (no root leaf).
+  [[nodiscard]] auto empty() const noexcept { return root == nullptr; }
+
+  // Insert a value under a binary comparable key iff there is no
+  // entry for that key.
+  //
+  // Note: Cannot be called during stack unwinding with
+  // std::uncaught_exceptions() > 0
+  //
+  // @return true iff the key value pair was inserted.
+  //
+  // TODO(thompsonbry) There should be a lambda variant of this to
+  // handle conflicts and support upsert or delete-upsert
+  // semantics. This would call the caller's lambda once the method
+  // was positioned on the leaf.  The caller could then update the
+  // value or perhaps delete the entry under the key.
+  [[nodiscard, gnu::pure]] bool insert(key_view insert_key,
+                                       unodb::value_view v) {
+    detail::art_key k{insert_key};
+    return insert0(k, v);
+  }
+
+  // Insert a value under the key.  The key is converted to a binary
+  // comparable key.
+  //
+  // Note: Cannot be called during stack unwinding with
+  // std::uncaught_exceptions() > 0
+  //
+  // @return true iff the key value pair was inserted.
+  [[nodiscard, gnu::pure]]
+  typename std::enable_if<std::is_integral<key>::value, bool>::type
+  insert(key insert_key, unodb::value_view v) {
+    const detail::art_key k{insert_key};  // fast path conversion.
+    return insert0(k, v);
+  }
+
+  // Remove the entry associated with the binary comparable key.
+  //
+  // @return true if the delete was successful (i.e. the key was found
+  // in the tree and the associated index entry was removed).
+  [[nodiscard, gnu::pure]] bool remove(key_view search_key) {
+    detail::art_key k{search_key};
+    return remove0(k);
+  }
+
+  // Remove the entry associated with the key.
+  //
+  // @return true if the delete was successful (i.e. the key was found
+  // in the tree and the associated index entry was removed).
+  [[nodiscard, gnu::pure]]
+  typename std::enable_if<std::is_integral<key>::value, bool>::type
+  remove(key search_key) {
+    const detail::art_key k{search_key};  // fast path conversion.
+    return remove0(k);
+  }
 
   // Removes all entries in the index.
   //

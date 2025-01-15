@@ -845,12 +845,11 @@ olc_db::~olc_db() noexcept {
 // olc_db implementation
 //
 
-olc_db::get_result olc_db::get(key search_key) const noexcept {
+olc_db::get_result olc_db::get0(detail::art_key k) const noexcept {
   try_get_result_type result;
-  const detail::art_key bin_comparable_key{search_key};
 
   while (true) {
-    result = try_get(bin_comparable_key);
+    result = try_get(k);
     if (result) break;
     // TODO(laurynas): upgrade to write locks to prevent starving after a
     // certain number of failures?
@@ -948,16 +947,14 @@ olc_db::try_get_result_type olc_db::try_get(detail::art_key k) const noexcept {
   }
 }
 
-bool olc_db::insert(key insert_key, unodb::value_view v) {
-  const auto bin_comparable_key = detail::art_key{insert_key};
-
+bool olc_db::insert0(detail::art_key k, unodb::value_view v) {
   try_update_result_type result;
   unodb::detail::olc_db_leaf_unique_ptr cached_leaf{
       nullptr,
       detail::basic_db_leaf_deleter<detail::olc_node_header, olc_db>{*this}};
 
   while (true) {
-    result = try_insert(bin_comparable_key, v, cached_leaf);
+    result = try_insert(k, v, cached_leaf);
     if (result) break;
   }
 
@@ -1114,12 +1111,10 @@ olc_db::try_update_result_type olc_db::try_insert(
   }
 }
 
-bool olc_db::remove(key remove_key) {
-  const auto bin_comparable_key = detail::art_key{remove_key};
-
+bool olc_db::remove0(detail::art_key k) {
   try_update_result_type result;
   while (true) {
-    result = try_remove(bin_comparable_key);
+    result = try_remove(k);
     if (result) break;
   }
 

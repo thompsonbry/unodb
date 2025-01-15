@@ -23,6 +23,8 @@
 namespace unodb {
 
 // Key type for public API
+//
+// TODO(thompsonbry) : variable length keys. remove this.
 using key = std::uint64_t;
 
 namespace detail {

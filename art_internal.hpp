@@ -26,6 +26,7 @@
 
 #include "art_common.hpp"
 #include "assert.hpp"
+#include "heap.hpp"
 #include "node_type.hpp"
 #include "portability_builtins.hpp"
 
@@ -46,8 +47,7 @@ class [[nodiscard]] basic_db_leaf_deleter;
                                                const size_t blen) {
   const auto shared_length = std::min(alen, blen);
   auto ret = std::memcmp(a, b, shared_length);
-  if (UNODB_DETAIL_LIKELY(ret != 0)) return ret;
-  ret = (alen == blen) ? 0 : (alen < blen ? -1 : 1);
+  ret = (ret != 0) ? ret : ((alen == blen) ? 0 : (alen < blen ? -1 : 1));
   return ret;
 }
 
@@ -78,16 +78,9 @@ class [[nodiscard]] basic_db_leaf_deleter;
 // Unicode data recovered from that tuple.
 template <typename KeyType>
 struct [[nodiscard]] basic_art_key final {
-  // Convert an external key into an internal key supporting
-  // lexicographic comparison.  This is only intended for key types
-  // for which simple conversions are possible.  For complex keys,
-  // including multiple key components or Unicode data, the
-  // application should use a gsl::space<std::byte> which already
-  // supports lexicographic comparison.
-  //
-  // TODO(thompsonbry) variable length keys. pull encode() out into a
-  // key encoder.  This requires chasing down all the places where the
-  // art_key{} constructor is being used to do implicit conversion.
+ private:
+  // Convert a simple external key into an internal key supporting
+  // lexicographic comparison.
   [[nodiscard, gnu::const]] static UNODB_DETAIL_CONSTEXPR_NOT_MSVC KeyType
   make_binary_comparable(KeyType k) noexcept {
 #ifdef UNODB_DETAIL_LITTLE_ENDIAN
@@ -97,17 +90,29 @@ struct [[nodiscard]] basic_art_key final {
 #endif
   }
 
+ public:
   constexpr basic_art_key() noexcept = default;
 
   // Construct converts a fixed width primitive type into a
   // lexicographically ordered key.
+  //
+  // Note: Use a key_encoder for complex keys, including multiple key
+  // components or Unicode data..
   UNODB_DETAIL_CONSTEXPR_NOT_MSVC explicit basic_art_key(KeyType key_) noexcept
       : key{make_binary_comparable(key_)} {}
+
+  // TODO(thompsonbry) variable length keys -- THIS NEEDS TO BE REPLACED and WE
+  // MUST SUPPORT gsl::span for art_key.
+  UNODB_DETAIL_CONSTEXPR_NOT_MSVC explicit basic_art_key(key_view) noexcept
+      : key{0ULL} {
+    UNODB_DETAIL_CANNOT_HAPPEN();
+  }
 
   // @return -1, 0, or 1 if this key is LT, EQ, or GT the other key.
   [[nodiscard, gnu::pure]] constexpr int cmp(
       basic_art_key<KeyType> key2) const noexcept {
     if constexpr (std::is_same_v<KeyType, std::uint64_t>) {
+      // fast path
       return std::memcmp(&key, &key2.key, sizeof(KeyType));
     } else {
       return compare(&key, sizeof(KeyType), &key2.key, sizeof(KeyType));
@@ -426,13 +431,11 @@ class visitor {
 ///
 /// Key encodes and key decoder
 ///
-// const auto dynamic_extent = gsl::dynamic_extent;
 
-// TODO(thompsonbry) : variable length keys. write and test
-// key_encoder.
-//
-// TODO(thompsonbry) : variable length integer encoding and decoding
-// support.
+// A utility class to generate binary comparable keys from a sequence
+// of key components.  This class supports the various kinds of
+// primitive data types and provides support for the caller to pass
+// through Unicode sort keys.
 //
 // TODO(thompsonbry) : variable length keys. Minimum initial capacity
 // and memory pooling?  Thread local?
@@ -468,6 +471,12 @@ class key_encoder {
   // setup a new key encoder.
   key_encoder() : buf(&ibuf[0]), cap(sizeof(ibuf)), len(0) {}
 
+  ~key_encoder() {
+    if (cap > sizeof(ibuf)) {  // free old buffer iff allocated
+      detail::free_aligned(buf);
+    }
+  }
+
   // reset the encoder to encode another key.
   key_encoder &reset() {
     len = 0;
@@ -475,7 +484,9 @@ class key_encoder {
   }
 
   // a read-only view of the internal buffer.
-  key_view get_key_view() const noexcept { return key_view(buf, len); }
+  [[nodiscard]] key_view get_key_view() const noexcept {
+    return key_view(buf, len);
+  }
 
   key_encoder &encode(std::int64_t v) {
     v = (v < 0)  // fix up lexicographic ordering.
@@ -486,11 +497,6 @@ class key_encoder {
 
   key_encoder &encode(std::uint64_t v) {
     ensure_available(sizeof(v));
-#ifdef UNODB_DETAIL_LITTLE_ENDIAN
-    v = detail::bswap(v);
-#else
-#error Needs implementing
-#endif
     buf[len++] = static_cast<std::byte>(v >> 56);
     buf[len++] = static_cast<std::byte>(v >> 48);
     buf[len++] = static_cast<std::byte>(v >> 40);
@@ -508,21 +514,20 @@ class key_encoder {
   void ensure_capacity(size_t min_capacity);
 
   // Used for the initial buffer (one cache line).
-  //
-  // TODO(thompsobry) variable length keys. Special case for uint64_t
-  // only keys?  Reduce capacity or totally work around it?
   std::byte ibuf[INITIAL_CAPACITY];
 
   // The buffer to accmulate the encoded key.  Originally this is the
   // [ibuf].  If that overflows, then something will be allocated.
-  std::byte *buf;
-  size_t cap;  // current buffer capacity
-  size_t len;  // #of bytes in the buffer having encoded data.
+  std::byte *buf{};
+  size_t cap{};  // current buffer capacity
+  size_t len{};  // #of bytes in the buffer having encoded data.
 
 };  // class key_encoder
 
-// TODO(thompsonbry) : variable length keys. write and test
-// key_decoder.
+// A utility class that can decode binary comparable keys as long as
+// those keys (except for Unicode sort keys).  To use this class, you
+// need to know how a given key was encoded as a sequence of key
+// components.
 class key_decoder {
  private:
   const key_view buf;

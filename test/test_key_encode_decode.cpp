@@ -121,13 +121,15 @@ TEST(ARTKeyEncodeDecodeTest, C00010) {
 // TODO(thompsonbry) we need a torture test for lexicographic ordering
 // focused on the edge cases of signed and unsigned types.
 TEST(ARTKeyEncodeDecodeTest, C00011) {
-  const std::uint64_t ekey1 = 0x0102030405060708;  // external key
-  const std::uint64_t ekey2 = 0x090A0B0C0D0F1011;  // external key
-  unodb::key_encoder enc{};
-  const auto ikey1 = enc.reset().encode(ekey1).get_key_view();
-  const auto ikey2 = enc.reset().encode(ekey2).get_key_view();
-  EXPECT_TRUE(compare(ikey1, ikey2) == 0);
+  const std::uint64_t ekey1 = 0x0102030405060708ULL;  // external key
+  const std::uint64_t ekey2 = 0x090A0B0C0D0F1011ULL;  // external key
+  unodb::key_encoder enc1{};
+  unodb::key_encoder enc2{};
+  const auto ikey1 = enc1.encode(ekey1).get_key_view();  // into encoder buf!
+  const auto ikey2 = enc2.encode(ekey2).get_key_view();  // into encoder buf!
+  EXPECT_TRUE(compare(ikey1, ikey1) == 0);
   EXPECT_TRUE(compare(ikey2, ikey2) == 0);
+  EXPECT_TRUE(compare(ikey1, ikey2) != 0);
   EXPECT_TRUE(compare(ikey1, ikey2) < 0);
   EXPECT_TRUE(compare(ikey2, ikey1) > 0);
 }
