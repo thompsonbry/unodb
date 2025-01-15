@@ -1011,7 +1011,7 @@ olc_db::try_update_result_type olc_db::try_insert(
     if (node_type == node_type::LEAF) {
       auto *const aleaf{node.ptr<unodb::detail::leaf *>()};
       const auto existing_key{aleaf->get_key()};
-      if (UNODB_DETAIL_UNLIKELY(k == existing_key)) {
+      if (UNODB_DETAIL_UNLIKELY(k.cmp(existing_key) == 0)) {
         if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE
         if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))

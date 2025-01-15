@@ -565,6 +565,11 @@ inline std::optional<const key> db::iterator::get_key() {
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);  // On a leaf.
   const auto* const leaf{node.ptr<detail::leaf*>()};    // current leaf.
+  // const gsl::span<const std::byte> ikey {               // internal key.
+  //   &(leaf->get_key()), sizeof(std::uint64_t)
+  // };
+  // key_decoder( ikey ).decode( &key_ );  // decode into buffer.
+  // return key_;                          // return pointer to buffer.
   key_ = leaf->get_key().decode();  // decode key into buffer.
   return key_;  // return pointer to the internal key buffer.
 }

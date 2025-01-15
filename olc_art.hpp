@@ -797,7 +797,7 @@ inline std::optional<const unodb::key> olc_db::iterator::get_key() {
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);     // On a leaf.
   const auto* const aleaf{node.ptr<detail::olc_leaf*>()};  // current leaf.
-  key_ = aleaf->get_key().decode();  // decode key into iterator's buffer.
+  key_ = aleaf->get_key().decode();  // decode into buffer.
   return key_;  // return pointer to the internal key buffer.
 }
 

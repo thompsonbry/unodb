@@ -35,6 +35,10 @@ namespace detail {
 // (gsl::span). The memory is copied upon insertion.
 using value_view = gsl::span<const std::byte>;
 
+// Keys are passed as non-owning pointers to memory with associated
+// length (gsl::span).
+using key_view = gsl::span<const std::byte>;
+
 }  // namespace unodb
 
 #endif  // UNODB_DETAIL_ART_COMMON_HPP

@@ -330,7 +330,7 @@ bool db::insert(key insert_key, value_view v) {
     if (node_type == node_type::LEAF) {
       auto *const leaf{node->ptr<::leaf *>()};
       const auto existing_key{leaf->get_key()};
-      if (UNODB_DETAIL_UNLIKELY(k == existing_key)) return false;
+      if (UNODB_DETAIL_UNLIKELY(k.cmp(existing_key) == 0)) return false;
 
       auto new_leaf = unodb::detail::art_policy::make_db_leaf_ptr(k, v, *this);
       auto new_node{detail::inode_4::create(*this, existing_key, remaining_key,

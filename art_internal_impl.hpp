@@ -50,33 +50,6 @@ class olc_db;
 
 namespace unodb::detail {
 
-// encode an external key into an internal key.
-//
-// TODO(thompsonbry) : variable length keys.  change to a key builder class.
-template <>
-[[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
-basic_art_key<std::uint64_t>::make_binary_comparable(std::uint64_t k) noexcept {
-#ifdef UNODB_DETAIL_LITTLE_ENDIAN
-  return bswap(k);
-#else
-#error Needs implementing
-#endif
-}
-
-// decode an internal key into an external key.
-//
-// TODO(thompsonbry) : variable length keys. change to a key decoder
-// class.  Maybe as part of the key builder class.
-template <>
-[[nodiscard, gnu::const]] UNODB_DETAIL_CONSTEXPR_NOT_MSVC std::uint64_t
-basic_art_key<std::uint64_t>::make_external(std::uint64_t k) noexcept {
-#ifdef UNODB_DETAIL_LITTLE_ENDIAN
-  return bswap(k);
-#else
-#error Needs implementing
-#endif
-}
-
 #ifdef UNODB_DETAIL_X86_64
 
 // Idea from https://stackoverflow.com/a/32945715/80458
@@ -117,20 +90,31 @@ class [[nodiscard]] basic_leaf final : public Header {
 
   // return the binary comparable key stored in the leaf
   //
-  // TODO(thompsonbry) : variable length keys.  This should be changed
-  // to a method comparing a caller's key suffix against the key
-  // suffix stored in the leaf.
+  // TODO(thompsonbry) : variable length keys.  Where possible this
+  // must be changed to a method comparing a caller's key suffix
+  // against the key suffix stored in the leaf.  Calling contexts
+  // which assume that they can recover the entire key from the leaf
+  // are trouble for variable length keys.  Instead, the key must be
+  // buffered during the traversal down to the leaf and the leaf might
+  // have a tail fragment of the key.  That buffer can be wrapped and
+  // exposed as a gsl::span<const std::byte> (aka key_view).
   [[nodiscard, gnu::pure]] constexpr auto get_key() const noexcept {
     return key;
   }
 
+  // Return true iff the two keys are the same.
+  //
   // TODO(thompsonbry) : variable length keys.  This should be changed
   // to a method comparing a caller's key suffix against the key
   // suffix stored in the leaf.
   [[nodiscard, gnu::pure]] constexpr auto matches(art_key k) const noexcept {
-    return k == get_key();
+    return cmp(k) == 0;
   }
 
+  // Return LT ZERO (0) if this key is less than the caller's key.
+  // Return GT ZERO (0) if this key is greater than the caller's key.
+  // Return ZERO (0) if the two keys are the same.
+  //
   // TODO(thompsonbry) : variable length keys.  This should be changed
   // to a method comparing a caller's key suffix against the key
   // suffix stored in the leaf.
@@ -164,7 +148,8 @@ class [[nodiscard]] basic_leaf final : public Header {
       std::numeric_limits<value_size_type>::max();
 
  private:
-  const art_key key;
+  const art_key key;  // TODO(thompsonbry) : variable length keys.  The key
+                      // should be optional on the leaf.
   const value_size_type value_size;
   // NOLINTNEXTLINE(modernize-avoid-c-arrays)
   std::byte value_start[1];
@@ -500,7 +485,7 @@ union [[nodiscard]] key_prefix {
   // bytes already matched by the traversal path have been discarded.
   [[nodiscard]] constexpr auto get_shared_length(
       unodb::detail::art_key shifted_key) const noexcept {
-    return shared_len(static_cast<std::uint64_t>(shifted_key), u64, length());
+    return shared_len(shifted_key.get_internal_key(), u64, length());
   }
 
   // The number of prefix bytes.
@@ -581,11 +566,11 @@ union [[nodiscard]] key_prefix {
       art_key k1, art_key shifted_k2, tree_depth depth) noexcept {
     k1.shift_right(depth);
 
-    const auto k1_u64 = static_cast<std::uint64_t>(k1) & key_bytes_mask;
+    const auto k1_u64 = k1.get_internal_key() & key_bytes_mask;
 
-    return k1_u64 | length_to_word(shared_len(
-                        k1_u64, static_cast<std::uint64_t>(shifted_k2),
-                        key_prefix_capacity));
+    return k1_u64 |
+           length_to_word(shared_len(k1_u64, shifted_k2.get_internal_key(),
+                                     key_prefix_capacity));
   }
 };  // class key_prefix
 
