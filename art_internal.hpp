@@ -15,6 +15,7 @@
 // IWYU pragma: no_include <__fwd/ostream.h>
 // IWYU pragma: no_include <_string.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -25,9 +26,8 @@
 
 #include "art_common.hpp"
 #include "assert.hpp"
-#include "heap.hpp"  // allocate_aligned and free_aligned
 #include "node_type.hpp"
-#include "portability_builtins.hpp"  // key encode and decode
+#include "portability_builtins.hpp"
 
 namespace unodb::detail {
 
@@ -37,6 +37,27 @@ class [[nodiscard]] basic_leaf;
 
 template <class, class>
 class [[nodiscard]] basic_db_leaf_deleter;
+
+// Lexicographic comparison of bytes.
+//
+// @return -1, 0, or 1 if this key is LT, EQ, or GT the other key.
+[[nodiscard, gnu::pure]] constexpr int compare(const void *a, const size_t alen,
+                                               const void *b,
+                                               const size_t blen) {
+  const auto shared_length = std::min(alen, blen);
+  auto ret = std::memcmp(a, b, shared_length);
+  if (UNODB_DETAIL_LIKELY(ret != 0)) return ret;
+  ret = (alen == blen) ? 0 : (alen < blen ? -1 : 1);
+  return ret;
+}
+
+// Lexicographic comparison of key_views.
+//
+// @return -1, 0, or 1 if this key is LT, EQ, or GT the other key.
+[[nodiscard, gnu::pure]] constexpr int compare(const unodb::key_view a,
+                                               const unodb::key_view b) {
+  return compare(a.data(), a.size_bytes(), b.data(), b.size_bytes());
+}
 
 // Internal ART key in binary-comparable format.  Application keys may
 // be simple fixed width types (such as std::uint64_t) or variable
@@ -65,7 +86,8 @@ struct [[nodiscard]] basic_art_key final {
   // supports lexicographic comparison.
   //
   // TODO(thompsonbry) variable length keys. pull encode() out into a
-  // key encoder.
+  // key encoder.  This requires chasing down all the places where the
+  // art_key{} constructor is being used to do implicit conversion.
   [[nodiscard, gnu::const]] static UNODB_DETAIL_CONSTEXPR_NOT_MSVC KeyType
   make_binary_comparable(KeyType k) noexcept {
 #ifdef UNODB_DETAIL_LITTLE_ENDIAN
@@ -77,18 +99,19 @@ struct [[nodiscard]] basic_art_key final {
 
   constexpr basic_art_key() noexcept = default;
 
+  // Construct converts a fixed width primitive type into a
+  // lexicographically ordered key.
   UNODB_DETAIL_CONSTEXPR_NOT_MSVC explicit basic_art_key(KeyType key_) noexcept
       : key{make_binary_comparable(key_)} {}
 
   // @return -1, 0, or 1 if this key is LT, EQ, or GT the other key.
   [[nodiscard, gnu::pure]] constexpr int cmp(
       basic_art_key<KeyType> key2) const noexcept {
-    // TODO(thompsonbry) : variable length keys.  This needs to
-    // consider no more bytes than the shorter key and if the two keys
-    // have the same prefix, then they are != if one is longer (and
-    // for == we can just compare the size as a short cut for this).
-    // Also needs unit tests for variable length keys.
-    return std::memcmp(&key, &key2.key, size);
+    if constexpr (std::is_same_v<KeyType, std::uint64_t>) {
+      return std::memcmp(&key, &key2.key, sizeof(KeyType));
+    } else {
+      return compare(&key, sizeof(KeyType), &key2.key, sizeof(KeyType));
+    }
   }
 
   // Return the byte at the specified index position in the binary
@@ -97,6 +120,10 @@ struct [[nodiscard]] basic_art_key final {
       std::size_t index) const noexcept {
     UNODB_DETAIL_ASSERT(index < size);
     return key_bytes[index];
+  }
+
+  [[nodiscard, gnu::pure]] constexpr key_view get_key_view() const noexcept {
+    return key_view(&key, sizeof(key));
   }
 
   // TODO(thompsonbry) variable length keys.  This returns the
@@ -407,48 +434,58 @@ class visitor {
 // TODO(thompsonbry) : variable length integer encoding and decoding
 // support.
 //
-// TODO Minimum initial capacity and memory pooling?  Thread local?
-// Special case for uint64_t only keys.
+// TODO(thompsonbry) : variable length keys. Minimum initial capacity
+// and memory pooling?  Thread local?
 class key_encoder {
-  // used for the initial buffer (one cache line)
-  std::byte ibuf[64];
+ protected:
+  // The initial capacity of the key encoder.  This much data can fit
+  // into the encoder without allocating a buffer on the heap.
+  static constexpr size_t INITIAL_CAPACITY = 64;
 
-  // The buffer to accmulate the encoded key.  Originally this is the
-  // [ibuf].  If that overflows, then something will be allocated.
-  std::byte *buf;
-  size_t cap;  // current buffer capacity
-  size_t len;  // #of bytes in the buffer having encoded data.
+  size_t capacity() const noexcept { return cap; }
 
-  // ensures that we have at least the specified capacity in the buffer.
-  void ensureCapacity(size_t min_capacity) {
-    if (UNODB_DETAIL_LIKELY(cap >= min_capacity)) return;
-    // Find the allocation size in bytes which satisfies that minimum
-    // capacity.  We first look for the next power of two.  Then we
-    // adjust for the case where the [min_capacity] is already a power
-    // of two (a common edge case).
-    auto nsize = detail::NextPowerOfTwo(min_capacity);
-    auto asize = (min_capacity == (nsize >> 1)) ? min_capacity : nsize;
-    auto tmp = detail::allocate_aligned(asize);  // new allocation.
-    std::memcpy(tmp, buf, len);                  // copy over the data.
-    if (cap >= sizeof(ibuf)) {  // free old buffer iff allocated
-      detail::free_aligned(buf);
+  // the number of bytes of data in the internal buffer.
+  size_t size_bytes() const noexcept { return len; }
+
+  // // a pointer to the start of the internal buffer.
+  // template<typename T> T* data() noexcept {
+  //   return reinterpret_cast<T*>(buf);
+  // }
+
+  // // a pointer to the start of the internal buffer.
+  // template<typename T> const T* data() const noexcept {
+  //   return reinterpret_cast<const T*>(buf);
+  // }
+
+  // ensure that the buffer can hold at least [req] additional bytes.
+  void ensure_available(size_t req) {
+    if (UNODB_DETAIL_UNLIKELY(len + req > cap)) {
+      ensure_capacity(len + req);  // resize
     }
-    buf = reinterpret_cast<std::byte *>(tmp);
   }
 
  public:
   // setup a new key encoder.
   key_encoder() : buf(&ibuf[0]), cap(sizeof(ibuf)), len(0) {}
 
-  void encode(std::int64_t v) {
+  // reset the encoder to encode another key.
+  key_encoder &reset() {
+    len = 0;
+    return *this;
+  }
+
+  // a read-only view of the internal buffer.
+  key_view get_key_view() const noexcept { return key_view(buf, len); }
+
+  key_encoder &encode(std::int64_t v) {
     v = (v < 0)  // fix up lexicographic ordering.
             ? v - static_cast<std::int64_t>(0x8000000000000000L)
             : v + static_cast<std::int64_t>(0x8000000000000000L);
-    encode(reinterpret_cast<std::uint64_t &>(v));
+    return encode(reinterpret_cast<std::uint64_t &>(v));
   }
 
-  void encode(std::uint64_t v) {
-    ensureCapacity(len + sizeof(v));
+  key_encoder &encode(std::uint64_t v) {
+    ensure_available(sizeof(v));
 #ifdef UNODB_DETAIL_LITTLE_ENDIAN
     v = detail::bswap(v);
 #else
@@ -462,7 +499,26 @@ class key_encoder {
     buf[len++] = static_cast<std::byte>(v >> 16);
     buf[len++] = static_cast<std::byte>(v >> 8);
     buf[len++] = static_cast<std::byte>(v >> 0);
+    return *this;
   }
+
+ private:
+  // ensure that we have at least the specified capacity in the
+  // buffer.
+  void ensure_capacity(size_t min_capacity);
+
+  // Used for the initial buffer (one cache line).
+  //
+  // TODO(thompsobry) variable length keys. Special case for uint64_t
+  // only keys?  Reduce capacity or totally work around it?
+  std::byte ibuf[INITIAL_CAPACITY];
+
+  // The buffer to accmulate the encoded key.  Originally this is the
+  // [ibuf].  If that overflows, then something will be allocated.
+  std::byte *buf;
+  size_t cap;  // current buffer capacity
+  size_t len;  // #of bytes in the buffer having encoded data.
+
 };  // class key_encoder
 
 // TODO(thompsonbry) : variable length keys. write and test

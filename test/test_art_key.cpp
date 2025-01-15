@@ -34,14 +34,6 @@ namespace {
 // micro_benchmark_art_key also to give us a baseline for performance.
 //
 // TODO(thompsonbry) : variable length keys.  Add coverage for
-// lexicographic ordering of all the interesting key types via the
-// key_encoder and their proper decoding (where possible) via the
-// decoder.
-//
-// TODO(thompsonbry) : variable length keys.  Add a microbenchmark for
-// the key_encoder.
-//
-// TODO(thompsonbry) : variable length keys.  Add coverage for
 // art_key<gsl::span<const std::byte>>
 template <class Db>
 class ARTKeyTest : public ::testing::Test {
@@ -57,7 +49,9 @@ UNODB_TYPED_TEST_SUITE(ARTKeyTest, ARTTypes)
 
 UNODB_START_TYPED_TESTS()
 
-// Basic encode/decode for a simple key type.
+// Basic encode/decode for a simple key type.  Mostly we cover this in
+// the key_encoder tests, but this covers the historical case for
+// uint64_t keys and sets us up for testing shift_right(), etc.
 TYPED_TEST(ARTKeyTest, basic_art_key_C0001) {
   const std::uint64_t ekey = 0x0102030405060708;  // external key
   const TypeParam ikey(ekey);                     // encode
@@ -83,28 +77,6 @@ TYPED_TEST(ARTKeyTest, basic_art_key_C0010) {
   const std::uint64_t akey2 = ikey2.decode();      // round trip
   EXPECT_EQ(ekey2, akey2);
 }
-
-// check lexicographic ordering for two keys.
-//
-// TODO(thompsonbry) we need a torture test for this focused on the
-// edge cases of signed and unsigned types.
-TYPED_TEST(ARTKeyTest, basic_art_key_C0100) {
-  const std::uint64_t ekey1 = 0x0102030405060708;  // external key
-  const std::uint64_t ekey2 = 0x090A0B0C0D0F1011;  // external key
-  const TypeParam ikey1(ekey1);                    // encode
-  const TypeParam ikey2(ekey2);                    // encode
-  const std::uint64_t akey1 = ikey1.decode();      // decode
-  const std::uint64_t akey2 = ikey2.decode();      // decode
-  EXPECT_EQ(ekey1, akey1);
-  EXPECT_EQ(ekey2, akey2);
-  EXPECT_TRUE(ikey1.cmp(ikey1) == 0);
-  EXPECT_TRUE(ikey2.cmp(ikey2) == 0);
-  EXPECT_TRUE(ikey1.cmp(ikey2) < 0);
-  EXPECT_TRUE(ikey2.cmp(ikey1) > 0);
-}
-
-// TYPED_TEST(ARTKeyTest, encode_decode_C0001) {
-// }
 
 UNODB_END_TESTS()
 

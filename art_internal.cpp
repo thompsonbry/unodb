@@ -11,6 +11,7 @@
 #include "global.hpp"  // IWYU pragma: keep
 
 #include "art_internal.hpp"
+#include "heap.hpp"
 
 #include <cstddef>
 #include <iomanip>
@@ -32,3 +33,23 @@ namespace unodb::detail {
 }
 
 }  // namespace unodb::detail
+
+namespace unodb {
+
+void key_encoder::ensure_capacity(size_t min_capacity) {
+  // Find the allocation size in bytes which satisfies that minimum
+  // capacity.  We first look for the next power of two.  Then we
+  // adjust for the case where the [min_capacity] is already a power
+  // of two (a common edge case).
+  auto nsize = detail::NextPowerOfTwo(min_capacity);
+  auto asize = (min_capacity == (nsize >> 1)) ? min_capacity : nsize;
+  auto tmp = detail::allocate_aligned(asize);  // new allocation.
+  std::memcpy(tmp, buf, len);                  // copy over the data.
+  if (cap > sizeof(ibuf)) {                    // free old buffer iff allocated
+    detail::free_aligned(buf);
+  }
+  buf = reinterpret_cast<std::byte *>(tmp);
+  cap = asize;
+}
+
+}  // namespace unodb
