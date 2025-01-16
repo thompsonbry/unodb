@@ -254,14 +254,12 @@ class db final {
     // Iff the iterator is positioned on an index entry, then returns
     // the decoded key associated with that index entry.
     //
-    // TODO(thompsonbry) : iterator should not return optional.
-    [[nodiscard]] std::optional<const key> get_key();
+    // TODO(thompsonbry) : variable length keys. iterator must visit key_view.
+    [[nodiscard]] key get_key();
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
-    //
-    // TODO(thompsonbry) : iterator should not return optional.
-    [[nodiscard, gnu::pure]] std::optional<const value_view> get_val() const;
+    [[nodiscard, gnu::pure]] const value_view get_val() const;
 
     // Debugging
     [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os) const;
@@ -401,7 +399,8 @@ class db final {
     // needs to be constructed using the [key] byte from the path
     // stack plus the prefix bytes from the internal nodes along that
     // path.
-    key key_{};
+    //
+    // key key_{};
   };  // class iterator
 
   //
@@ -622,27 +621,21 @@ class db final {
 /// ART Iterator Implementation
 ///
 
-inline std::optional<const key> db::iterator::get_key() {
+inline key db::iterator::get_key() {
   // TODO(thompsonbry) : variable length keys. Eventually this will
   // need to use the stack to reconstruct the key from the path from
   // the root to this leaf.  Right now it is relying on the fact that
   // simple fixed width keys are stored directly in the leaves.
-  if (!valid()) return {};  // not positioned on anything.
+  UNODB_DETAIL_ASSERT(!valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);  // On a leaf.
   const auto* const leaf{node.ptr<detail::leaf*>()};    // current leaf.
-  // const gsl::span<const std::byte> ikey {               // internal key.
-  //   &(leaf->get_key()), sizeof(std::uint64_t)
-  // };
-  // key_decoder( ikey ).decode( &key_ );  // decode into buffer.
-  // return key_;                          // return pointer to buffer.
-  key_ = leaf->get_key().decode();  // decode key into buffer.
-  return key_;  // return pointer to the internal key buffer.
+  return leaf->get_key().decode();                      // decode and return.
 }
 
-inline std::optional<const value_view> db::iterator::get_val() const {
-  if (!valid()) return {};  // not positioned on anything.
+inline const value_view db::iterator::get_val() const {
+  UNODB_DETAIL_ASSERT(!valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);  // On a leaf.

@@ -389,15 +389,12 @@ class olc_db final {
     // Iff the iterator is positioned on an index entry, then returns
     // the decoded key associated with that index entry.
     //
-    // TODO(thompsonbry) : iterator should not return optional.
-    [[nodiscard]] std::optional<const key> get_key();
+    // TODO(thompsonbry) : variable length keys. iterator must visit key_view.
+    [[nodiscard]] key get_key();
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
-    //
-    // TODO(thompsonbry) : iterator should not return optional.
-    [[nodiscard, gnu::pure]] std::optional<const qsbr_value_view> get_val()
-        const;
+    [[nodiscard, gnu::pure]] const qsbr_value_view get_val() const;
 
     // Debugging
     [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os) const;
@@ -519,7 +516,8 @@ class olc_db final {
     // needs to be constructed using the [key] byte from the path
     // stack plus the prefix bytes from the internal nodes along that
     // path.
-    key key_{};
+    //
+    // key key_{};
   };  // class iterator
 
   //
@@ -848,7 +846,7 @@ class olc_db final {
 /// ART iterator implementation.
 ///
 
-inline std::optional<const unodb::key> olc_db::iterator::get_key() {
+inline key olc_db::iterator::get_key() {
   // Note: If the iterator is on a leaf, we return the key for that
   // leaf regardless of whether the leaf has been deleted.  This is
   // part of the design semantics for the OLC ART scan.
@@ -857,20 +855,19 @@ inline std::optional<const unodb::key> olc_db::iterator::get_key() {
   // need to use the stack to reconstruct the key from the path from
   // the root to this leaf.  Right now it is relying on the fact that
   // simple fixed width keys are stored directly in the leaves.
-  if (!valid()) return {};  // not positioned on anything.
+  UNODB_DETAIL_ASSERT(!valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);     // On a leaf.
   const auto* const aleaf{node.ptr<detail::olc_leaf*>()};  // current leaf.
-  key_ = aleaf->get_key().decode();  // decode into buffer.
-  return key_;  // return pointer to the internal key buffer.
+  return aleaf->get_key().decode();                        // decode and return
 }
 
-inline std::optional<const qsbr_value_view> olc_db::iterator::get_val() const {
+inline const qsbr_value_view olc_db::iterator::get_val() const {
   // Note: If the iterator is on a leaf, we return the value for
   // that leaf regardless of whether the leaf has been deleted.
   // This is part of the design semantics for the OLC ART scan.
-  if (!valid()) return {};  // not positioned on anything.
+  UNODB_DETAIL_ASSERT(!valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);     // On a leaf.
