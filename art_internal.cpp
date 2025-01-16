@@ -44,7 +44,7 @@ void key_encoder::ensure_capacity(size_t min_capacity) {
   auto nsize = detail::NextPowerOfTwo(min_capacity);
   auto asize = (min_capacity == (nsize >> 1)) ? min_capacity : nsize;
   auto tmp = detail::allocate_aligned(asize);  // new allocation.
-  std::memcpy(tmp, buf, len);                  // copy over the data.
+  std::memcpy(tmp, buf, off);                  // copy over the data.
   if (cap > sizeof(ibuf)) {                    // free old buffer iff allocated
     detail::free_aligned(buf);
   }

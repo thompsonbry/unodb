@@ -387,10 +387,11 @@ class olc_db final {
     iterator& seek(detail::art_key search_key, bool& match, bool fwd = true);
 
     // Iff the iterator is positioned on an index entry, then returns
-    // the decoded key associated with that index entry.
+    // the key_view associated with that index entry.
     //
-    // TODO(thompsonbry) : variable length keys. iterator must visit key_view.
-    [[nodiscard]] key get_key();
+    // TODO(thompsonbry) : variable length keys. iterator must visit
+    // key_view backed by iterator's internal key buffer.
+    [[nodiscard]] key_view get_key();
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
@@ -846,7 +847,7 @@ class olc_db final {
 /// ART iterator implementation.
 ///
 
-inline key olc_db::iterator::get_key() {
+inline key_view olc_db::iterator::get_key() {
   // Note: If the iterator is on a leaf, we return the key for that
   // leaf regardless of whether the leaf has been deleted.  This is
   // part of the design semantics for the OLC ART scan.
@@ -860,7 +861,7 @@ inline key olc_db::iterator::get_key() {
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);     // On a leaf.
   const auto* const aleaf{node.ptr<detail::olc_leaf*>()};  // current leaf.
-  return aleaf->get_key().decode();                        // decode and return
+  return aleaf->get_key_view();
 }
 
 inline const qsbr_value_view olc_db::iterator::get_val() const {

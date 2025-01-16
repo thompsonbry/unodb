@@ -252,10 +252,11 @@ class db final {
     iterator& seek(detail::art_key search_key, bool& match, bool fwd = true);
 
     // Iff the iterator is positioned on an index entry, then returns
-    // the decoded key associated with that index entry.
+    // the key_view associated with that index entry.
     //
-    // TODO(thompsonbry) : variable length keys. iterator must visit key_view.
-    [[nodiscard]] key get_key();
+    // TODO(thompsonbry) : variable length keys. iterator must visit
+    // key_view backed by iterator's internal key buffer.
+    [[nodiscard]] key_view get_key();
 
     // Iff the iterator is positioned on an index entry, then returns
     // the value associated with that index entry.
@@ -621,7 +622,7 @@ class db final {
 /// ART Iterator Implementation
 ///
 
-inline key db::iterator::get_key() {
+inline key_view db::iterator::get_key() {
   // TODO(thompsonbry) : variable length keys. Eventually this will
   // need to use the stack to reconstruct the key from the path from
   // the root to this leaf.  Right now it is relying on the fact that
@@ -631,7 +632,7 @@ inline key db::iterator::get_key() {
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);  // On a leaf.
   const auto* const leaf{node.ptr<detail::leaf*>()};    // current leaf.
-  return leaf->get_key().decode();                      // decode and return.
+  return leaf->get_key_view();
 }
 
 inline const value_view db::iterator::get_val() const {

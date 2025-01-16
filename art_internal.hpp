@@ -129,8 +129,15 @@ struct [[nodiscard]] basic_art_key final {
     return key_bytes[index];
   }
 
+  // Return the backing key_view.
+  //
+  // TODO(thompsonbry) variable length keys.  For uint64_t
+  // specialization, we keep this code and the caller needs to know
+  // that it is non-owned and will be invalid if this art_key goes out
+  // of scope.  For key_view keys, it would just return the key_view
+  // backing this art_key.
   [[nodiscard, gnu::pure]] constexpr key_view get_key_view() const noexcept {
-    return key_view(&key, sizeof(key));
+    return key_view(reinterpret_cast<const std::byte *>(&key), sizeof(key));
   }
 
   // TODO(thompsonbry) variable length keys.  This returns the
@@ -451,11 +458,12 @@ class key_encoder {
   // The initial capacity of the key encoder.  This much data can fit
   // into the encoder without allocating a buffer on the heap.
   static constexpr size_t INITIAL_CAPACITY = 64;
+  static constexpr uint64_t msb = 1ull << 63;
 
   size_t capacity() const noexcept { return cap; }
 
   // the number of bytes of data in the internal buffer.
-  size_t size_bytes() const noexcept { return len; }
+  size_t size_bytes() const noexcept { return off; }
 
   // // a pointer to the start of the internal buffer.
   // template<typename T> T* data() noexcept {
@@ -469,14 +477,14 @@ class key_encoder {
 
   // ensure that the buffer can hold at least [req] additional bytes.
   void ensure_available(size_t req) {
-    if (UNODB_DETAIL_UNLIKELY(len + req > cap)) {
-      ensure_capacity(len + req);  // resize
+    if (UNODB_DETAIL_UNLIKELY(off + req > cap)) {
+      ensure_capacity(off + req);  // resize
     }
   }
 
  public:
   // setup a new key encoder.
-  key_encoder() : buf(&ibuf[0]), cap(sizeof(ibuf)), len(0) {}
+  key_encoder() : buf(&ibuf[0]), cap(sizeof(ibuf)), off(0) {}
 
   ~key_encoder() {
     if (cap > sizeof(ibuf)) {  // free old buffer iff allocated
@@ -486,34 +494,31 @@ class key_encoder {
 
   // reset the encoder to encode another key.
   key_encoder &reset() {
-    len = 0;
+    off = 0;
     return *this;
   }
 
-  // a read-only view of the internal buffer.
+  // a read-only view of the internal buffer showing only those bytes
+  // that were encoded since the last reset().
   [[nodiscard]] key_view get_key_view() const noexcept {
-    return key_view(buf, len);
+    return key_view(buf, off);
   }
 
   key_encoder &encode(std::int64_t v) {
-    constexpr auto msb = static_cast<std::int64_t>(0x8000000000000000L);
-    v = (v < 0)  // fix up lexicographic ordering.
-            ? v - msb
-            : v + msb;
-    auto u = reinterpret_cast<std::uint64_t &>(v);
+    const uint64_t u = (v >= 0) ? msb + static_cast<uint64_t>(v)
+                                : msb - static_cast<uint64_t>(-v);
     return encode(u);
   }
 
   key_encoder &encode(std::uint64_t v) {
     ensure_available(sizeof(v));
-    buf[len++] = static_cast<std::byte>(v >> 56);
-    buf[len++] = static_cast<std::byte>(v >> 48);
-    buf[len++] = static_cast<std::byte>(v >> 40);
-    buf[len++] = static_cast<std::byte>(v >> 32);
-    buf[len++] = static_cast<std::byte>(v >> 24);
-    buf[len++] = static_cast<std::byte>(v >> 16);
-    buf[len++] = static_cast<std::byte>(v >> 8);
-    buf[len++] = static_cast<std::byte>(v >> 0);
+#ifdef UNODB_DETAIL_LITTLE_ENDIAN
+    const auto u = unodb::detail::bswap(v);
+#else
+    const auto u = v;
+#endif
+    std::memcpy(buf + off, &u, sizeof(u));
+    off += 8;
     return *this;
   }
 
@@ -529,7 +534,7 @@ class key_encoder {
   // [ibuf].  If that overflows, then something will be allocated.
   std::byte *buf{};
   size_t cap{};  // current buffer capacity
-  size_t len{};  // #of bytes in the buffer having encoded data.
+  size_t off{};  // #of bytes in the buffer having encoded data.
 
 };  // class key_encoder
 
@@ -539,35 +544,36 @@ class key_encoder {
 // components.
 class key_decoder {
  private:
-  const key_view buf;  // the data to be decoded
-  size_t off{};        // the byte offset into that data.
+  const std::byte *buf;  // the data to be decoded
+  const size_t cap;      // #of bytes in that buffer.
+  size_t off{};          // the byte offset into that data.
+
+  static constexpr uint64_t msb = 1ull << 63;
 
  public:
   // Build a decoder for the key_view.
-  key_decoder(const key_view kv) : buf(kv), off(0) {}
+  key_decoder(const key_view kv)
+      : buf(kv.data()), cap(kv.size_bytes()), off(0) {}
 
   // Decode a component of the indicated type from the key.
   key_decoder &decode(std::int64_t &v) {
-    constexpr auto msb = static_cast<std::int64_t>(0x8000000000000000L);
     std::uint64_t u;
     decode(u);
-    v = reinterpret_cast<std::int64_t &>(u);
-    v = (v < 0) ? v + msb : v - msb;
+    v = (u >= msb) ? static_cast<int64_t>(u - msb)
+                   : -static_cast<int64_t>(msb - u);
     return *this;
   }
 
   // Decode a component of the indicated type from the key.
   key_decoder &decode(std::uint64_t &v) {
-    using T = std::uint64_t;
-    v = 0;
-    v += static_cast<T>(buf[off++]) << 56;
-    v += static_cast<T>(buf[off++]) << 48;
-    v += static_cast<T>(buf[off++]) << 40;
-    v += static_cast<T>(buf[off++]) << 32;
-    v += static_cast<T>(buf[off++]) << 24;
-    v += static_cast<T>(buf[off++]) << 16;
-    v += static_cast<T>(buf[off++]) << 8;
-    v += static_cast<T>(buf[off++]) << 0;
+    std::uint64_t u;
+    std::memcpy(&u, buf + off, sizeof(u));
+#ifdef UNODB_DETAIL_LITTLE_ENDIAN
+    v = unodb::detail::bswap(u);
+#else
+    v = u;
+#endif
+    off += 8;
     return *this;
   }
 

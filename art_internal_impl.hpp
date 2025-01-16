@@ -97,9 +97,23 @@ class [[nodiscard]] basic_leaf final : public Header {
   // are trouble for variable length keys.  Instead, the key must be
   // buffered during the traversal down to the leaf and the leaf might
   // have a tail fragment of the key.  That buffer can be wrapped and
-  // exposed as a gsl::span<const std::byte> (aka key_view).
+  // exposed as a gsl::span<const std::byte> (aka key_view).  If used,
+  // it should be renamed to get_key_view() and conditionally compiled
+  // depending on how we template the db, mutex_db, and olc_db (e.g.,
+  // iff they support storing the key in the leaf as a time over space
+  // optimization)
   [[nodiscard, gnu::pure]] constexpr auto get_key() const noexcept {
     return key;
+  }
+
+  // TODO(thompsonbry) : variable length keys.  This will go away. It
+  // is here as a shim.  The iterator needs to handle this and buffer
+  // the key during traversal.  get()/insert()/remove() need to do
+  // something similar.  The only time we can get the key_view from
+  // the leaf is if the binary comparable key is stored in the leaf as
+  // an optimization of time over space.
+  [[nodiscard, gnu::pure]] constexpr auto get_key_view() const noexcept {
+    return key.get_key_view();
   }
 
   // Return true iff the two keys are the same.

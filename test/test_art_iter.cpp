@@ -36,6 +36,14 @@ class ARTIteratorTest : public ::testing::Test {
   using Test::Test;
 };
 
+// decode a uint64_t key.
+inline std::uint64_t decode(unodb::key_view akey) {
+  unodb::key_decoder dec{akey};
+  std::uint64_t k;
+  dec.decode(k);
+  return k;
+}
+
 using ARTTypes = ::testing::Types<unodb::db, unodb::mutex_db, unodb::olc_db>;
 
 UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
@@ -68,7 +76,7 @@ TYPED_TEST(ARTIteratorTest, singleLeafIteratorOneValue) {
   auto b = db.test_only_iterator();
   b.first();  // obtain iterator.
   UNODB_EXPECT_TRUE(b.valid());
-  UNODB_EXPECT_TRUE(b.get_key() == 0);
+  UNODB_EXPECT_TRUE(decode(b.get_key()) == 0);
   UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   b.next();                       // advance.
   UNODB_EXPECT_FALSE(b.valid());  // nothing more in the iterator.
@@ -84,13 +92,13 @@ TYPED_TEST(ARTIteratorTest, I4AndTwoLeavesForwardScan) {
   b.first();  // obtain iterator.
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   }
   b.next();  // advance
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 1);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 1);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[1]);
   }
   b.next();                       // advance.
@@ -107,13 +115,13 @@ TYPED_TEST(ARTIteratorTest, I4AndTwoLeavesReverseScan) {
   b.last();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 1);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 1);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[1]);
   }
   b.prior();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   }
   b.prior();
@@ -136,19 +144,19 @@ TYPED_TEST(ARTIteratorTest, C0001) {
   b.first();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xaa00);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa00);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   }
   b.next();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xaa01);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa01);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[1]);
   }
   b.next();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xab00);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab00);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[2]);
   }
   b.next();
@@ -171,19 +179,19 @@ TYPED_TEST(ARTIteratorTest, C0002) {
   b.last();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xab00);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab00);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[2]);
   }
   b.prior();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xaa01);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa01);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[1]);
   }
   b.prior();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xaa00);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa00);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   }
   b.prior();
@@ -206,19 +214,19 @@ TYPED_TEST(ARTIteratorTest, C0003) {
   b.first();  // obtain iterators.
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xaa00);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa00);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   }
   b.next();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xab0c);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab0c);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[1]);
   }
   b.next();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xab0d);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab0d);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[2]);
   }
   b.next();
@@ -241,19 +249,19 @@ TYPED_TEST(ARTIteratorTest, C0004) {
   b.last();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xab0d);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab0d);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[2]);
   }
   b.prior();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xab0c);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab0c);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[1]);
   }
   b.prior();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(b.get_key() == 0xaa00);
+    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa00);
     UNODB_EXPECT_TRUE(b.get_val() == unodb::test::test_values[0]);
   }
   b.prior();
@@ -295,7 +303,7 @@ TYPED_TEST(ARTIteratorTest, singleLeafSeek) {
     auto& it = e.seek(unodb::detail::art_key{1}, match, true /*fwd*/);
     UNODB_EXPECT_TRUE(it.valid());
     UNODB_EXPECT_EQ(match, true);
-    UNODB_EXPECT_TRUE(it.get_key() == 1);
+    UNODB_EXPECT_TRUE(decode(it.get_key()) == 1);
     UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     it.next();
     UNODB_EXPECT_FALSE(it.valid());
@@ -306,7 +314,7 @@ TYPED_TEST(ARTIteratorTest, singleLeafSeek) {
     auto& it = e.seek(unodb::detail::art_key{1}, match, false /*fwd*/);
     UNODB_EXPECT_TRUE(it.valid());
     UNODB_EXPECT_EQ(match, true);
-    UNODB_EXPECT_TRUE(it.get_key() == 1);
+    UNODB_EXPECT_TRUE(decode(it.get_key()) == 1);
     UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     it.next();
     UNODB_EXPECT_FALSE(it.valid());  // nothing more in the iterator.
@@ -319,7 +327,7 @@ TYPED_TEST(ARTIteratorTest, singleLeafSeek) {
     it.seek(unodb::detail::art_key{0}, match, true /*fwd*/);
     UNODB_EXPECT_TRUE(it.valid());
     UNODB_EXPECT_EQ(match, false);
-    UNODB_EXPECT_TRUE(it.get_key() == 1);
+    UNODB_EXPECT_TRUE(decode(it.get_key()) == 1);
     UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     it.next();
     UNODB_EXPECT_FALSE(it.valid());
@@ -347,7 +355,7 @@ TYPED_TEST(ARTIteratorTest, singleLeafSeek) {
     it.seek(unodb::detail::art_key{2}, match, false /*fwd*/);
     UNODB_EXPECT_TRUE(it.valid());
     UNODB_EXPECT_EQ(match, false);
-    UNODB_EXPECT_TRUE(it.get_key() == 1);
+    UNODB_EXPECT_TRUE(decode(it.get_key()) == 1);
     UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     it.next();
     UNODB_EXPECT_FALSE(it.valid());
@@ -376,7 +384,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{k0}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k0);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k0);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[0]);
     }
     {  // exact match, forward traversal (GTE), middle key.
@@ -385,7 +393,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{k1}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k1);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k1);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     }
     {  // exact match, forward traversal (GTE), last key.
@@ -394,7 +402,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{k2}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k2);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k2);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[2]);
     }
   }
@@ -405,7 +413,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{k0}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k0);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k0);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[0]);
     }
     {  // exact match, reverse traversal (LTE), middle key.
@@ -414,7 +422,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{k1}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k1);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k1);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     }
     {  // exact match, reverse traversal (LTE), last key.
@@ -423,7 +431,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{k2}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k2);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k2);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[2]);
     }
   }
@@ -436,7 +444,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{0}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, false);
-      UNODB_EXPECT_TRUE(it.get_key() == k0);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k0);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[0]);
     }
     {  // forward traversal, after the last key in the data.  match=false
@@ -462,7 +470,7 @@ TYPED_TEST(ARTIteratorTest, C101) {
       it.seek(unodb::detail::art_key{0xffff}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, false);
-      UNODB_EXPECT_TRUE(it.get_key() == k2);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k2);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[2]);
       it.next();
       UNODB_EXPECT_FALSE(it.valid());  // nothing more in the iterator.
@@ -494,7 +502,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       it.seek(unodb::detail::art_key{k0}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k0);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k0);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[0]);
     }
     {  // exact match, forward traversal (GTE), middle key.
@@ -503,7 +511,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       it.seek(unodb::detail::art_key{k1}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k1);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k1);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     }
     {  // exact match, forward traversal (GTE), last key.
@@ -512,7 +520,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       it.seek(unodb::detail::art_key{k2}, match, true /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k2);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k2);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[2]);
     }
   }
@@ -523,7 +531,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       it.seek(unodb::detail::art_key{k0}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k0);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k0);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[0]);
     }
     {  // exact match, reverse traversal (LTE), middle key.
@@ -532,7 +540,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       it.seek(unodb::detail::art_key{k1}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k1);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k1);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[1]);
     }
     {  // exact match, reverse traversal (LTE), last key.
@@ -541,7 +549,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       it.seek(unodb::detail::art_key{k2}, match, false /*fwd*/);
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, true);
-      UNODB_EXPECT_TRUE(it.get_key() == k2);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k2);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[2]);
     }
   }
@@ -558,7 +566,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
       }
       UNODB_EXPECT_TRUE(it.valid());
       UNODB_EXPECT_EQ(match, false);
-      UNODB_EXPECT_TRUE(it.get_key() == k0);
+      UNODB_EXPECT_TRUE(decode(it.get_key()) == k0);
       UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[0]);
     }
     {  // forward traversal, after the last key in the data.
@@ -597,7 +605,7 @@ TYPED_TEST(ARTIteratorTest, seekThreeLeavesUnderTheRoot) {
         }
         UNODB_EXPECT_TRUE(it.valid());
         UNODB_EXPECT_EQ(match, false);
-        UNODB_EXPECT_TRUE(it.get_key() == k2);
+        UNODB_EXPECT_TRUE(decode(it.get_key()) == k2);
         UNODB_EXPECT_TRUE(it.get_val() == unodb::test::test_values[2]);
         it.next();
         UNODB_EXPECT_FALSE(it.valid());
