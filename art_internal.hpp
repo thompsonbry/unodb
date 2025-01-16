@@ -32,6 +32,19 @@
 
 namespace unodb::detail {
 
+// A constant determining the initial capacity for the key_encoder and
+// other similar internal buffers.  This should be set high enough
+// that such objects DO NOT allocate for commonly used key lengths.
+// These objects use an internal buffer of this capacity and then
+// switch over to an explicitly allocated buffer if the capacity would
+// be exceeded.
+//
+// If you are only using fixed width keys, then this can be sizeof(T).
+// But in typical scenarios these objects are on the stack and there
+// is little if any penalty to having a larger initial capacity for
+// these buffers.
+static constexpr size_t INITIAL_BUFFER_CAPACITY = 256;
+
 // Forward declarations to use in unodb::db and its siblings
 template <class>
 class [[nodiscard]] basic_leaf;
@@ -450,14 +463,10 @@ class visitor {
 // of key components.  This class supports the various kinds of
 // primitive data types and provides support for the caller to pass
 // through Unicode sort keys.
-//
-// TODO(thompsonbry) : variable length keys. Minimum initial capacity
-// and memory pooling?  Thread local?
 class key_encoder {
  protected:
   // The initial capacity of the key encoder.  This much data can fit
   // into the encoder without allocating a buffer on the heap.
-  static constexpr size_t INITIAL_CAPACITY = 64;
   static constexpr uint64_t msb = 1ull << 63;
 
   size_t capacity() const noexcept { return cap; }
@@ -527,8 +536,8 @@ class key_encoder {
   // buffer.
   void ensure_capacity(size_t min_capacity);
 
-  // Used for the initial buffer (one cache line).
-  std::byte ibuf[INITIAL_CAPACITY];
+  // Used for the initial buffer.
+  std::byte ibuf[detail::INITIAL_BUFFER_CAPACITY];
 
   // The buffer to accmulate the encoded key.  Originally this is the
   // [ibuf].  If that overflows, then something will be allocated.

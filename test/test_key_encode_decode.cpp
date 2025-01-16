@@ -49,7 +49,7 @@ class my_key_encoder : public unodb::key_encoder {
  public:
   my_key_encoder() : key_encoder() {}
   static constexpr size_t get_initial_capacity() {
-    return key_encoder::INITIAL_CAPACITY;
+    return unodb::detail::INITIAL_BUFFER_CAPACITY;
   }
   size_t capacity() { return key_encoder::capacity(); }
   size_t size_bytes() { return key_encoder::size_bytes(); }
