@@ -35,8 +35,10 @@ namespace unodb::detail {
 }  // namespace unodb::detail
 
 namespace unodb {
+namespace detail {
 
-void key_encoder::ensure_capacity(size_t min_capacity) {
+void ensure_capacity(std::byte *&buf, size_t &cap, size_t off,
+                     size_t min_capacity) {
   // Find the allocation size in bytes which satisfies that minimum
   // capacity.  We first look for the next power of two.  Then we
   // adjust for the case where the [min_capacity] is already a power
@@ -45,11 +47,12 @@ void key_encoder::ensure_capacity(size_t min_capacity) {
   auto asize = (min_capacity == (nsize >> 1)) ? min_capacity : nsize;
   auto tmp = detail::allocate_aligned(asize);  // new allocation.
   std::memcpy(tmp, buf, off);                  // copy over the data.
-  if (cap > sizeof(ibuf)) {                    // free old buffer iff allocated
+  if (cap > INITIAL_BUFFER_CAPACITY) {         // free old buffer iff allocated
     detail::free_aligned(buf);
   }
   buf = reinterpret_cast<std::byte *>(tmp);
   cap = asize;
 }
 
+}  // namespace detail
 }  // namespace unodb

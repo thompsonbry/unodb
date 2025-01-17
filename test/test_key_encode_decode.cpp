@@ -82,6 +82,9 @@ void do_encode_decode_order_test(const T ekey1, const T ekey2) {
 UNODB_START_TESTS()
 
 // basic memory management - initial buffer case.
+//
+// TODO(thompsonbry) lift this out for the ensure_capacity() method
+// and use it with a simple test structure.
 TEST(ARTKeyEncodeDecodeTest, C00001) {
   my_key_encoder enc{};
   EXPECT_EQ(enc.capacity(), INITIAL_CAPACITY);

@@ -320,6 +320,14 @@ class olc_db final {
     // the node along with the [key_byte] and [child_index] values
     // that were read.
     struct stack_entry : public detail::olc_inode_base::iter_result {
+      // The [prefix_len] is the number of bytes in the key prefix for
+      // [node].  When the node is pushed onto the stack, we also push
+      // [prefix_bytes] plus the [key_byte] onto a key_buffer.  We
+      // track how many bytes were pushed here (not including the
+      // key_byte) so we can pop off the correct number of bytes
+      // later.
+      detail::key_prefix_size prefix_len;
+
       // The version tag invariant for the node.
       //
       // Note: This is just the data for the version tag and not the
@@ -386,15 +394,16 @@ class olc_db final {
     // !valid() if there is no such entry.
     iterator& seek(detail::art_key search_key, bool& match, bool fwd = true);
 
-    // Iff the iterator is positioned on an index entry, then returns
-    // the key_view associated with that index entry.
+    // Return the key_view associated with the current position of the
+    // iterator.
     //
-    // TODO(thompsonbry) : variable length keys. iterator must visit
-    // key_view backed by iterator's internal key buffer.
+    // Precondition: The iterator MUST be valid().
     [[nodiscard]] key_view get_key();
 
-    // Iff the iterator is positioned on an index entry, then returns
-    // the value associated with that index entry.
+    // Return the value_view associated with the current position of
+    // the iterator.
+    //
+    // Precondition: The iterator MUST be valid().
     [[nodiscard, gnu::pure]] const qsbr_value_view get_val() const;
 
     // Debugging
@@ -419,33 +428,66 @@ class olc_db final {
     [[nodiscard]] bool empty() const { return stack_.empty(); }
 
     // Push an entry onto the stack.
-    //
-    // TODO(thompsonbry) : variable length keys.
-    void push(const detail::olc_inode_base::iter_result& e,
-              const optimistic_lock::read_critical_section& rcs) {
-      push(e.node, e.key_byte, e.child_index, rcs);
-    }
-
-    // Push an entry onto the stack.
-    void push(detail::olc_node_ptr node, std::byte key_byte,
-              std::uint8_t child_index,
-              const optimistic_lock::read_critical_section& rcs) {
-      stack_.push({{node, key_byte, child_index}, rcs.get()});
+    bool try_push(detail::olc_node_ptr node, std::byte key_byte,
+                  std::uint8_t child_index,
+                  optimistic_lock::read_critical_section& rcs) {
+      // For variable length keys we need to know the number of bytes
+      // associated with the node's key_prefix.  In addition there is
+      // one byte for the descent to the child node along the
+      // child_index.  That information needs to be stored on the
+      // stack so we can pop off the right number of bytes even for
+      // OLC where the node might be concurrently modified.
+      UNODB_DETAIL_ASSERT(node.type() != node_type::LEAF);
+      auto* inode{node.ptr<detail::olc_inode*>()};
+      auto prefix{inode->get_key_prefix().get_snapshot()};
+      // Check the RCS to make sure the snapshot of the key prefix is valid.
+      if (UNODB_DETAIL_UNLIKELY(!rcs.check())) {
+        return false;  // LCOV_EXCL_LINE
+      }
+      stack_.push({{node, key_byte, child_index}, prefix.size(), rcs.get()});
+      keybuf_.push(prefix.get_key_view());
+      keybuf_.push(key_byte);
+      return true;
     }
 
     // Push a leaf onto the stack.
-    void push_leaf(detail::olc_node_ptr aleaf,
-                   const optimistic_lock::read_critical_section& rcs) {
-      // Mock up an iter_result for the leaf. The [key] and
-      // [child_index] are ignored for a leaf.
-      push(aleaf, static_cast<std::byte>(0xFFU),
-           static_cast<std::uint8_t>(0xFFU), rcs);
+    bool try_push_leaf(detail::olc_node_ptr aleaf,
+                       optimistic_lock::read_critical_section& rcs) {
+      // The [key], [child_index] and [prefix_len] are ignored for a
+      // leaf.
+      //
+      // TODO(thompsonbry) variable length keys - we will need to
+      // handle a final variable length key prefix on the leaf here.
+      stack_.push({{aleaf,
+                    static_cast<std::byte>(0xFFU),      // key_byte
+                    static_cast<std::uint8_t>(0xFFU)},  // child_index
+                   0,                                   // prefix_len
+                   rcs.get()});
+      return true;
     }
 
-    // Pop an entry from the stack.
-    //
-    // TODO(thompsonbry) : variable length keys.
-    void pop() { stack_.pop(); }
+    // Push an entry onto the stack.
+    bool try_push(const detail::olc_inode_base::iter_result& e,
+                  optimistic_lock::read_critical_section& rcs) {
+      const auto node_type = e.node.type();
+      if (UNODB_DETAIL_UNLIKELY(node_type == node_type::LEAF)) {
+        return try_push_leaf(e.node, rcs);
+      }
+      return try_push(e.node, e.key_byte, e.child_index, rcs);
+    }
+
+    // Pop an entry from the stack and the corresponding bytes from
+    // the key_buffer.
+    void pop() {
+      // Note: We DO NOT need to check the RCS here.  The prefix_len
+      // on the stack is known to be valid at the time that the entry
+      // was pushed onto the stack and the stack and the keybuf are in
+      // sync with one another.  So we can just do a simple POP for
+      // each of them.
+      const auto prefix_len = top().prefix_len;
+      stack_.pop();
+      keybuf_.pop(prefix_len);
+    }
 
     // Return the entry (if any) on the top of the stack.
     [[nodiscard]] stack_entry& top() { return stack_.top(); }
@@ -502,23 +544,12 @@ class olc_db final {
     //
     std::stack<stack_entry> stack_{};
 
-    // A buffer into which visited keys are decoded and materialized
-    // by get_key().
-    //
-    // Note: The internal key is a sequence of unsigned bytes having
-    // the appropriate lexicographic ordering.  The internal key needs
-    // to be decoded to the external key.
-    //
-    // TODO(thompsonbry) : variable length keys.  The current
-    // implementation stores the entire key in the leaf. This works
-    // fine for simple primitive keys.  However, it needs to be
-    // modified when the implementation is modified to support
-    // variable length keys. In that situation, the full internal key
-    // needs to be constructed using the [key] byte from the path
-    // stack plus the prefix bytes from the internal nodes along that
-    // path.
-    //
-    // key key_{};
+    // A buffer into which visited encoded (binary comparable) keys
+    // are materialized by during the iterator traversal.  Bytes are
+    // pushed onto this buffer when we push something onto the
+    // iterator stack and popped off of this buffer when we pop
+    // something off of the iterator stack.
+    key_buffer keybuf_{};
   };  // class iterator
 
   //
@@ -856,7 +887,14 @@ inline key_view olc_db::iterator::get_key() {
   // need to use the stack to reconstruct the key from the path from
   // the root to this leaf.  Right now it is relying on the fact that
   // simple fixed width keys are stored directly in the leaves.
-  UNODB_DETAIL_ASSERT(!valid());  // by contract
+  //
+  // Note: We can not simplify this until the leaf has a variable
+  // length prefix consisting of the suffix of the key (the part not
+  // already matched by the inode path).
+  //
+  // return keybuf_.get_key_view();
+  //
+  UNODB_DETAIL_ASSERT(valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);     // On a leaf.
@@ -868,7 +906,7 @@ inline const qsbr_value_view olc_db::iterator::get_val() const {
   // Note: If the iterator is on a leaf, we return the value for
   // that leaf regardless of whether the leaf has been deleted.
   // This is part of the design semantics for the OLC ART scan.
-  UNODB_DETAIL_ASSERT(!valid());  // by contract
+  UNODB_DETAIL_ASSERT(valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);     // On a leaf.

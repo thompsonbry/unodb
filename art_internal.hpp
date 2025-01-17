@@ -329,7 +329,7 @@ class [[nodiscard]] basic_node_ptr {
   }
 
   // same raw_val means same type and same ptr.
-  [[nodiscard, gnu::pure]] auto operator==(
+  [[nodiscard, gnu::pure]] constexpr auto operator==(
       const basic_node_ptr &other) const noexcept {
     return tagged_ptr == other.tagged_ptr;
   }
@@ -410,6 +410,13 @@ NextPowerOfTwo(T i) {
   return ++i;
 }
 
+// Utility class for power of two expansion of buffers.
+void ensure_capacity(std::byte *&buf,     // buffer to resize
+                     size_t &cap,         // current buffer capacity
+                     size_t off,          // current #of used bytes
+                     size_t min_capacity  // desired new minimum capacity
+);
+
 }  // namespace unodb::detail
 
 namespace unodb {
@@ -455,6 +462,92 @@ class visitor {
   inline auto get_value() const noexcept { return it.get_val(); }
 };  // class visitor
 
+// A buffer containing an expanable binary comparable key.  This is
+// used to track the key by the iterator as things are pushed and
+// popped on the stack.
+class key_buffer {
+ protected:
+  size_t capacity() const noexcept { return cap; }
+
+  // the number of bytes of data in the buffer.
+  size_t size_bytes() const noexcept { return off; }
+
+  // // a pointer to the start of the internal buffer.
+  // template<typename T> T* data() noexcept {
+  //   return reinterpret_cast<T*>(buf);
+  // }
+
+  // // a pointer to the start of the internal buffer.
+  // template<typename T> const T* data() const noexcept {
+  //   return reinterpret_cast<const T*>(buf);
+  // }
+
+  // ensure that the buffer can hold at least [req] additional bytes.
+  void ensure_available(size_t req) {
+    if (UNODB_DETAIL_UNLIKELY(off + req > cap)) {
+      ensure_capacity(off + req);  // resize
+    }
+  }
+
+ public:
+  // Construct a new key_buffer.  It will be backed by an internal
+  // buffer of a configured size and extended iff required for longer
+  // keys.
+  key_buffer() : buf(&ibuf[0]), cap(sizeof(ibuf)), off(0) {}
+
+  ~key_buffer() {
+    if (cap > sizeof(ibuf)) {  // free old buffer iff allocated
+      detail::free_aligned(buf);
+    }
+  }
+
+  // reset the buffer.
+  void reset() { off = 0; }
+
+  // a read-only view of the buffer showing only those bytes that have
+  // valid data.
+  [[nodiscard]] key_view get_key_view() const noexcept {
+    return key_view(buf, off);
+  }
+
+  // Append a byte to the buffer.
+  void push(std::byte v) {
+    ensure_available(sizeof(v));
+    buf[off++] = v;
+  }
+
+  // Append some bytes to the buffer.
+  void push(key_view v) {
+    const auto n = v.size_bytes();
+    ensure_available(n);
+    std::memcpy(buf + off, v.data(), n);
+    off += n;
+  }
+
+  // Pop off some bytes from the buffer.
+  void pop(size_t n) {
+    UNODB_DETAIL_ASSERT(off >= n);
+    off -= n;
+  }
+
+ private:
+  // ensure that we have at least the specified capacity in the
+  // buffer.
+  void ensure_capacity(size_t min_capacity) {
+    unodb::detail::ensure_capacity(buf, cap, off, min_capacity);
+  }
+
+  // Used for the initial buffer.
+  std::byte ibuf[detail::INITIAL_BUFFER_CAPACITY];
+
+  // The buffer to accmulate the key.  Originally this is the [ibuf].
+  // If that overflows, then something will be allocated.
+  std::byte *buf{};
+  size_t cap{};  // current buffer capacity
+  size_t off{};  // #of bytes in the buffer having valid data.
+
+};  // class key_buffer
+
 ///
 /// Key encodes and key decoder
 ///
@@ -463,6 +556,10 @@ class visitor {
 // of key components.  This class supports the various kinds of
 // primitive data types and provides support for the caller to pass
 // through Unicode sort keys.
+//
+// TODO(thompsonbry) : variable length keys - move to public header
+// and private implementation header.  Same for the key_decoder and
+// visitor.
 class key_encoder {
  protected:
   // The initial capacity of the key encoder.  This much data can fit
@@ -534,7 +631,9 @@ class key_encoder {
  private:
   // ensure that we have at least the specified capacity in the
   // buffer.
-  void ensure_capacity(size_t min_capacity);
+  void ensure_capacity(size_t min_capacity) {
+    unodb::detail::ensure_capacity(buf, cap, off, min_capacity);
+  }
 
   // Used for the initial buffer.
   std::byte ibuf[detail::INITIAL_BUFFER_CAPACITY];

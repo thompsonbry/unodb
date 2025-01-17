@@ -201,7 +201,39 @@ class db final {
 
     // The stack is made up of tuples containing the node pointer, the
     // key_byte, and the child_index.
-    using stack_entry = detail::inode_base::iter_result;
+    //
+    // Note: The node is a pointer to either an internal node or a
+    // leaf.
+    //
+    // Note: The key_byte is the byte from the key that was consumed
+    // as you step down to the child node. This is the same as the
+    // child index (if you convert std::uint8_t to std::byte) for N48
+    // and N256, but it is different for N4 and N16 since they use a
+    // sparse encoding of the keys.  It is represented explicitly to
+    // avoid searching for the key byte in the N48 and N256 cases.
+    //
+    // Note: The child_index is the index of the child node within
+    // that internal node (except for N48, where it is the index into
+    // the child_indexes[] and is in fact the same data as the key
+    // byte).  Overflow for the child_index can only occur for N48 and
+    // N256.  When overflow happens, the iter_result is not defined
+    // and the outer std::optional will return false.
+    struct stack_entry : public detail::inode_base::iter_result {
+      // The [prefix_len] is the number of bytes in the key prefix for
+      // [node].  When the node is pushed onto the stack, we also push
+      // [prefix_bytes] plus the [key_byte] onto a key_buffer.  We
+      // track how many bytes were pushed here (not including the
+      // key_byte) so we can pop off the correct number of bytes
+      // later.
+      detail::key_prefix_size prefix_len;
+
+      [[nodiscard]] constexpr bool operator==(
+          const stack_entry& other) const noexcept {
+        return node == other.node && key_byte == other.key_byte &&
+               child_index == other.child_index &&
+               prefix_len == other.prefix_len;
+      }
+    };
 
    protected:
     // Construct an empty iterator (one that is logically not
@@ -251,15 +283,16 @@ class db final {
     // if there is no such entry.
     iterator& seek(detail::art_key search_key, bool& match, bool fwd = true);
 
-    // Iff the iterator is positioned on an index entry, then returns
-    // the key_view associated with that index entry.
+    // Return the key_view associated with the current position of the
+    // iterator.
     //
-    // TODO(thompsonbry) : variable length keys. iterator must visit
-    // key_view backed by iterator's internal key buffer.
+    // Precondition: The iterator MUST be valid().
     [[nodiscard]] key_view get_key();
 
-    // Iff the iterator is positioned on an index entry, then returns
-    // the value associated with that index entry.
+    // Return the value_view associated with the current position of
+    // the iterator.
+    //
+    // Precondition: The iterator MUST be valid().
     [[nodiscard, gnu::pure]] const value_view get_val() const;
 
     // Debugging
@@ -303,29 +336,51 @@ class db final {
     // Return true iff the stack is empty.
     [[nodiscard]] bool empty() const { return stack_.empty(); }
 
-    // Push an entry onto the stack.
-    void push(const stack_entry& e) { stack_.push(e); }
-
-    // Push an entry onto the stack.
-    //
-    // TODO(thompsonbry) variable length keys.
+    // Push a non-leaf entry onto the stack.
     void push(detail::node_ptr node, std::byte key_byte,
               std::uint8_t child_index) {
-      stack_.push({node, key_byte, child_index});
+      // For variable length keys we need to know the number of bytes
+      // associated with the node's key_prefix.  In addition there is
+      // one byte for the descent to the child node along the
+      // child_index.  That information needs to be stored on the
+      // stack so we can pop off the right number of bytes even for
+      // OLC where the node might be concurrently modified.
+      UNODB_DETAIL_ASSERT(node.type() != node_type::LEAF);
+      auto* inode{node.ptr<detail::inode*>()};
+      auto prefix{
+          inode->get_key_prefix().get_snapshot()};  // FIXME OLC must verify the
+                                                    // node version here!!!!
+      stack_.push({node, key_byte, child_index, prefix.size()});
+      keybuf_.push(prefix.get_key_view());
+      keybuf_.push(key_byte);
     }
 
     // Push a leaf onto the stack.
     void push_leaf(detail::node_ptr aleaf) {
-      // Mock up a stack entry for the leaf. The [key] and
-      // [child_index] are ignored for a leaf.
-      push(aleaf, static_cast<std::byte>(0xFFU),
-           static_cast<std::uint8_t>(0xFFU));
+      // Mock up a stack entry for the leaf.
+      stack_.push({
+          aleaf,
+          static_cast<std::byte>(0xFFU),     // ignored for leaf
+          static_cast<std::uint8_t>(0xFFU),  // ignored for leaf
+          0                                  // ignored for leaf
+      });
     }
 
-    // Pop an entry from the stack.
-    //
-    // TODO(thompsonbry) variable length keys.
-    void pop() { stack_.pop(); }
+    // Push an entry onto the stack.
+    void push(const detail::inode_base::iter_result& e) {
+      const auto node_type = e.node.type();
+      if (UNODB_DETAIL_UNLIKELY(node_type == node_type::LEAF)) {
+        push_leaf(e.node);
+      }
+      push(e.node, e.key_byte, e.child_index);
+    }
+
+    // Pop an entry from the stack and truncate the key buffer.
+    void pop() {
+      const auto prefix_len = top().prefix_len;
+      stack_.pop();
+      keybuf_.pop(prefix_len);
+    }
 
     // Return the entry (if any) on the top of the stack.
     [[nodiscard]] stack_entry& top() { return stack_.top(); }
@@ -340,6 +395,7 @@ class db final {
     // invalidate the iterator (pops everything off of the stack).
     iterator& invalidate() {
       while (!stack_.empty()) stack_.pop();  // clear the stack
+      keybuf_.reset();                       // clear the key buffer
       return *this;
     }
 
@@ -385,23 +441,12 @@ class db final {
     // children[].
     std::stack<stack_entry> stack_{};
 
-    // A buffer into which visited keys are decoded and materialized
-    // by get_key().
-    //
-    // Note: The internal key is a sequence of unsigned bytes having
-    // the appropriate lexicographic ordering.  The internal key needs
-    // to be decoded to the external key.
-    //
-    // TODO(thompsonbry) : variable length keys. The current
-    // implementation stores the entire key in the leaf. This works
-    // fine for simple primitive keys.  However, it needs to be
-    // modified when the implementation is modified to support
-    // variable length keys. In that situation, the full internal key
-    // needs to be constructed using the [key] byte from the path
-    // stack plus the prefix bytes from the internal nodes along that
-    // path.
-    //
-    // key key_{};
+    // A buffer into which visited encoded (binary comparable) keys
+    // are materialized by during the iterator traversal.  Bytes are
+    // pushed onto this buffer when we push something onto the
+    // iterator stack and popped off of this buffer when we pop
+    // something off of the iterator stack.
+    key_buffer keybuf_{};
   };  // class iterator
 
   //
@@ -627,7 +672,14 @@ inline key_view db::iterator::get_key() {
   // need to use the stack to reconstruct the key from the path from
   // the root to this leaf.  Right now it is relying on the fact that
   // simple fixed width keys are stored directly in the leaves.
-  UNODB_DETAIL_ASSERT(!valid());  // by contract
+  //
+  // Note: We can not simplify this until the leaf has a variable
+  // length prefix consisting of the suffix of the key (the part not
+  // already matched by the inode path).
+  //
+  // return keybuf_.get_key_view();
+  //
+  UNODB_DETAIL_ASSERT(valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);  // On a leaf.
@@ -636,7 +688,7 @@ inline key_view db::iterator::get_key() {
 }
 
 inline const value_view db::iterator::get_val() const {
-  UNODB_DETAIL_ASSERT(!valid());  // by contract
+  UNODB_DETAIL_ASSERT(valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);  // On a leaf.

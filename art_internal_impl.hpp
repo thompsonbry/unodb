@@ -457,6 +457,39 @@ struct basic_art_policy final {
   basic_art_policy() = delete;
 };  // class basic_art_policy
 
+using key_prefix_size = std::uint8_t;
+static constexpr key_prefix_size key_prefix_capacity = 7;
+
+// A helper class used to expose a consistent snapshot of the
+// key_prefix to the iterator for use in tracking the data on the
+// iterator's stack.  This method exposes a key_view over its internal
+// data.  We can't do that directly with the key_prefix due to (a)
+// thread safety; and (b) the key_view being a non-owned view. So the
+// data are atomically copied into this structure and it can expose
+// the key_view over those data.
+class key_prefix_snapshot {
+ private:
+  using key_prefix_data = std::array<std::byte, key_prefix_capacity>;
+  union {
+    struct {
+      key_prefix_data key_prefix;         // The prefix.
+      key_prefix_size key_prefix_length;  // The #of bytes in the prefix.
+    } f;
+    std::uint64_t u64;  // The same thing as a machine word.
+  };
+
+ public:
+  explicit key_prefix_snapshot(std::uint64_t v) : u64(v) {}
+  // Return a view onto the key_prefix.
+  [[nodiscard]] key_view get_key_view() const noexcept {
+    return key_view(f.key_prefix.data(), f.key_prefix_length);
+  }
+  // Return the length of the key_prefix.
+  [[nodiscard]] key_prefix_size size() const noexcept {
+    return f.key_prefix_length;
+  }
+};
+
 // The key_prefix is a sequence of zero or more bytes for a given node
 // that are a common prefix shared by all children of that node and
 // supports prefix compression in the index.
@@ -465,10 +498,6 @@ union [[nodiscard]] key_prefix {
  private:
   template <typename T>
   using critical_section_policy = CriticalSectionPolicy<T>;
-
-  using key_prefix_size = std::uint8_t;
-
-  static constexpr key_prefix_size key_prefix_capacity = 7;
 
   using key_prefix_data =
       std::array<critical_section_policy<std::byte>, key_prefix_capacity>;
@@ -500,6 +529,11 @@ union [[nodiscard]] key_prefix {
   [[nodiscard]] constexpr auto get_shared_length(
       unodb::detail::art_key shifted_key) const noexcept {
     return shared_len(shifted_key.get_internal_key(), u64, length());
+  }
+
+  // A snapshot of the key_prefix data.
+  [[nodiscard]] constexpr key_prefix_snapshot get_snapshot() const noexcept {
+    return key_prefix_snapshot(u64);
   }
 
   // The number of prefix bytes.
@@ -631,8 +665,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
                                 critical_section_policy<node_ptr> *  // child
                                 >;
 
-  // A tuple that is returned by the iterator visitation pattern which
-  // represents the path in the tree for an internal node.
+  // A struct that is returned by the iterator visitation pattern
+  // which represents a path in the tree for an internal node.
   //
   // Note: The node is a pointer to either an internal node or a leaf.
   //
@@ -654,11 +688,11 @@ class basic_inode_impl : public ArtPolicy::header_type {
     std::byte key_byte;        // key byte
     std::uint8_t child_index;  // child-index
 
-    [[nodiscard]] constexpr bool operator==(
-        const iter_result &other) const noexcept {
-      return node == other.node && key_byte == other.key_byte &&
-             child_index == other.child_index;
-    }
+    // [[nodiscard]] constexpr bool operator==(
+    //     const iter_result &other) const noexcept {
+    //   return node == other.node && key_byte == other.key_byte &&
+    //          child_index == other.child_index;
+    // }
   };
   using iter_result_opt = std::optional<iter_result>;
 
