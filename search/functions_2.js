@@ -1,4 +1,6 @@
 var searchData=
 [
-  ['get_5fkey_0',['get_key',['../classunodb_1_1db_1_1iterator.html#a29a88ed844cec38077e91eacd43ee5d2',1,'unodb::db::iterator::get_key()'],['../classunodb_1_1olc__db_1_1iterator.html#a81990f0f0aa7aefb11a3043a5e66bdcf',1,'unodb::olc_db::iterator::get_key()']]]
+  ['cannot_5fhappen_0',['cannot_happen',['../namespaceunodb_1_1detail.html#a84376061f77319109e51399dd10a3135',1,'unodb::detail']]],
+  ['crash_1',['crash',['../namespaceunodb_1_1detail.html#aae5f331d83917453230a096af3197dc2',1,'unodb::detail']]],
+  ['ctz_2',['ctz',['../namespaceunodb_1_1detail.html#a5572532b0d5ba02cbbfb5e876bd59925',1,'unodb::detail']]]
 ];

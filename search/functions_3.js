@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['scan_0',['scan',['../classunodb_1_1db.html#a19264d6e93a2c7bbbef1cea58b679a89',1,'unodb::db::scan()'],['../classunodb_1_1olc__db.html#a7162df147925d5422db3df170ba86259',1,'unodb::olc_db::scan()']]]
+  ['dump_0',['dump',['../classunodb_1_1db_1_1iterator.html#af982044ade01c2fb5378aaea1e676e53',1,'unodb::db::iterator::dump()'],['../classunodb_1_1olc__db_1_1iterator.html#ae884a0b3afc477dfadce0f4419d8d0bd',1,'unodb::olc_db::iterator::dump()']]]
 ];
