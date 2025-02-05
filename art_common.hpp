@@ -169,6 +169,31 @@ next_power_of_two(T i) {
   return ++i;
 }
 
+/// Compute the lexicographically next bit permutation.  This method
+/// gets used when you want to form an exclusive upper bound for some
+/// key range.  You take the upper bound and form the bitwise
+/// successor of that value to turn it into an exclusive upper bound.
+///
+/// Suppose we have a pattern of N bits set to 1 in an integer and we
+/// want the next permutation of N 1 bits in a lexicographical
+/// sense. For example, if N is 3 and the bit pattern is 00010011, the
+/// next patterns would be 00010101, 00010110, 00011001,00011010,
+/// 00011100, 00100011, and so forth. The following is a fast way to
+/// compute the next permutation.
+///
+/// Source:
+/// https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation
+///
+/// @param v Some unsigned value.
+template <typename T>
+T successor(T v) {
+  const T t = v | (v - 1u);  // t gets v's least significant 0 bits set to 1
+  // Next set to 1 the most significant bit to change, set to 0 the
+  // least significant ones, and add the necessary 1 bits.
+  const T w = (t + 1) | (((~t & -~t) - 1) >> (ctz(v) + 1));
+  return w;
+}
+
 /// Utility method for power of two expansion of buffers (internal
 /// API, forward declaration).
 inline void ensure_capacity(std::byte *&buf,     // buffer to resize
