@@ -574,7 +574,7 @@ static constexpr key_prefix_size key_prefix_capacity = 7;
 /// view. So the data are atomically copied into this structure and it
 /// can expose the key_view over those data.
 union [[nodiscard]] key_prefix_snapshot {
-  // TODO(thompsonbry) Can this be replaced by [using
+  // FIXME(thompsonbry) Can this be replaced by [using
   // key_prefix_snapshot = key_prefix<std::uint64_t,
   // in_fake_critical_section>]?  We need the snapshot to be
   // atomic. Does that work with this using decl?
@@ -594,11 +594,43 @@ union [[nodiscard]] key_prefix_snapshot {
     return key_view(f.key_prefix.data(), f.key_prefix_length);
   }
 
-  /// Return the length of the key_prefix.
-  [[nodiscard]] key_prefix_size size() const noexcept {
+  /// The number of prefix bytes.
+  ///
+  /// TODO(thompsonbry) replace size() with length() to parallel key_prefix.
+  [[nodiscard]] key_prefix_size size() const noexcept { return length(); }
+
+  /// The number of prefix bytes.
+  [[nodiscard]] constexpr key_prefix_size length() const noexcept {
     return f.key_prefix_length;
   }
+
+  /// Return the number of bytes in common between this key_prefix and
+  /// a view of the next 64-bits (max) of some the shifted_key from
+  /// which any leading bytes already matched by the traversal path
+  /// have been discarded (variant method shared by key_prefix_snapshot).
+  [[nodiscard]] constexpr auto get_shared_length(
+      std::uint64_t shifted_key_u64) const noexcept {
+    return shared_len(shifted_key_u64, u64, length());
+  }
+
+  /// Return the byte at the specified index.
+  [[nodiscard]] constexpr auto operator[](std::size_t i) const noexcept {
+    UNODB_DETAIL_ASSERT(i < length());
+    return f.key_prefix[i];
+  }
+
+ private:
+  /// from key_prefix
+  [[nodiscard, gnu::const]] static constexpr unsigned shared_len(
+      std::uint64_t k1, std::uint64_t k2, unsigned clamp_byte_pos) noexcept {
+    UNODB_DETAIL_ASSERT(clamp_byte_pos < 8);
+
+    const auto diff = k1 ^ k2;
+    const auto clamped = diff | (1ULL << (clamp_byte_pos * 8U));
+    return static_cast<unsigned>(detail::ctz(clamped) >> 3U);
+  }
 };  // class key_prefix_snapshot
+static_assert(sizeof(key_prefix_snapshot) == sizeof(std::uint64_t));
 
 /// The key_prefix is a sequence of zero or more bytes for a given node
 /// that are a common prefix shared by all children of that node and
@@ -633,28 +665,40 @@ union [[nodiscard]] key_prefix {
 
   ~key_prefix() noexcept = default;
 
-  // Return the number of bytes in common between this key_prefix and
-  // a view of the next 64-bits (max) of some the shifted_key from
-  // which any leading bytes already matched by the traversal path
-  // have been discarded.
+  /// Return the number of bytes in common between this key_prefix and
+  /// a view of the next 64-bits (max) of some the shifted_key from
+  /// which any leading bytes already matched by the traversal path
+  /// have been discarded.
   [[nodiscard]] constexpr auto get_shared_length(
       ArtKey shifted_key) const noexcept {
-    return shared_len(shifted_key.get_u64(), u64, length());
+    return get_shared_length(shifted_key.get_u64());
   }
 
-  // A snapshot of the key_prefix data.
+  /// Return the number of bytes in common between this key_prefix and
+  /// a view of the next 64-bits (max) of some the shifted_key from
+  /// which any leading bytes already matched by the traversal path
+  /// have been discarded (variant method shared by key_prefix_snapshot).
+  [[nodiscard]] constexpr auto get_shared_length(
+      std::uint64_t shifted_key_u64) const noexcept {
+    return shared_len(shifted_key_u64, u64, length());
+  }
+
+  /// A snapshot of the key_prefix data. This method is required when
+  /// we need to have a consistent view of the state of the key_prefix
+  /// as of some momement in time, e.g., for the OLC iterator when we
+  /// can verify that the RCS is valid() after obtaining the data.
   [[nodiscard]] constexpr key_prefix_snapshot get_snapshot() const noexcept {
     return key_prefix_snapshot(u64);
   }
 
-  // The number of prefix bytes.
-  [[nodiscard]] constexpr unsigned length() const noexcept {
+  /// The number of prefix bytes.
+  [[nodiscard]] constexpr key_prefix_size length() const noexcept {
     const auto result = f.key_prefix_length.load();
     UNODB_DETAIL_ASSERT(result <= key_prefix_capacity);
     return result;
   }
 
-  constexpr void cut(unsigned cut_len) noexcept {
+  constexpr void cut(key_prefix_size cut_len) noexcept {
     UNODB_DETAIL_ASSERT(cut_len > 0);
     UNODB_DETAIL_ASSERT(cut_len <= length());
 
@@ -679,12 +723,12 @@ union [[nodiscard]] key_prefix {
     const auto masked_prefix1 = prefix1.u64 & prefix1_mask;
 
     u64 = shifted_prefix3 | shifted_prefix2 | masked_prefix1 |
-          length_to_word(length() + prefix1.length() + 1);
+          length_to_word(length() + prefix1.length() + 1u);
 
     UNODB_DETAIL_ASSERT(f.key_prefix_length.load() <= key_prefix_capacity);
   }
 
-  // Return the byte at the specified index.
+  /// Return the byte at the specified index.
   [[nodiscard]] constexpr auto operator[](std::size_t i) const noexcept {
     UNODB_DETAIL_ASSERT(i < length());
     return f.key_prefix[i].load();
@@ -754,9 +798,10 @@ template <class NodeHeader>
 struct iter_result {
   using node_ptr = basic_node_ptr<NodeHeader>;
 
-  node_ptr node;             // node pointer
-  std::byte key_byte;        // key byte
-  std::uint8_t child_index;  // child-index
+  node_ptr node;               // node pointer
+  std::byte key_byte;          // key byte
+  std::uint8_t child_index;    // child-index
+  key_prefix_snapshot prefix;  // the key_prefix for that node.
 };
 
 template <class NodeHeader>
@@ -1310,7 +1355,7 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
 
     const auto diff_key_byte_i = depth + shared_prefix_len;
     const auto source_node_key_byte = source_key_prefix[shared_prefix_len];
-    source_key_prefix.cut(shared_prefix_len + 1);
+    source_key_prefix.cut(static_cast<key_prefix_size>(shared_prefix_len) + 1u);
     const auto new_key_byte = child1->get_key_view()[diff_key_byte_i];
     add_two_to_empty(source_node_key_byte, source_node, new_key_byte,
                      std::move(child1));
@@ -1521,7 +1566,8 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   // children for N4).
   [[nodiscard]] constexpr typename basic_inode_4::iter_result begin() noexcept {
     const auto key = keys.byte_array[0].load();
-    return {node_ptr{this, node_type::I4}, key, static_cast<uint8_t>(0)};
+    return {node_ptr{this, node_type::I4}, key, static_cast<uint8_t>(0),
+            this->get_key_prefix().get_snapshot()};
   }
 
   // N4 - position on the last child (there is always at least two
@@ -1534,7 +1580,8 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     const auto child_index{
         static_cast<std::uint8_t>(this->children_count.load() - 1)};
     const auto key = keys.byte_array[child_index].load();
-    return {node_ptr{this, node_type::I4}, key, child_index};
+    return {node_ptr{this, node_type::I4}, key, child_index,
+            this->get_key_prefix().get_snapshot()};
   }
 
   // TODO(laurynas) explore 1) branchless 2) SIMD implementations for
@@ -1550,7 +1597,8 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     const auto next_index{static_cast<uint8_t>(child_index + 1)};
     if (next_index >= nchildren) return parent_class::end_result;
     const auto key = keys.byte_array[next_index].load();
-    return {{node_ptr{this, node_type::I4}, key, next_index}};
+    return {{node_ptr{this, node_type::I4}, key, next_index,
+             this->get_key_prefix().get_snapshot()}};
   }
 
   [[nodiscard]] constexpr typename basic_inode_4::iter_result_opt prior(
@@ -1558,7 +1606,8 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     if (child_index == 0) return parent_class::end_result;
     const auto next_index{static_cast<std::uint8_t>(child_index - 1)};
     const auto key = keys.byte_array[next_index].load();
-    return {{node_ptr{this, node_type::I4}, key, next_index}};
+    return {{node_ptr{this, node_type::I4}, key, next_index,
+             this->get_key_prefix().get_snapshot()}};
   }
 
   // N4: The keys[] is ordered for N4, so we scan the keys[] in order,
@@ -1569,7 +1618,8 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     for (std::uint8_t i = 0; i < nchildren; ++i) {
       const auto key = keys.byte_array[i].load();
       if (key >= key_byte) {
-        return {{node_ptr{this, node_type::I4}, key, i}};
+        return {{node_ptr{this, node_type::I4}, key, i,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     // This should only occur if there is no entry in the keys[] which
@@ -1587,7 +1637,8 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       const auto key = keys.byte_array[child_index].load();
       if (key <= key_byte) {
-        return {{node_ptr{this, node_type::I4}, key, child_index}};
+        return {{node_ptr{this, node_type::I4}, key, child_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     // The first key in the node is GT the given key_byte.
@@ -1926,7 +1977,8 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
   [[nodiscard]] constexpr typename basic_inode_16::iter_result
   begin() noexcept {
     const auto key = keys.byte_array[0].load();
-    return {node_ptr{this, node_type::I16}, key, 0};
+    return {node_ptr{this, node_type::I16}, key, 0,
+            this->get_key_prefix().get_snapshot()};
   }
 
   // N16 - position on the last child.
@@ -1934,7 +1986,8 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
     const auto child_index{
         static_cast<std::uint8_t>(this->children_count.load() - 1)};
     const auto key = keys.byte_array[child_index].load();
-    return {node_ptr{this, node_type::I16}, key, child_index};
+    return {node_ptr{this, node_type::I16}, key, child_index,
+            this->get_key_prefix().get_snapshot()};
   }
 
   [[nodiscard]] constexpr typename basic_inode_16::iter_result_opt next(
@@ -1943,7 +1996,8 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
     const auto next_index{static_cast<std::uint8_t>(child_index + 1)};
     if (next_index >= nchildren) return parent_class::end_result;
     const auto key = keys.byte_array[next_index].load();
-    return {{node_ptr{this, node_type::I16}, key, next_index}};
+    return {{node_ptr{this, node_type::I16}, key, next_index,
+             this->get_key_prefix().get_snapshot()}};
   }
 
   [[nodiscard]] constexpr typename basic_inode_16::iter_result_opt prior(
@@ -1951,7 +2005,8 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
     if (child_index == 0) return parent_class::end_result;
     const auto next_index{static_cast<std::uint8_t>(child_index - 1)};
     const auto key = keys.byte_array[next_index].load();
-    return {{node_ptr{this, node_type::I16}, key, next_index}};
+    return {{node_ptr{this, node_type::I16}, key, next_index,
+             this->get_key_prefix().get_snapshot()}};
   }
 
   // N16: The keys[] is ordered, so we scan the keys[] in reverse
@@ -1963,7 +2018,8 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       const auto key = keys.byte_array[child_index].load();
       if (key <= key_byte) {
-        return {{node_ptr{this, node_type::I16}, key, child_index}};
+        return {{node_ptr{this, node_type::I16}, key, child_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     // The first key in the node is GT the given key_byte.
@@ -1978,7 +2034,8 @@ class basic_inode_16 : public basic_inode_16_parent<ArtPolicy> {
     for (std::uint8_t i = 0; i < children_count_; ++i) {
       const auto key = keys.byte_array[i].load();
       if (key >= key_byte) {
-        return {{node_ptr{this, node_type::I16}, key, i}};
+        return {{node_ptr{this, node_type::I16}, key, i,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     // This should only occur if there is no entry in the keys[] which
@@ -2359,7 +2416,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
       if (child_indexes[i] != empty_child) {
         const auto key = static_cast<std::byte>(i);
         const auto child_index = static_cast<std::uint8_t>(i);
-        return {node_ptr{this, node_type::I48}, key, child_index};
+        return {node_ptr{this, node_type::I48}, key, child_index,
+                this->get_key_prefix().get_snapshot()};
       }
     }
     UNODB_DETAIL_CANNOT_HAPPEN();  // because we always have at least 17 keys.
@@ -2376,7 +2434,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
       if (child_indexes[static_cast<std::uint8_t>(i)] != empty_child) {
         const auto key = static_cast<std::byte>(i);
         const auto child_index = static_cast<std::uint8_t>(i);
-        return {node_ptr{this, node_type::I48}, key, child_index};
+        return {node_ptr{this, node_type::I48}, key, child_index,
+                this->get_key_prefix().get_snapshot()};
       }
     }
     // because we always have at least 17 keys.
@@ -2390,7 +2449,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
       if (child_indexes[i] != empty_child) {
         const auto key = static_cast<std::byte>(i);
         const auto next_index = static_cast<std::uint8_t>(i);
-        return {{node_ptr{this, node_type::I48}, key, next_index}};
+        return {{node_ptr{this, node_type::I48}, key, next_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2403,7 +2463,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
       if (child_indexes[static_cast<std::uint8_t>(i)] != empty_child) {
         const auto key = static_cast<std::byte>(i);
         const auto next_index = static_cast<std::uint8_t>(i);
-        return {{node_ptr{this, node_type::I48}, key, next_index}};
+        return {{node_ptr{this, node_type::I48}, key, next_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2418,7 +2479,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       if (child_indexes[child_index] != empty_child) {
         const auto key = static_cast<std::byte>(i);
-        return {{node_ptr{this, node_type::I48}, key, child_index}};
+        return {{node_ptr{this, node_type::I48}, key, child_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2433,7 +2495,8 @@ class basic_inode_48 : public basic_inode_48_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       if (child_indexes[child_index] != empty_child) {
         const auto key = static_cast<std::byte>(i);
-        return {{node_ptr{this, node_type::I48}, key, child_index}};
+        return {{node_ptr{this, node_type::I48}, key, child_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2713,7 +2776,8 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       if (children[i] != nullptr) {
         const auto key = static_cast<std::byte>(i);  // child_index is key byte
         const auto child_index = static_cast<std::uint8_t>(i);
-        return {node_ptr{this, node_type::I256}, key, child_index};
+        return {node_ptr{this, node_type::I256}, key, child_index,
+                this->get_key_prefix().get_snapshot()};
       }
     }
     // because we always have at least 49 keys.
@@ -2728,7 +2792,8 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       if (children[static_cast<std::uint8_t>(i)] != nullptr) {
         const auto key = static_cast<std::byte>(i);  // child_index is key byte
         const auto child_index = static_cast<std::uint8_t>(i);
-        return {node_ptr{this, node_type::I256}, key, child_index};
+        return {node_ptr{this, node_type::I256}, key, child_index,
+                this->get_key_prefix().get_snapshot()};
       }
     }
     // because we always have at least 49 keys.
@@ -2743,7 +2808,8 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       if (children[i] != nullptr) {
         const auto key = static_cast<std::byte>(i);
         const auto next_index = static_cast<std::uint8_t>(i);
-        return {{node_ptr{this, node_type::I256}, key, next_index}};
+        return {{node_ptr{this, node_type::I256}, key, next_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2756,7 +2822,8 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       const auto next_index = static_cast<std::uint8_t>(i);
       if (children[next_index] != nullptr) {
         const auto key = static_cast<std::byte>(i);
-        return {{node_ptr{this, node_type::I256}, key, next_index}};
+        return {{node_ptr{this, node_type::I256}, key, next_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2772,7 +2839,8 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       if (children[child_index] != nullptr) {
         const auto key = static_cast<std::byte>(i);
-        return {{node_ptr{this, node_type::I256}, key, child_index}};
+        return {{node_ptr{this, node_type::I256}, key, child_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;
@@ -2788,7 +2856,8 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       if (children[child_index] != nullptr) {
         const auto key = static_cast<std::byte>(i);
-        return {{node_ptr{this, node_type::I48}, key, child_index}};
+        return {{node_ptr{this, node_type::I48}, key, child_index,
+                 this->get_key_prefix().get_snapshot()}};
       }
     }
     return parent_class::end_result;

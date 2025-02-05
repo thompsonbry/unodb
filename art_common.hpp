@@ -111,6 +111,14 @@ static constexpr size_t INITIAL_BUFFER_CAPACITY = 256;
 /// Dump the value as a sequence of bytes.
 [[gnu::cold]] void dump_val(std::ostream &os, unodb::value_view v);
 
+/// Dump a std::span byte-wise (works on any key_view).
+template <typename T>
+[[gnu::cold]] void dump_key(std::ostream &os, key_view key) {
+  os << "key: 0x";
+  const auto sz = key.size_bytes();
+  for (std::size_t i = 0; i < sz; ++i) unodb::detail::dump_byte(os, key[i]);
+}
+
 /// Dump the key in lexicographic byte-wise order.
 template <typename T>
 [[gnu::cold]] void dump_key(std::ostream &os, T key) {
