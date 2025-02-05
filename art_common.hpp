@@ -104,6 +104,14 @@ static constexpr size_t INITIAL_BUFFER_CAPACITY = 256;
 /// Dump the value as a sequence of bytes.
 [[gnu::cold]] void dump_val(std::ostream &os, unodb::value_view v);
 
+/// Dump a std::span byte-wise (works on any key_view).
+template <typename T>
+[[gnu::cold]] void dump_key(std::ostream &os, key_view key) {
+  os << "key: 0x";
+  const auto sz = key.size_bytes();
+  for (std::size_t i = 0; i < sz; ++i) unodb::detail::dump_byte(os, key[i]);
+}
+
 /// Dump the key in lexicographic byte-wise order.
 template <typename T>
 [[gnu::cold]] void dump_key(std::ostream &os, T key) {
@@ -152,6 +160,34 @@ next_power_of_two(T i) {
   i = shift_or_32bit_int(i);
   i |= (i >> 32U);
   return ++i;
+}
+
+/// Compute the lexicographically next bit permutation.  This method
+/// gets used when you want to form an exclusive upper bound for some
+/// key range.  You take the upper bound and form the bitwise
+/// successor of that value to turn it into an exclusive upper
+/// bound. This has to be done for each component of the composite
+/// key, working backwards from the end of the key, until a component
+/// is found which does not overflow (is not already ~0).
+///
+/// Suppose we have a pattern of N bits set to 1 in an integer and we
+/// want the next permutation of N 1 bits in a lexicographical
+/// sense. For example, if N is 3 and the bit pattern is 00010011, the
+/// next patterns would be 00010101, 00010110, 00011001,00011010,
+/// 00011100, 00100011, and so forth. The following is a fast way to
+/// compute the next permutation.
+///
+/// Source:
+/// https://graphics.stanford.edu/~seander/bithacks.html#NextBitPermutation
+///
+/// @param v Some unsigned value.
+template <typename T>
+T successor(T v) {
+  const T t = v | (v - 1u);  // t gets v's least significant 0 bits set to 1
+  // Next set to 1 the most significant bit to change, set to 0 the
+  // least significant ones, and add the necessary 1 bits.
+  const T w = (t + 1) | (((~t & -~t) - 1) >> (ctz(v) + 1));
+  return w;
 }
 
 /// Utility method for power of two expansion of buffers (internal
@@ -464,6 +500,19 @@ class key_decoder {
     return *this;
   }
 };  // class key_decoder
+
+/// An instance of this exception is thrown if there is an attempt to
+/// insert a key which is a prefix of another key.  Applications using
+/// variable length or composite keys SHOULD use the key_encoder to
+/// avoid this problem.
+///
+/// TODO(thompsonbry) Create a subclass of runtime_error for unodb
+/// specific runtime errors.  This is one case.  The other cases are
+/// key too long and value too long.
+#define UNODB_KEY_CONTRACT_VIOLATION() \
+  throw new std::runtime_error(        \
+      "Key contract violation: A key must not be a prefix of an existing key")
+
 }  // namespace unodb
 
 #endif  // UNODB_DETAIL_ART_COMMON_HPP

@@ -139,9 +139,9 @@ class ARTConcurrencyTest : public ::testing::Test {
       return false;
     };
     if (fwd) {
-      verifier->get_db().scan_range(k0, k1, fn);
+      verifier->scan_range(k0, k1, fn);
     } else {
-      verifier->get_db().scan_range(k1, k0, fn);
+      verifier->scan_range(k1, k0, fn);
     }
     if constexpr (std::is_same_v<Db, unodb::olc_db<typename Db::key_type>>) {
       unodb::this_thread().quiescent();
@@ -222,7 +222,10 @@ class ARTConcurrencyTest : public ::testing::Test {
 };
 
 using ConcurrentARTTypes =
-    ::testing::Types<unodb::test::u64_mutex_db, unodb::test::u64_olc_db>;
+    ::testing::Types<unodb::test::u64_mutex_db, unodb::test::u64_olc_db
+                     // unodb::test::key_view_mutex_db,
+                     // unodb::test::key_view_olc_db
+                     >;
 
 UNODB_TYPED_TEST_SUITE(ARTConcurrencyTest, ConcurrentARTTypes)
 

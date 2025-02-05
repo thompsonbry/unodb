@@ -139,9 +139,6 @@ using qsbr_value_view = qsbr_ptr_span<const std::byte>;
 /// Reclamation is used.
 template <typename Key>
 class olc_db final {
-  // disable all other key types until unit tests prove that they work
-  static_assert(std::is_same_v<Key, std::uint64_t>);
-
  public:
   using key_type = Key;
   using value_view = unodb::qsbr_value_view;
@@ -314,6 +311,13 @@ class olc_db final {
     /// greater than the current one, and then look at its entry in
     /// the children[].
     ///
+    /// The [prefix_len] is the number of bytes in the key prefix
+    /// for [node].  When the node is pushed onto the stack, we also
+    /// push [prefix_bytes] plus the [key_byte] onto a key_buffer.
+    /// We track how many bytes were pushed here (not including the
+    /// key_byte) so we can pop off the correct number of bytes
+    /// later.
+    ///
     /// The [tag] is the [version_tag_type] from the
     /// read_critical_section and contains the version information
     /// that must be valid to use the [key_byte] and [child_index]
@@ -321,14 +325,6 @@ class olc_db final {
     /// when those data are read from the node along with the
     /// [key_byte] and [child_index] values that were read.
     struct stack_entry : public inode_base::iter_result {
-      /// The [prefix_len] is the number of bytes in the key prefix
-      /// for [node].  When the node is pushed onto the stack, we also
-      /// push [prefix_bytes] plus the [key_byte] onto a key_buffer.
-      /// We track how many bytes were pushed here (not including the
-      /// key_byte) so we can pop off the correct number of bytes
-      /// later.
-      detail::key_prefix_size prefix_len;
-
       /// The version tag invariant for the node.
       ///
       /// Note: This is just the data for the version tag and not the
@@ -426,8 +422,9 @@ class olc_db final {
            << static_cast<uint64_t>(e.key_byte) << std::dec
            << ", child_index=0x" << std::hex << std::setfill('0')
            << std::setw(2) << static_cast<std::uint64_t>(e.child_index)
-           << std::dec << ", prefix_len=" << e.prefix_len << std::dec
-           << ", version=";
+           << std::dec << ", prefix(" << e.prefix.length() << ")=";
+        detail::dump_key(os, e.prefix.get_key_view());
+        os << ", version=";
         optimistic_lock::version_type(e.version).dump(os);  // version tag.
         os << ", ";
         art_policy::dump_node(os, np, false /*recursive*/);  // node or leaf.
@@ -463,7 +460,7 @@ class olc_db final {
 
     /// Push an entry onto the stack.
     bool try_push(detail::olc_node_ptr node, std::byte key_byte,
-                  std::uint8_t child_index,
+                  std::uint8_t child_index, detail::key_prefix_snapshot prefix,
                   const optimistic_lock::read_critical_section& rcs) {
       // For variable length keys we need to know the number of bytes
       // associated with the node's key_prefix.  In addition there is
@@ -472,13 +469,7 @@ class olc_db final {
       // stack so we can pop off the right number of bytes even for
       // OLC where the node might be concurrently modified.
       UNODB_DETAIL_ASSERT(node.type() != node_type::LEAF);
-      auto* inode{node.ptr<inode_type*>()};
-      auto prefix{inode->get_key_prefix().get_snapshot()};
-      // Check the RCS to make sure the snapshot of the key prefix is valid.
-      if (UNODB_DETAIL_UNLIKELY(!rcs.check())) {
-        return false;  // LCOV_EXCL_LINE
-      }
-      stack_.push({{node, key_byte, child_index}, prefix.size(), rcs.get()});
+      stack_.push({{node, key_byte, child_index, prefix}, rcs.get()});
       keybuf_.push(prefix.get_key_view());
       keybuf_.push(key_byte);
       return true;
@@ -487,15 +478,14 @@ class olc_db final {
     /// Push a leaf onto the stack.
     bool try_push_leaf(detail::olc_node_ptr aleaf,
                        const optimistic_lock::read_critical_section& rcs) {
-      // The [key], [child_index] and [prefix_len] are ignored for a
-      // leaf.
+      // The [key], [child_index] and [prefix] are ignored for a leaf.
       //
       // TODO(thompsonbry) variable length keys - we will need to
       // handle a final variable length key prefix on the leaf here.
       stack_.push({{aleaf,
-                    static_cast<std::byte>(0xFFU),      // key_byte
-                    static_cast<std::uint8_t>(0xFFU)},  // child_index
-                   0,                                   // prefix_len
+                    static_cast<std::byte>(0xFFU),     // key_byte
+                    static_cast<std::uint8_t>(0xFFU),  // child_index
+                    detail::key_prefix_snapshot(0)},   // prefix
                    rcs.get()});
       return true;
     }
@@ -507,7 +497,7 @@ class olc_db final {
       if (UNODB_DETAIL_UNLIKELY(node_type == node_type::LEAF)) {
         return try_push_leaf(e.node, rcs);
       }
-      return try_push(e.node, e.key_byte, e.child_index, rcs);
+      return try_push(e.node, e.key_byte, e.child_index, e.prefix, rcs);
     }
 
     /// Pop an entry from the stack and the corresponding bytes from
@@ -518,7 +508,7 @@ class olc_db final {
       // was pushed onto the stack and the stack and the keybuf are in
       // sync with one another.  So we can just do a simple POP for
       // each of them.
-      const auto prefix_len = top().prefix_len;
+      const auto prefix_len = top().prefix.length();
       stack_.pop();
       keybuf_.pop(prefix_len);
     }
@@ -2418,10 +2408,10 @@ bool olc_db<Key>::iterator::try_seek(art_key_type search_key, bool& match,
     }
     UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
     auto* const inode{node.template ptr<inode_type*>()};  // some internal node.
-    const auto& key_prefix{inode->get_key_prefix()};    // prefix for that node.
+    const auto key_prefix{inode->get_key_prefix().get_snapshot()};  // prefix
     const auto key_prefix_length{key_prefix.length()};  // length of that prefix
     const auto shared_length = key_prefix.get_shared_length(
-        remaining_key);  // #of prefix bytes matched.
+        remaining_key.get_u64());  // #of prefix bytes matched.
     if (shared_length < key_prefix_length) {
       // We have visited an internal node whose prefix is longer than
       // the bytes in the key that we need to match.  To figure out
@@ -2533,7 +2523,7 @@ bool olc_db<Key>::iterator::try_seek(art_key_type search_key, bool& match,
           return false;                                       // LCOV_EXCL_LINE
         // push the path we took
         if (UNODB_DETAIL_UNLIKELY(!try_push(node, tmp.key_byte, child_index,
-                                            node_critical_section)))
+                                            tmp.prefix, node_critical_section)))
           return false;  // LCOV_EXCL_LINE
         return try_left_most_traversal(child, node_critical_section);
       }
@@ -2589,7 +2579,7 @@ bool olc_db<Key>::iterator::try_seek(art_key_type search_key, bool& match,
         return false;                                       // LCOV_EXCL_LINE
       // push the path we took
       if (UNODB_DETAIL_UNLIKELY(!try_push(node, tmp.key_byte, child_index,
-                                          node_critical_section)))
+                                          tmp.prefix, node_critical_section)))
         return false;  // LCOV_EXCL_LINE
       return try_right_most_traversal(child, node_critical_section);
     }
@@ -2597,7 +2587,7 @@ bool olc_db<Key>::iterator::try_seek(art_key_type search_key, bool& match,
     const auto child_index{res.first};
     const auto* const child{res.second};
     if (UNODB_DETAIL_UNLIKELY(!try_push(node, remaining_key[0], child_index,
-                                        node_critical_section)))
+                                        key_prefix, node_critical_section)))
       return false;  // LCOV_EXCL_LINE
     node = *child;
     remaining_key.shift_right(1);

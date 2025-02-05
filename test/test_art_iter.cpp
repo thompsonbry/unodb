@@ -41,7 +41,11 @@ inline std::uint64_t decode(unodb::key_view akey) {
 
 using ARTTypes =
     ::testing::Types<unodb::test::u64_db, unodb::test::u64_mutex_db,
-                     unodb::test::u64_olc_db>;
+                     unodb::test::u64_olc_db
+                     // unodb::test::key_view_db,
+                     // unodb::test::key_view_mutex_db,
+                     // unodb::test::key_view_olc_db
+                     >;
 
 UNODB_TYPED_TEST_SUITE(ARTIteratorTest, ARTTypes)
 
