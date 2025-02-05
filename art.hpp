@@ -306,7 +306,7 @@ class db final {
            << static_cast<std::uint64_t>(e.key_byte) << std::dec
            << ", child_index=0x" << std::hex << std::setfill('0')
            << std::setw(2) << static_cast<std::uint64_t>(e.child_index)
-           << std::dec << ", prefix(" << e.prefix.size() << ")=";
+           << std::dec << ", prefix(" << e.prefix.length() << ")=";
         detail::dump_key(os, e.prefix.get_key_view());
         art_policy::dump_node(os, np, false /*recursive*/);
         if (np.type() != node_type::LEAF) os << '\n';
@@ -397,7 +397,7 @@ class db final {
 
     /// Pop an entry from the stack and truncate the key buffer.
     void pop() {
-      const auto prefix_len = top().prefix.size();
+      const auto prefix_len = top().prefix.length();
       stack_.pop();
       keybuf_.pop(prefix_len);
     }

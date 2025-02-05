@@ -595,11 +595,6 @@ union [[nodiscard]] key_prefix_snapshot {
   }
 
   /// The number of prefix bytes.
-  ///
-  /// TODO(thompsonbry) replace size() with length() to parallel key_prefix.
-  [[nodiscard]] key_prefix_size size() const noexcept { return length(); }
-
-  /// The number of prefix bytes.
   [[nodiscard]] constexpr key_prefix_size length() const noexcept {
     return f.key_prefix_length;
   }

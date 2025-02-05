@@ -432,7 +432,7 @@ class olc_db final {
            << static_cast<uint64_t>(e.key_byte) << std::dec
            << ", child_index=0x" << std::hex << std::setfill('0')
            << std::setw(2) << static_cast<std::uint64_t>(e.child_index)
-           << std::dec << ", prefix(" << e.prefix.size() << ")=";
+           << std::dec << ", prefix(" << e.prefix.length() << ")=";
         detail::dump_key(os, e.prefix.get_key_view());
         os << ", version=";
         optimistic_lock::version_type(e.version).dump(os);  // version tag.
@@ -518,7 +518,7 @@ class olc_db final {
       // was pushed onto the stack and the stack and the keybuf are in
       // sync with one another.  So we can just do a simple POP for
       // each of them.
-      const auto prefix_len = top().prefix.size();
+      const auto prefix_len = top().prefix.length();
       stack_.pop();
       keybuf_.pop(prefix_len);
     }
