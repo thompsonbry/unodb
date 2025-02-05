@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['version_0',['version',['../classunodb_1_1optimistic__lock_1_1version__type.html#af75f06a4506471589b23b87348919a2f',1,'unodb::optimistic_lock::version_type::version'],['../classunodb_1_1optimistic__lock_1_1atomic__version__type.html#ab7c41a1543f10aa0b32d77cc3968ec0c',1,'unodb::optimistic_lock::atomic_version_type::version'],['../classunodb_1_1optimistic__lock_1_1read__critical__section.html#a66e3bcf979e6d6598cc683969a31d72e',1,'unodb::optimistic_lock::read_critical_section::version']]]
+  ['key_5fsize_0',['key_size',['../classunodb_1_1detail_1_1basic__leaf.html#a891b5c7b76c488e453319377a83e4ae3',1,'unodb::detail::basic_leaf']]],
+  ['keybuf_5f_1',['keybuf_',['../classunodb_1_1db_1_1iterator.html#ac63c8c6e747332c1128a5361294847be',1,'unodb::db::iterator::keybuf_'],['../classunodb_1_1olc__db_1_1iterator.html#a1cb128bff73b67be45c998d7ec97f43e',1,'unodb::olc_db::iterator::keybuf_']]]
 ];
