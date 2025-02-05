@@ -31,18 +31,12 @@
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 
-extern template class unodb::db<unodb::key_view>;
-
 namespace unodb::test {
 
 constexpr std::array<unodb::value_view, 6> test_keys = {
     unodb::key_view{test_value_1}, unodb::key_view{test_value_2},
     unodb::key_view{test_value_3}, unodb::key_view{test_value_4},
     unodb::key_view{test_value_5}, unodb::key_view{empty_test_value}};
-
-using span_db = unodb::db<unodb::key_view>;
-
-extern template class tree_verifier<u64_db>;
 
 }  // namespace unodb::test
 
@@ -56,7 +50,7 @@ class ARTSpanCorrectnessTest : public ::testing::Test {
   using Test::Test;
 };
 
-using ARTTypes = ::testing::Types<unodb::test::span_db>;
+using ARTTypes = ::testing::Types<unodb::test::key_view_db>;
 // ::testing::Types<unodb::test::u64_db, unodb::test::u64_mutex_db,
 //                  unodb::test::u64_olc_db>;
 
@@ -166,7 +160,6 @@ TYPED_TEST(ARTSpanCorrectnessTest, TooLongValue) {
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-#ifdef ALL_ART_SPAN_KEY_TESTS_ENABLED
 UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
 TYPED_TEST(ARTSpanCorrectnessTest, TooLongKey) {
   constexpr std::byte fake_val{0x00};
@@ -188,6 +181,13 @@ TYPED_TEST(ARTSpanCorrectnessTest, TooLongKey) {
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+#ifdef ALL_ART_SPAN_KEY_TESTS_ENABLED
+// Note: This UT encounters the case where the variable length key
+// ends for one of the keys on the root inode.  The keys are 00 and 00
+// 02. The root inode has a prefix of 00.  The 00 key ends at the root
+// inode (there is no child byte), and thus is handled by a special
+// pointer to a leaf.  The 00 02 key extends the root inode to a leaf,
+// which is the common path.
 TYPED_TEST(ARTSpanCorrectnessTest, ExpandLeafToNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 

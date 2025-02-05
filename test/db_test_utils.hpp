@@ -510,9 +510,14 @@ using u64_db = unodb::db<std::uint64_t>;
 using u64_mutex_db = unodb::mutex_db<std::uint64_t>;
 using u64_olc_db = unodb::olc_db<std::uint64_t>;
 
+using key_view_db = unodb::db<key_view>;
+
 extern template class tree_verifier<u64_db>;
 extern template class tree_verifier<u64_mutex_db>;
 extern template class tree_verifier<u64_olc_db>;
+
+// TODO(thompsonbry) variable length keys: extern template class
+// tree_verifier<key_view_db>;
 
 }  // namespace unodb::test
 

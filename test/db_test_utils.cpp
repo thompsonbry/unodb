@@ -33,6 +33,8 @@ template class unodb::db<std::uint64_t>;
 template class unodb::mutex_db<std::uint64_t>;
 template class unodb::olc_db<std::uint64_t>;
 
+template class unodb::db<unodb::key_view>;
+
 }  // namespace unodb
 
 namespace unodb::test {
@@ -44,6 +46,9 @@ namespace unodb::test {
 template class tree_verifier<u64_db>;
 template class tree_verifier<u64_mutex_db>;
 template class tree_verifier<u64_olc_db>;
+
+// TODO(thompsonbry) variable length keys.  template class
+// tree_verifier<key_view_db>;
 
 }  // namespace unodb::test
 

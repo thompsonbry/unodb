@@ -90,8 +90,6 @@ class mutex_db;
 /// implementation.
 template <typename Key>
 class db final {
-  // disable all other key types until unit tests prove that they work
-  static_assert(std::is_same_v<Key, std::uint64_t>);
   friend class mutex_db<Key>;
 
  public:
