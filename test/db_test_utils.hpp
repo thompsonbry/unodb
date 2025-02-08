@@ -51,7 +51,7 @@ extern template class unodb::db<std::uint64_t>;
 extern template class unodb::mutex_db<std::uint64_t>;
 extern template class unodb::olc_db<std::uint64_t>;
 
-// extern template class unodb::db<unodb::key_view>;
+extern template class unodb::db<unodb::key_view>;
 
 namespace unodb::test {
 
@@ -141,6 +141,12 @@ void assert_result_eq(const Db &db, typename Db::key_type key,
 #define ASSERT_VALUE_FOR_KEY(DbType, test_db, key, expected) \
   detail::assert_result_eq<DbType>(test_db, key, expected, __FILE__, __LINE__)
 
+/// Utility class supporting verification of the system under test.
+///
+/// Note: For the key_view cases, the verifier assumes that we are
+/// storing u64 keys encoded into a key_view.  The caller's key_view is
+/// decoded to obtain the u64 key.  We then encode each u64 value in
+/// the specified range into a key_view.
 template <class Db>
 class [[nodiscard]] tree_verifier final {
  public:
@@ -313,8 +319,19 @@ class [[nodiscard]] tree_verifier final {
 
   void insert_key_range(key_type start_key, std::size_t count,
                         bool bypass_verifier = false) {
-    for (auto key = start_key; key < start_key + count; ++key) {
-      insert(key, test_values[key % test_values.size()], bypass_verifier);
+    if constexpr (std::is_same_v<key_type, key_view>) {
+      unodb::key_decoder dec(start_key);
+      std::uint64_t start_key_dec;
+      dec.decode(start_key_dec);
+      unodb::key_encoder enc;
+      for (auto key = start_key_dec; key < start_key_dec + count; ++key) {
+        insert(enc.reset().encode(key).get_key_view(),
+               test_values[key % test_values.size()], bypass_verifier);
+      }
+    } else {
+      for (auto key = start_key; key < start_key + count; ++key) {
+        insert(key, test_values[key % test_values.size()], bypass_verifier);
+      }
     }
   }
 
@@ -325,18 +342,43 @@ class [[nodiscard]] tree_verifier final {
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
   void preinsert_key_range_to_verifier_only(key_type start_key,
                                             std::size_t count) {
-    for (auto key = start_key; key < start_key + count; ++key) {
-      const auto [pos, insert_succeeded] =
-          values.try_emplace(key, test_values[key % test_values.size()]);
-      (void)pos;
-      UNODB_ASSERT_TRUE(insert_succeeded);
+    if constexpr (std::is_same_v<key_type, key_view>) {
+      unodb::key_decoder dec(start_key);
+      std::uint64_t start_key_dec;
+      dec.decode(start_key_dec);
+      unodb::key_encoder enc;
+      for (auto key = start_key_dec; key < start_key_dec + count; ++key) {
+        const auto [pos, insert_succeeded] =
+            values.try_emplace(enc.reset().encode(key).get_key_view(),
+                               test_values[key % test_values.size()]);
+        (void)pos;
+        UNODB_ASSERT_TRUE(insert_succeeded);
+      }
+    } else {
+      for (auto key = start_key; key < start_key + count; ++key) {
+        const auto [pos, insert_succeeded] =
+            values.try_emplace(key, test_values[key % test_values.size()]);
+        (void)pos;
+        UNODB_ASSERT_TRUE(insert_succeeded);
+      }
     }
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   void insert_preinserted_key_range(key_type start_key, std::size_t count) {
-    for (auto key = start_key; key < start_key + count; ++key) {
-      do_insert(key, test_values[key % test_values.size()]);
+    if constexpr (std::is_same_v<key_type, key_view>) {
+      unodb::key_decoder dec(start_key);
+      std::uint64_t start_key_dec;
+      dec.decode(start_key_dec);
+      unodb::key_encoder enc;
+      for (auto key = start_key_dec; key < start_key_dec + count; ++key) {
+        do_insert(enc.reset().encode(key).get_key_view(),
+                  test_values[key % test_values.size()]);
+      }
+    } else {
+      for (auto key = start_key; key < start_key + count; ++key) {
+        do_insert(key, test_values[key % test_values.size()]);
+      }
     }
   }
 
@@ -518,8 +560,7 @@ extern template class tree_verifier<u64_db>;
 extern template class tree_verifier<u64_mutex_db>;
 extern template class tree_verifier<u64_olc_db>;
 
-// TODO(thompsonbry) variable length keys: extern template class
-// tree_verifier<key_view_db>;
+extern template class tree_verifier<key_view_db>;
 
 }  // namespace unodb::test
 
