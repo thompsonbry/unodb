@@ -172,7 +172,10 @@ next_power_of_two(T i) {
 /// Compute the lexicographically next bit permutation.  This method
 /// gets used when you want to form an exclusive upper bound for some
 /// key range.  You take the upper bound and form the bitwise
-/// successor of that value to turn it into an exclusive upper bound.
+/// successor of that value to turn it into an exclusive upper
+/// bound. This has to be done for each component of the composite
+/// key, working backwards from the end of the key, until a component
+/// is found which does not overflow (is not already ~0).
 ///
 /// Suppose we have a pattern of N bits set to 1 in an integer and we
 /// want the next permutation of N 1 bits in a lexicographical
@@ -504,6 +507,19 @@ class key_decoder {
     return *this;
   }
 };  // class key_decoder
+
+/// An instance of this exception is thrown if there is an attempt to
+/// insert a key which is a prefix of another key.  Applications using
+/// variable length or composite keys SHOULD use the key_encoder to
+/// avoid this problem.
+///
+/// TODO(thompsonbry) Create a subclass of runtime_error for unodb
+/// specific runtime errors.  This is one case.  The other cases are
+/// key too long and value too long.
+#define UNODB_KEY_CONTRACT_VIOLATION() \
+  throw new std::runtime_error(        \
+      "Key contract violation: A key must not be a prefix of an existing key")
+
 }  // namespace unodb
 
 #endif  // UNODB_DETAIL_ART_COMMON_HPP

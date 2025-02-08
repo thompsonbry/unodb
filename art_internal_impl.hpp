@@ -771,24 +771,24 @@ union [[nodiscard]] key_prefix {
   }
 };  // class key_prefix
 
-// A struct that is returned by the iterator visitation pattern
-// which represents a path in the tree for an internal node.
-//
-// Note: The node is a pointer to either an internal node or a leaf.
-//
-// Note: The key_byte is the byte from the key that was consumed as
-// you step down to the child node. This is the same as the child
-// index (if you convert std::uint8_t to std::byte) for N48 and
-// N256, but it is different for N4 and N16 since they use a sparse
-// encoding of the keys.  It is represented explicitly to avoid
-// searching for the key byte in the N48 and N256 cases.
-//
-// Note: The child_index is the index of the child node within that
-// internal node (except for N48, where it is the index into the
-// child_indexes[] and is in fact the same data as the key byte).
-// Overflow for the child_index can only occur for N48 and N256.
-// When overflow happens, the iter_result is not defined and the
-// outer std::optional will return false.
+/// A struct that is returned by the iterator visitation pattern
+/// which represents a path in the tree for an internal node.
+///
+/// Note: The node is a pointer to either an internal node or a leaf.
+///
+/// Note: The key_byte is the byte from the key that was consumed as
+/// you step down to the child node. This is the same as the child
+/// index (if you convert std::uint8_t to std::byte) for N48 and
+/// N256, but it is different for N4 and N16 since they use a sparse
+/// encoding of the keys.  It is represented explicitly to avoid
+/// searching for the key byte in the N48 and N256 cases.
+///
+/// Note: The child_index is the index of the child node within that
+/// internal node (except for N48, where it is the index into the
+/// child_indexes[] and is in fact the same data as the key byte).
+/// Overflow for the child_index can only occur for N48 and N256.
+/// When overflow happens, the iter_result is not defined and the
+/// outer std::optional will return false.
 template <class NodeHeader>
 struct iter_result {
   using node_ptr = basic_node_ptr<NodeHeader>;
@@ -802,25 +802,25 @@ struct iter_result {
 template <class NodeHeader>
 using iter_result_opt = std::optional<iter_result<NodeHeader>>;
 
-// A class used as a sentinel for basic_inode template args: the
-// larger node type for the largest node type and the smaller node type for
-// the smallest node type.
+/// A class used as a sentinel for basic_inode template args: the
+/// larger node type for the largest node type and the smaller node
+/// type for the smallest node type.
 class fake_inode final {
  public:
   fake_inode() = delete;
 };
 
-// A template class extending the common header and defining some
-// methods common to all internal node types.  The common header type
-// is specific to the thread-safety policy.  In particular, for the
-// OLC implementation, the common header includes the lock and version
-// tag metadata.
-//
-// Note: basic_inode_impl contains generic inode code, key prefix,
-// children count, and dispatch for add/remove/find towards specific
-// types. basic_inode has several template args giving it a capacity,
-// so it can implement is_full / is_min etc, and is immediate parent
-// for 4 16 ... classes.
+/// A template class extending the common header and defining some
+/// methods common to all internal node types.  The common header type
+/// is specific to the thread-safety policy.  In particular, for the
+/// OLC implementation, the common header includes the lock and version
+/// tag metadata.
+///
+/// Note: basic_inode_impl contains generic inode code, key prefix,
+/// children count, and dispatch for add/remove/find towards specific
+/// types. basic_inode has several template args giving it a capacity,
+/// so it can implement is_full / is_min etc, and is immediate parent
+/// for 4 16 ... classes.
 template <class ArtPolicy>
 class basic_inode_impl : public ArtPolicy::header_type {
  public:
@@ -839,9 +839,9 @@ class basic_inode_impl : public ArtPolicy::header_type {
 
   using db_type = typename ArtPolicy::db_type;
 
-  // The first element is the child index in the node, the second
-  // element is a pointer to the child.  If there is no such child,
-  // the pointer is nullptr, and the child_index is undefined.
+  /// The first element is the child index in the node, the second
+  /// element is a pointer to the child.  If there is no such child,
+  /// the pointer is nullptr, and the child_index is undefined.
   using find_result = std::pair<std::uint8_t  // child_index
                                 ,
                                 critical_section_policy<node_ptr> *  // child
@@ -926,9 +926,9 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  ///
-  /// access methods
-  ///
+  //
+  // access methods
+  //
   //
   // Note: Because of the parallel updates, the callees below may work
   // on inconsistent nodes and must not assert, just produce results,
@@ -957,13 +957,13 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Return the child node at the specified child index.
-  //
-  // Note: For N48, the child_index is the index into the
-  // child_indices[].  For all other node types, it is a direct index
-  // into the children[].  This method hides this distinction.
-  //
-  // TODO(laurynas) make const?
+  /// Return the child node at the specified child index.
+  ///
+  /// Note: For N48, the child_index is the index into the
+  /// child_indices[].  For all other node types, it is a direct index
+  /// into the children[].  This method hides this distinction.
+  ///
+  /// TODO(laurynas) make const?
   [[nodiscard]] constexpr node_ptr get_child(
       node_type type, std::uint8_t child_index) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
@@ -984,7 +984,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Dispatch logic for begin().
+  /// Dispatch logic for begin(), which returns the iter_result for the
+  /// first valid child of the ndoe.
   [[nodiscard]] constexpr iter_result begin(node_type type) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
     switch (type) {
@@ -1004,8 +1005,8 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Dispatch logic for last() which returns the iter_result for the
-  // last valid child of the node.
+  /// Dispatch logic for last() which returns the iter_result for the
+  /// last valid child of the node.
   [[nodiscard]] constexpr iter_result last(node_type type) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
     switch (type) {
@@ -1025,14 +1026,14 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Dispatch logic for next()
-  //
-  // @param type The type of this internal node.
-  //
-  // @param child_index The current position within the that internal node.
-  //
-  // @return A wrapped iter_result for the next child of this node iff
-  // such a child exists.
+  /// Dispatch logic for next()
+  ///
+  /// @param type The type of this internal node.
+  ///
+  /// @param child_index The current position within the that internal node.
+  ///
+  /// @return A wrapped iter_result for the next child of this node iff
+  /// such a child exists.
   [[nodiscard]] constexpr iter_result_opt next(
       node_type type, std::uint8_t child_index) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
@@ -1053,14 +1054,15 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Dispatch logic for prior()
-  //
-  // @param type The type of this internal node.
-  //
-  // @param child_index The current position within the that internal node.
-  //
-  // @return A wrapped iter_result for the previous child of this node
-  // iff such a child exists.
+  /// Dispatch logic for prior()
+  ///
+  /// @param type The type of this internal node.
+  ///
+  /// @param child_index The current position within the that internal
+  /// node.
+  ///
+  /// @return A wrapped iter_result for the previous child of this node
+  /// iff such a child exists.
   [[nodiscard]] constexpr iter_result_opt prior(
       node_type type, std::uint8_t child_index) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
@@ -1081,10 +1083,10 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Return an iter_result for the greatest key byte which orders
-  // lexicographically less than or equal to (LTE) the give key byte.
-  // This method is used by seek() to find the path before a key when
-  // the key is not mapped in the data.
+  /// Return an iter_result for the greatest key byte which orders
+  /// lexicographically less than or equal to (LTE) the give key byte.
+  /// This method is used by seek() to find the path before a key when
+  /// the key is not mapped in the data.
   [[nodiscard]] constexpr iter_result_opt lte_key_byte(
       node_type type, std::byte key_byte) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
@@ -1105,10 +1107,10 @@ class basic_inode_impl : public ArtPolicy::header_type {
     // LCOV_EXCL_STOP
   }
 
-  // Return an iter_result for the smallest key byte which orders
-  // lexicographically greater than or equal to (GTE) the given
-  // key_byte.  This method is used by seek() to find the path before
-  // a key when the key is not mapped in the data.
+  /// Return an iter_result for the smallest key byte which orders
+  /// lexicographically greater than or equal to (GTE) the given
+  /// key_byte.  This method is used by seek() to find the path before
+  /// a key when the key is not mapped in the data.
   [[nodiscard]] constexpr iter_result_opt gte_key_byte(
       node_type type, std::byte key_byte) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
@@ -1165,10 +1167,10 @@ class basic_inode_impl : public ArtPolicy::header_type {
   static constexpr std::uint8_t child_not_found_i = 0xFFU;
 
  protected:
-  // Represents the find_result when no such child was found.
+  /// Represents the find_result when no such child was found.
   static constexpr find_result child_not_found{child_not_found_i, nullptr};
 
-  // Represents the std::optional<iter_result> for end(), which is [false].
+  /// Represents the std::optional<iter_result> for end(), which is [false].
   static constexpr iter_result_opt end_result{};
 
   using leaf_type = basic_leaf<key_type, header_type>;
@@ -1193,9 +1195,9 @@ class basic_inode_impl : public ArtPolicy::header_type {
   friend class basic_inode_256;
 };  // class basic_inode_impl
 
-// The class basic_inode is the last common ancestor (both for
-// templates and inheritance) for all inode types for both OLC and
-// regular.
+/// The class basic_inode is the last common ancestor (both for
+/// templates and inheritance) for all inode types for both OLC and
+/// regular.
 template <class ArtPolicy, unsigned MinSize, unsigned Capacity,
           node_type NodeType, class SmallerDerived, class LargerDerived,
           class Derived>
@@ -1278,11 +1280,11 @@ using basic_inode_4_parent =
                 typename ArtPolicy::inode16_type,
                 typename ArtPolicy::inode4_type>;
 
-// An internal node with up to 4 children.  There is an array of (4)
-// bytes for the keys and keys are maintained in lexicographic order.
-// There is a corresponding array of (4) child pointers.  Each key
-// position is an index into the corresponding child pointer position,
-// so the child pointers are also dense.
+/// An internal node with up to 4 children.  There is an array of (4)
+/// bytes for the keys and keys are maintained in lexicographic order.
+/// There is a corresponding array of (4) child pointers.  Each key
+/// position is an index into the corresponding child pointer position,
+/// so the child pointers are also dense.
 template <class ArtPolicy>
 class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
   using parent_class = basic_inode_4_parent<ArtPolicy>;

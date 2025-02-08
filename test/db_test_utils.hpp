@@ -51,6 +51,8 @@ extern template class unodb::db<std::uint64_t>;
 extern template class unodb::mutex_db<std::uint64_t>;
 extern template class unodb::olc_db<std::uint64_t>;
 
+// extern template class unodb::db<unodb::key_view>;
+
 namespace unodb::test {
 
 template <class TestDb>
