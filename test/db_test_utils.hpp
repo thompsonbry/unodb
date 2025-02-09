@@ -205,9 +205,6 @@ class [[nodiscard]] tree_verifier final {
     return unodb::key_view(a.data(), a.size());  // view of array's data.
   }
 
-  /// Used to retain arrays backing unodb::key_views.
-  std::vector<std::array<std::byte, sizeof(std::uint64_t)>> key_views{};
-
  private:
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
 
@@ -613,6 +610,9 @@ class [[nodiscard]] tree_verifier final {
   key_type unused_key{};
 
   const bool parallel_test;
+
+  /// Used to retain arrays backing unodb::key_views.
+  std::vector<std::array<std::byte, sizeof(std::uint64_t)>> key_views{};
 };
 
 // TODO(thompsonbry) variable length keys. declare key_view variants
