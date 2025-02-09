@@ -442,14 +442,13 @@ TYPED_TEST(ARTSpanCorrectnessTest, TwoNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
-#ifdef ALL_ART_SPAN_KEY_TESTS_ENABLED
 TYPED_TEST(ARTSpanCorrectnessTest, DbInsertNodeRecursion) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(1, unodb::test::test_values[0]);
-  verifier.insert(3, unodb::test::test_values[2]);
+  verifier.insert(verifier.make_key(1), unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(3), unodb::test::test_values[2]);
   // Insert a value that does not share full prefix with the current Node4
-  verifier.insert(0xFF0001, unodb::test::test_values[3]);
+  verifier.insert(verifier.make_key(0xFF0001), unodb::test::test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_growing_inodes({2, 0, 0, 0});
@@ -458,10 +457,12 @@ TYPED_TEST(ARTSpanCorrectnessTest, DbInsertNodeRecursion) {
 
   // Then insert a value that shares full prefix with the above node and will
   // ask for a recursive insertion there
-  verifier.insert(0xFF0101, unodb::test::test_values[1]);
+  verifier.insert(verifier.make_key(0xFF0101), unodb::test::test_values[1]);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({0xFF0100, 0xFF0000, 2});
+  verifier.check_absent_keys({verifier.make_key(0xFF0100),
+                              verifier.make_key(0xFF0000),
+                              verifier.make_key(2)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({4, 3, 0, 0, 0});
@@ -470,15 +471,18 @@ TYPED_TEST(ARTSpanCorrectnessTest, DbInsertNodeRecursion) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test inserts four keys to create a full i4 then inserts
+/// another key to cause the root inode to be promoted to an i16.
 TYPED_TEST(ARTSpanCorrectnessTest, Node16) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0, 4);
+  verifier.insert_key_range(verifier.make_key(0), 4);
   verifier.check_present_values();
-  verifier.insert(5, unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(5), unodb::test::test_values[0]);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({6, 0x0100, 0xFFFFFFFFFFFFFFFFULL});
+  verifier.check_absent_keys({verifier.make_key(6), verifier.make_key(0x0100),
+                              verifier.make_key(0xFFFFFFFFFFFFFFFFULL)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({5, 0, 1, 0, 0});
@@ -486,12 +490,14 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node16) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test inserts 16 keys (0..15), resulting in a full root i16
+/// node.
 TYPED_TEST(ARTSpanCorrectnessTest, FullNode16) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0, 16);
+  verifier.insert_key_range(verifier.make_key(0), 16);
 
-  verifier.check_absent_keys({16});
+  verifier.check_absent_keys({verifier.make_key(16)});
   verifier.check_present_values();
 
 #ifdef UNODB_DETAIL_WITH_STATS
@@ -503,13 +509,13 @@ TYPED_TEST(ARTSpanCorrectnessTest, FullNode16) {
 TYPED_TEST(ARTSpanCorrectnessTest, Node16KeyPrefixSplit) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(10, 5);
+  verifier.insert_key_range(verifier.make_key(10), 5);
 
   // Insert a value that does share full prefix with the current Node16
-  verifier.insert(0x1020, unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(0x1020), unodb::test::test_values[0]);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({9, 0x10FF});
+  verifier.check_absent_keys({verifier.make_key(9), verifier.make_key(0x10FF)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({6, 1, 1, 0, 0});
@@ -521,15 +527,15 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node16KeyPrefixSplit) {
 TYPED_TEST(ARTSpanCorrectnessTest, Node16KeyInsertOrderDescending) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(5, unodb::test::test_values[0]);
-  verifier.insert(4, unodb::test::test_values[1]);
-  verifier.insert(3, unodb::test::test_values[2]);
-  verifier.insert(2, unodb::test::test_values[3]);
-  verifier.insert(1, unodb::test::test_values[4]);
-  verifier.insert(0, unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(5), unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(4), unodb::test::test_values[1]);
+  verifier.insert(verifier.make_key(3), unodb::test::test_values[2]);
+  verifier.insert(verifier.make_key(2), unodb::test::test_values[3]);
+  verifier.insert(verifier.make_key(1), unodb::test::test_values[4]);
+  verifier.insert(verifier.make_key(0), unodb::test::test_values[0]);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({6});
+  verifier.check_absent_keys({verifier.make_key(6)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({6, 0, 1, 0, 0});
@@ -539,16 +545,16 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node16KeyInsertOrderDescending) {
 TYPED_TEST(ARTSpanCorrectnessTest, Node16ConstructWithFFKeyByte) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0xFB, 4);
+  verifier.insert_key_range(verifier.make_key(0xFB), 4);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({4, 1, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  verifier.insert(0xFF, unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(0xFF), unodb::test::test_values[0]);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({0, 0xFA});
+  verifier.check_absent_keys({verifier.make_key(0), verifier.make_key(0xFA)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({5, 0, 1, 0, 0});
@@ -556,13 +562,15 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node16ConstructWithFFKeyByte) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test creates a root i16 and then inserts one more key to
+/// promote the root node to an i48.
 TYPED_TEST(ARTSpanCorrectnessTest, Node48) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0, 17);
+  verifier.insert_key_range(verifier.make_key(0), 17);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({17});
+  verifier.check_absent_keys({verifier.make_key(17)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({17, 0, 0, 1, 0});
@@ -573,10 +581,10 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node48) {
 TYPED_TEST(ARTSpanCorrectnessTest, FullNode48) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0, 48);
+  verifier.insert_key_range(verifier.make_key(0), 48);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({49});
+  verifier.check_absent_keys({verifier.make_key(49)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({48, 0, 0, 1, 0});
@@ -587,7 +595,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, FullNode48) {
 TYPED_TEST(ARTSpanCorrectnessTest, Node48KeyPrefixSplit) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(10, 17);
+  verifier.insert_key_range(verifier.make_key(10), 17);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({17, 0, 0, 1, 0});
@@ -596,10 +604,12 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node48KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // Insert a value that does share full prefix with the current Node48
-  verifier.insert(0x100020, unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(0x100020), unodb::test::test_values[0]);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({9, 27, 0x100019, 0x100100, 0x110000});
+  verifier.check_absent_keys(
+      {verifier.make_key(9), verifier.make_key(27), verifier.make_key(0x100019),
+       verifier.make_key(0x100100), verifier.make_key(0x110000)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({18, 1, 0, 1, 0});
@@ -608,13 +618,15 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node48KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit tests inserts the keys (0..48) creating a full root i48 node
+/// and then promotes the root to i256 by inserting one more key.
 TYPED_TEST(ARTSpanCorrectnessTest, Node256) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(1, 49);
+  verifier.insert_key_range(verifier.make_key(1), 49);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({50});
+  verifier.check_absent_keys({verifier.make_key(50)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({49, 0, 0, 0, 1});
@@ -622,13 +634,15 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node256) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test inserts the keys (0..255) creating a full root i256
+/// node.
 TYPED_TEST(ARTSpanCorrectnessTest, FullNode256) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0, 256);
+  verifier.insert_key_range(verifier.make_key(0), 256);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({256});
+  verifier.check_absent_keys({verifier.make_key(256)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({256, 0, 0, 0, 1});
@@ -636,6 +650,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, FullNode256) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+#ifdef ALL_ART_SPAN_KEY_TESTS_ENABLED
 TYPED_TEST(ARTSpanCorrectnessTest, Node256KeyPrefixSplit) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
