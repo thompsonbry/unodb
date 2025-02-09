@@ -30,6 +30,7 @@
 #include "art_common.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
+#include "test_utils.hpp"
 
 namespace unodb::test {
 
@@ -112,6 +113,13 @@ constexpr std::array<unodb::key_view, 8> test_keys = {
 namespace {
 // using unodb::detail::thread_syncs;
 // using unodb::test::test_values;
+
+/// convenience utility avoids explicit static casts in the caller
+/// where the existing code uses bare integer literals to represent
+/// u64 values.
+unodb::key_view encode(unodb::key_encoder& enc, std::uint64_t key) {
+  return enc.reset().encode(key).get_key_view();
+}
 
 template <class Db>
 class ARTSpanCorrectnessTest : public ::testing::Test {
@@ -198,6 +206,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, SingleKeyOperationsOnEmptyTree) {
       unodb::test::test_keys[7], val);
 }
 
+/// Inserts a root leaf having a empty value into an empty tree.
 TYPED_TEST(ARTSpanCorrectnessTest, SingleNodeTreeEmptyValue) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.check_absent_keys({unodb::test::test_keys[1]});
@@ -212,6 +221,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, SingleNodeTreeEmptyValue) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Inserts a root leaf having a non-empty value into an empty tree.
 TYPED_TEST(ARTSpanCorrectnessTest, SingleNodeTreeNonemptyValue) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.insert(unodb::test::test_keys[1], unodb::test::test_values[2]);
@@ -226,6 +236,8 @@ TYPED_TEST(ARTSpanCorrectnessTest, SingleNodeTreeNonemptyValue) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test for correct rejection of a value which is too large to
+/// be stored in the tree.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
 TYPED_TEST(ARTSpanCorrectnessTest, TooLongValue) {
   constexpr std::byte fake_val{0x00};
@@ -250,6 +262,8 @@ TYPED_TEST(ARTSpanCorrectnessTest, TooLongValue) {
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+/// Unit test of correct rejection of a key which is too large to be
+/// stored in the tree.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
 TYPED_TEST(ARTSpanCorrectnessTest, TooLongKey) {
   constexpr std::byte fake_val{0x00};
@@ -271,16 +285,16 @@ TYPED_TEST(ARTSpanCorrectnessTest, TooLongKey) {
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-// Note: This UT examines a case where one encoded key is a prefix of
-// another encoded key, which is a contract violation.  The keys are
-// 00 and 00 02. The 00 key is inserted first.  The root inode has a
-// prefix of 00.  The 00 key ends at the root leaf.
-//
-// FIXME Test in both insertion orders and do versions of this test
-// for each carefully constructed state of the tree (different tree
-// depths so we can check each structural modification point at which
-// this violation could be detected and verify that we correctly
-// detect the problem).
+/// Note: This UT examines a case where one encoded key is a prefix of
+/// another encoded key, which is a contract violation.  The keys are
+/// 00 and 00 02. The 00 key is inserted first.  The root inode has a
+/// prefix of 00.  The 00 key ends at the root leaf.
+///
+/// FIXME(thompsonbry) Test in both insertion orders and do versions
+/// of this test for each carefully constructed state of the tree
+/// (different tree depths so we can check each structural
+/// modification point at which this violation could be detected and
+/// verify that we correctly detect the problem).
 #if 0
 TYPED_TEST(ARTSpanCorrectnessTest, IllegalPrefixRejectLeafExpansionToI4) {
   unodb::test::tree_verifier<TypeParam> verifier;
@@ -310,8 +324,8 @@ TYPED_TEST(ARTSpanCorrectnessTest, IllegalPrefixRejectLeafExpansionToI4) {
 }
 #endif
 
-// UT splits the root leaf into an I4 with the second insert, creating
-// an I4 with a common prefix of 0x 03 00.
+/// Unit test splits the root leaf into an I4 with the second insert,
+/// creating an I4 with a common prefix of 0x 03 00.
 TYPED_TEST(ARTSpanCorrectnessTest, ExpandLeafToNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
@@ -320,7 +334,6 @@ TYPED_TEST(ARTSpanCorrectnessTest, ExpandLeafToNode4) {
   const auto& k2 = unodb::test::test_keys[3];  // 03 05 05 (not found)
 
   verifier.insert(k0, unodb::test::test_values[1]);
-  verifier.get_db().dump();  // FIXME REMOVE
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({1, 0, 0, 0, 0});
@@ -328,9 +341,8 @@ TYPED_TEST(ARTSpanCorrectnessTest, ExpandLeafToNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.insert(k1, unodb::test::test_values[2]);
-  verifier.get_db().dump();  // FIXME REMOVE
 
-  verifier.check_present_values();  // FIXME FAILS HERE
+  verifier.check_present_values();
   verifier.check_absent_keys({k2});
 
 #ifdef UNODB_DETAIL_WITH_STATS
@@ -339,10 +351,8 @@ TYPED_TEST(ARTSpanCorrectnessTest, ExpandLeafToNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
-#ifdef ALL_ART_SPAN_KEY_TESTS_ENABLED
-// This unit test relies on the verifier to ensure that no allocation
-// is performed when attempting to insert another value under the same
-// key.
+/// Unit test verifies that an attempt to insert an entry for a key
+/// already in the tree is rejected and that no allocations occur.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
 TYPED_TEST(ARTSpanCorrectnessTest, DuplicateKey) {
   unodb::test::tree_verifier<TypeParam> verifier;
@@ -373,13 +383,15 @@ TYPED_TEST(ARTSpanCorrectnessTest, DuplicateKey) {
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+/// Unit test inserts a sequence of keys until a root I4 node is full.
 TYPED_TEST(ARTSpanCorrectnessTest, InsertToFullNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0, 4);
+  unodb::key_encoder enc;
+  verifier.insert_key_range(encode(enc, 0), 4);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({5, 4});
+  verifier.check_absent_keys({verifier.make_key(5), verifier.make_key(4)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({4, 1, 0, 0, 0});
@@ -387,13 +399,14 @@ TYPED_TEST(ARTSpanCorrectnessTest, InsertToFullNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test inserts a sequence of u64 keys from 0xFC through 0xFF.
 TYPED_TEST(ARTSpanCorrectnessTest, Node4InsertFFByte) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert_key_range(0xFC, 4);
+  verifier.insert_key_range(verifier.make_key(0xFC), 4);
 
   verifier.check_present_values();
-  verifier.check_absent_keys({0, 0xFB});
+  verifier.check_absent_keys({verifier.make_key(0), verifier.make_key(0xFB)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({4, 1, 0, 0, 0});
@@ -401,21 +414,26 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node4InsertFFByte) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+/// Unit test inserts two keys with a common prefix to create a root
+/// i4 over two leaves and then inserts a key which does not share a
+/// common prefix to split the root leaf.
 TYPED_TEST(ARTSpanCorrectnessTest, TwoNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(1, unodb::test::test_values[0]);
-  verifier.insert(3, unodb::test::test_values[2]);
+  verifier.insert(verifier.make_key(1), unodb::test::test_values[0]);
+  verifier.insert(verifier.make_key(3), unodb::test::test_values[2]);
+  verifier.get_db().dump();  // FIXME REMOVE
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_growing_inodes({1, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // Insert a value that does not share full prefix with the current Node4
-  verifier.insert(0xFF01, unodb::test::test_values[3]);
+  verifier.insert(verifier.make_key(0xFF01), unodb::test::test_values[3]);
+  verifier.get_db().dump();  // FIXME REMOVE
 
   verifier.check_present_values();
-  verifier.check_absent_keys({0xFF00, 2});
+  verifier.check_absent_keys({verifier.make_key(0xFF00), verifier.make_key(2)});
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({3, 2, 0, 0, 0});
@@ -424,6 +442,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, TwoNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
+#ifdef ALL_ART_SPAN_KEY_TESTS_ENABLED
 TYPED_TEST(ARTSpanCorrectnessTest, DbInsertNodeRecursion) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
