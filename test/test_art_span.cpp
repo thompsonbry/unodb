@@ -114,13 +114,6 @@ namespace {
 // using unodb::detail::thread_syncs;
 // using unodb::test::test_values;
 
-/// convenience utility avoids explicit static casts in the caller
-/// where the existing code uses bare integer literals to represent
-/// u64 values.
-unodb::key_view encode(unodb::key_encoder& enc, std::uint64_t key) {
-  return enc.reset().encode(key).get_key_view();
-}
-
 template <class Db>
 class ARTSpanCorrectnessTest : public ::testing::Test {
  public:
@@ -387,8 +380,7 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 TYPED_TEST(ARTSpanCorrectnessTest, InsertToFullNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  unodb::key_encoder enc;
-  verifier.insert_key_range(encode(enc, 0), 4);
+  verifier.insert_key_range(verifier.make_key(0), 4);
 
   verifier.check_present_values();
   verifier.check_absent_keys({verifier.make_key(5), verifier.make_key(4)});
@@ -675,13 +667,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, Node256KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
-// FIXME(thompsonbry) - variable length keys -- tests are disabled
-// because tree_verifier::to_ikey() performs an allocation, but the
-// tests do not permit memory allocation.  So I either need to use a
-// different allocation (malloc()?) or change up the test harness to
-// not make a memory allocation because they are already backed on
-// data held in tree_verifier::key_views.
-TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_TryDeleteFromEmpty) {
+TYPED_TEST(ARTSpanCorrectnessTest, TryDeleteFromEmpty) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   auto k1{verifier.make_key(1)};
@@ -693,7 +679,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_TryDeleteFromEmpty) {
   verifier.check_absent_keys({k1});
 }
 
-TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_SingleNodeTreeDelete) {
+TYPED_TEST(ARTSpanCorrectnessTest, SingleNodeTreeDelete) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   auto k1{verifier.make_key(1)};
@@ -708,7 +694,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_SingleNodeTreeDelete) {
   verifier.check_absent_keys({k1});
 }
 
-TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_SingleNodeTreeAttemptDeleteAbsent) {
+TYPED_TEST(ARTSpanCorrectnessTest, SingleNodeTreeAttemptDeleteAbsent) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert(verifier.make_key(2), unodb::test::test_values[1]);
@@ -728,7 +714,7 @@ TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_SingleNodeTreeAttemptDeleteAbsent) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
-TYPED_TEST(ARTSpanCorrectnessTest, DISABLED_Node4AttemptDeleteAbsent) {
+TYPED_TEST(ARTSpanCorrectnessTest, Node4AttemptDeleteAbsent) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(verifier.make_key(1), 4);

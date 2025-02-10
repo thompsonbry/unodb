@@ -171,22 +171,19 @@ class [[nodiscard]] tree_verifier final {
     if constexpr (std::is_same_v<key_type, unodb::key_view>) {
       // Allocate a vector, make a copy of the key into the vector,
       // and return a shared_ptr to that vector.
+      //
+      // Note: We need to suspend memory tracking in this section
+      // since we will make an allocation for the vector.
+      allocation_failure_injector::dump("before: ");
+      unodb::test::pause_heap_faults guard{};
+      allocation_failure_injector::dump("suspended: ");
       const auto nbytes = key.size_bytes();
       auto *vec = new std::vector<std::byte>(nbytes);
-      auto wrap = key_wrapper(vec);
       std::memcpy(vec->data(), key.data(), nbytes);
-      return wrap;
+      return key_wrapper{vec};
     } else {
       return key;  // NOP
     }
-  }
-
-  /// Return a std::array containing a copy of the data in the
-  /// unodb::key_view.
-  std::array<std::byte, sizeof(std::uint64_t)> as_array(unodb::key_view k) {
-    std::array<std::byte, sizeof(std::uint64_t)> a;
-    std::copy(k.data(), k.data() + sizeof(std::uint64_t), a.begin());
-    return a;
   }
 
   /// Return an unodb::key_view backed by a std::array in an internal
@@ -195,14 +192,20 @@ class [[nodiscard]] tree_verifier final {
   /// in the generated keys since they will be retained until the end
   /// of the test.
   unodb::key_view make_key(std::uint64_t k) {
-    // Encode the key, turn it into an array, and add it to the list
-    // of such things that we are tracking.
+    constexpr auto sz{sizeof(k)};
+    // Suspend memory tracking.
+    unodb::test::pause_heap_faults guard{};
+    // Encode the key, emplace an array into the list of encoded keys
+    // that we are tracking, and copy the encoded key into that
+    // emplaced array.
     unodb::key_encoder enc;
-    key_views.push_back(as_array(enc.encode(k).get_key_view()));
+    auto kv{enc.encode(k).get_key_view()};
+    key_views.emplace_back(std::array<std::byte, sz>{});
+    auto &a = key_views.back();  // a *reference* to data emplaced_back.
+    std::copy(kv.data(), kv.data() + sz, a.begin());  // copy data into array.
     // Return a key_view backed by the array that we just put on that
     // list.
-    auto &a = key_views.back();                  // a *reference*
-    return unodb::key_view(a.data(), a.size());  // view of array's data.
+    return unodb::key_view(a.data(), sz);  // view of array's data.
   }
 
  private:
