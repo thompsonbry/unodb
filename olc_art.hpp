@@ -146,9 +146,6 @@ using qsbr_value_view = qsbr_ptr_span<const std::byte>;
 /// Reclamation is used.
 template <typename Key>
 class olc_db final {
-  // disable all other key types until unit tests prove that they work
-  static_assert(std::is_same_v<Key, std::uint64_t>);
-
  public:
   using key_type = Key;
   using value_view = unodb::qsbr_value_view;

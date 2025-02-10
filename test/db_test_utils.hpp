@@ -54,6 +54,8 @@ extern template class unodb::mutex_db<std::uint64_t>;
 extern template class unodb::olc_db<std::uint64_t>;
 
 extern template class unodb::db<unodb::key_view>;
+extern template class unodb::mutex_db<unodb::key_view>;
+extern template class unodb::olc_db<unodb::key_view>;
 
 namespace unodb::test {
 
@@ -101,6 +103,16 @@ void assert_value_eq(const typename Db::get_result &result,
     UNODB_DETAIL_ASSERT(result.has_value());
     UNODB_ASSERT_TRUE(std::equal(std::cbegin(*result), std::cend(*result),
                                  std::cbegin(expected), std::cend(expected)));
+  }
+}
+
+template <class Db>
+void assert_not_found(const typename Db::get_result &result) noexcept {
+  if constexpr (std::is_same_v<Db, unodb::mutex_db<typename Db::key_type>>) {
+    UNODB_DETAIL_ASSERT(!result.second.owns_lock());
+    UNODB_DETAIL_ASSERT(!result.first.has_value());
+  } else {
+    UNODB_DETAIL_ASSERT(!result.has_value());
   }
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
@@ -174,9 +186,9 @@ class [[nodiscard]] tree_verifier final {
       //
       // Note: We need to suspend memory tracking in this section
       // since we will make an allocation for the vector.
-      allocation_failure_injector::dump("before: ");
-      unodb::test::pause_heap_faults guard{};
-      allocation_failure_injector::dump("suspended: ");
+      unodb::test::pause_heap_faults
+          guard{};  // FIXME(thompsonbry) remove since not compatible with
+                    // parallel tests.
       const auto nbytes = key.size_bytes();
       auto *vec = new std::vector<std::byte>(nbytes);
       std::memcpy(vec->data(), key.data(), nbytes);
@@ -194,7 +206,9 @@ class [[nodiscard]] tree_verifier final {
   unodb::key_view make_key(std::uint64_t k) {
     constexpr auto sz{sizeof(k)};
     // Suspend memory tracking.
-    unodb::test::pause_heap_faults guard{};
+    unodb::test::pause_heap_faults
+        guard{};  // FIXME(thompsonbry) remove since not compatible with
+                  // parallel tests.
     // Encode the key, emplace an array into the list of encoded keys
     // that we are tracking, and copy the encoded key into that
     // emplaced array.
@@ -626,12 +640,16 @@ using u64_mutex_db = unodb::mutex_db<std::uint64_t>;
 using u64_olc_db = unodb::olc_db<std::uint64_t>;
 
 using key_view_db = unodb::db<key_view>;
+using key_view_mutex_db = unodb::mutex_db<key_view>;
+using key_view_olc_db = unodb::olc_db<key_view>;
 
 extern template class tree_verifier<u64_db>;
 extern template class tree_verifier<u64_mutex_db>;
 extern template class tree_verifier<u64_olc_db>;
 
 extern template class tree_verifier<key_view_db>;
+extern template class tree_verifier<key_view_mutex_db>;
+extern template class tree_verifier<key_view_olc_db>;
 
 }  // namespace unodb::test
 
