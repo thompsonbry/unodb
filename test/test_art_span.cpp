@@ -158,7 +158,7 @@ void do_single_key_operations_on_empty_tree_test(unodb::key_view key,
           return false;  // LCOV_EXCL_LINE
         };
     db.scan(fn);
-    UNODB_EXPECT_EQ(1, n);  // FIXME CHECK VISITED KEY/VAL
+    UNODB_EXPECT_EQ(1, n);
   }
   EXPECT_TRUE(db.remove(key));
   unodb::test::detail::assert_not_found<DB>(db.get(key));
@@ -287,7 +287,10 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 /// of this test for each carefully constructed state of the tree
 /// (different tree depths so we can check each structural
 /// modification point at which this violation could be detected and
-/// verify that we correctly detect the problem).
+/// verify that we correctly detect the problem).  This might get
+/// moved into its own test suite and if not, it should be moved into
+/// its own section of this test suite.  It is good to look at this at
+/// the same time as C string or string_view backed key_view keys.
 #if 0
 TYPED_TEST(ARTSpanCorrectnessTest, IllegalPrefixRejectLeafExpansionToI4) {
   unodb::test::tree_verifier<TypeParam> verifier;
