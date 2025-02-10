@@ -746,9 +746,7 @@ TYPED_TEST(ARTCorrectnessTest, Node48ShrinkToNode16DeleteBeginning) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.check_present_values();
-#ifdef UNODB_DETAIL_WITH_STATS
   verifier.check_absent_keys({0, 1, 18});
-#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 TYPED_TEST(ARTCorrectnessTest, Node48ShrinkToNode16DeleteEnd) {

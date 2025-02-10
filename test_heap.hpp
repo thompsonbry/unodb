@@ -88,6 +88,11 @@ class allocation_failure_injector final {
 ///
 /// Note: This class is NOT thread-safe since no suitable global
 /// barrier exists when it is constructed and destructed!
+///
+/// FIXME(thompsonbry) variable length keys - this needs be removed
+/// and replaced by the use of custom memory allocators for
+/// db_test_utils in order to support parallel test suites with
+/// key_view keys.
 class pause_heap_faults {
  public:
   /// Saves the state of the allocation_failure_injector and then
