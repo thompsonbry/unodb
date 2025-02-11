@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <iostream>
 #include <new>
+#include <thread>
 
 namespace unodb::test {
 
@@ -55,6 +56,7 @@ class allocation_failure_injector final {
     // allocation counter.  If that results in the allocation counter
     // reaching or exceeding the fail counter, then throw
     // std::bad_alloc.
+    if (UNODB_DETAIL_UNLIKELY(paused)) return;
     const auto fail_counter =
         fail_on_nth_allocation_.load(std::memory_order_acquire);
     if (UNODB_DETAIL_UNLIKELY(fail_counter != 0) &&
@@ -70,7 +72,8 @@ class allocation_failure_injector final {
               << "{fail_on_nth_allocation="
               << fail_on_nth_allocation_.load(std::memory_order_acquire)
               << ",allocation_counter="
-              << allocation_counter.load(std::memory_order_relaxed) << "}\n";
+              << allocation_counter.load(std::memory_order_relaxed)
+              << ",paused=" << paused << "}\n";
   }
 
   UNODB_DETAIL_RESTORE_GCC_WARNINGS()
@@ -81,44 +84,18 @@ class allocation_failure_injector final {
   inline static std::atomic<std::uint64_t> allocation_counter{0};
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   inline static std::atomic<std::uint64_t> fail_on_nth_allocation_{0};
-};  // allocation_failure_injector
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+  inline static thread_local bool paused{};  /// used to suspend memory tracking
+};                                           // allocation_failure_injector
 
 /// Lexically scoped guard to pause heap allocation tracking and
 /// faulting.
-///
-/// Note: This class is NOT thread-safe since no suitable global
-/// barrier exists when it is constructed and destructed!
-///
-/// FIXME(thompsonbry) variable length keys - this needs be removed
-/// and replaced by the use of custom memory allocators for
-/// db_test_utils in order to support parallel test suites with
-/// key_view keys.
 class pause_heap_faults {
  public:
-  /// Saves the state of the allocation_failure_injector and then
-  /// resets it.
-  explicit pause_heap_faults()
-      :  // Same order and memory_order as maybe_fail().
-        fail_on_nth_allocation(
-            allocation_failure_injector::fail_on_nth_allocation_.load(
-                std::memory_order_acquire)),
-        allocation_counter(allocation_failure_injector::allocation_counter.load(
-            std::memory_order_relaxed)) {
-    // reset the allocation tracker.
-    allocation_failure_injector::reset();
-  }
-  /// Restores the state of the allocation_failure_injector.
-  ~pause_heap_faults() {
-    // Same order and memory_order as reset().
-    allocation_failure_injector::fail_on_nth_allocation_.store(
-        fail_on_nth_allocation, std::memory_order_relaxed);
-    allocation_failure_injector::allocation_counter.store(
-        allocation_counter, std::memory_order_release);
-  }
-
- private:
-  const std::uint64_t fail_on_nth_allocation;
-  const std::uint64_t allocation_counter;
+  /// Pause heap faults.
+  explicit pause_heap_faults() { allocation_failure_injector::paused = true; }
+  /// Resumes heap faults.
+  ~pause_heap_faults() { allocation_failure_injector::paused = false; }
 };  // class pause_heap_faults
 
 }  // namespace unodb::test

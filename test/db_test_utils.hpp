@@ -163,8 +163,13 @@ void assert_result_eq(const Db &db, typename Db::key_type key,
 /// the specified range into a key_view.
 template <class Db>
 class [[nodiscard]] tree_verifier final {
- public:
   using key_type = typename Db::key_type;
+
+  /// Note: This is the historical type accepted for unodb::db keys.
+  /// It is used in the tree_verifier to perform explicit type
+  /// promotion where unit tests where using implicit type conversion
+  /// from int to std::uint64_t.
+  using u64 = std::uint64_t;
 
   /// Used to wrap the non-owned keys with an owned, comparable,
   /// etc type iff the the keys of the Db are unodb::key_view.
@@ -178,7 +183,9 @@ class [[nodiscard]] tree_verifier final {
       (std::is_same_v<typename Db2::key_type, typename unodb::key_view>),
       key_wrapper, typename Db2::key_type>::type;
 
-  /// Convert an external key (Db::key_type) to an internal key.
+  /// Convert an external key (Db::key_type) to an internal key (one
+  /// the tree_verifier stores in its ground truth key/value
+  /// collection).
   ikey_type<Db> to_ikey(Db::key_type key) const {
     if constexpr (std::is_same_v<key_type, unodb::key_view>) {
       // Allocate a vector, make a copy of the key into the vector,
@@ -186,9 +193,7 @@ class [[nodiscard]] tree_verifier final {
       //
       // Note: We need to suspend memory tracking in this section
       // since we will make an allocation for the vector.
-      unodb::test::pause_heap_faults
-          guard{};  // FIXME(thompsonbry) remove since not compatible with
-                    // parallel tests.
+      unodb::test::pause_heap_faults guard{};
       const auto nbytes = key.size_bytes();
       auto *vec = new std::vector<std::byte>(nbytes);
       std::memcpy(vec->data(), key.data(), nbytes);
@@ -198,17 +203,53 @@ class [[nodiscard]] tree_verifier final {
     }
   }
 
+  template <typename T>
+  key_type coerce_key_internal(T key) {
+    if constexpr (std::is_same_v<key_type, unodb::key_view>) {  // Db<key_view>?
+      if constexpr (std::is_same_v<T, unodb::key_view>) {  // Given key_view?
+        // key_view pass through
+        return key;
+      } else {
+        // type promote and then encode the key into a key_view.
+        return make_key(static_cast<u64>(key));
+      }
+    } else {  // type promotion.
+      return static_cast<u64>(key);
+    }
+  }
+
+  /// Utility casts / converts the external key into the db::key_type.
+  ///
+  /// Historically, the unit tests were written to some mixture of
+  /// int, unsigned, and std::uint64_t keys and relied on implicit
+  /// type promotion. This mehod takes the place of that implicit type
+  /// promotion and also handles conversion from such simple keys to
+  /// unodb::key_view.
+  ///
+  /// Note that type promotion is explicitly to std::uint64_t since
+  /// that is the historical external type against which the unit
+  /// tests were written.
+  ///
+  /// @param key An exernal key.
+  ///
+  /// @return A db::key_type suitable for the db under test.
+  template <typename T>
+  key_type coerce_key(T key) const {
+    // FIXME(thompsonbry) - Look at why some callers are const.
+    //
+    // Some callers are const, but we need to add things into the
+    // internal collections.
+    return const_cast<tree_verifier<Db> *>(this)->coerce_key_internal(key);
+  }
+
+ public:
   /// Return an unodb::key_view backed by a std::array in an internal
   /// collection whose existance is scoped to the life cycle of the
-  /// tree_verifier.  This is intended for unit tests with low churn
-  /// in the generated keys since they will be retained until the end
-  /// of the test.
+  /// tree_verifier.
   unodb::key_view make_key(std::uint64_t k) {
     constexpr auto sz{sizeof(k)};
     // Suspend memory tracking.
-    unodb::test::pause_heap_faults
-        guard{};  // FIXME(thompsonbry) remove since not compatible with
-                  // parallel tests.
+    unodb::test::pause_heap_faults guard{};
     // Encode the key, emplace an array into the list of encoded keys
     // that we are tracking, and copy the encoded key into that
     // emplaced array.
@@ -297,37 +338,25 @@ class [[nodiscard]] tree_verifier final {
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<!std::is_same_v<Db2, unodb::olc_db<key_type>>, void>
-  do_try_remove_missing_key(key_type absent_key) {
-    UNODB_ASSERT_FALSE(test_db.remove(absent_key));
+  do_try_remove_missing_key(T absent_key) {
+    UNODB_ASSERT_FALSE(test_db.remove(coerce_key(absent_key)));
   }
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<std::is_same_v<Db2, unodb::olc_db<key_type>>, void>
-  do_try_remove_missing_key(key_type absent_key) {
+  do_try_remove_missing_key(T absent_key) {
     const quiescent_state_on_scope_exit qsbr_after_get{};
-    UNODB_ASSERT_FALSE(test_db.remove(absent_key));
+    UNODB_ASSERT_FALSE(test_db.remove(coerce_key(absent_key)));
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-
- public:
-  UNODB_DETAIL_DISABLE_MSVC_WARNING(26455)
-  explicit tree_verifier(bool parallel_test_ = false)
-      : parallel_test{parallel_test_} {
-    assert_empty();
-#ifdef UNODB_DETAIL_WITH_STATS
-    assert_growing_inodes({0, 0, 0, 0});
-    assert_shrinking_inodes({0, 0, 0, 0});
-    assert_key_prefix_splits(0);
-#endif  // UNODB_DETAIL_WITH_STATS
-  }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
-  void insert(key_type k, unodb::value_view v, bool bypass_verifier = false) {
+  void insert_internal(key_type k, unodb::value_view v,
+                       bool bypass_verifier = false) {
     const auto empty_before = test_db.empty();
 #ifdef UNODB_DETAIL_WITH_STATS
     const auto mem_use_before =
@@ -380,6 +409,7 @@ class [[nodiscard]] tree_verifier final {
 #ifndef NDEBUG
       allocation_failure_injector::reset();
 #endif
+      unodb::test::pause_heap_faults guard{};
       const auto [pos, insert_succeeded] = values.try_emplace(to_ikey(k), v);
       (void)pos;
       UNODB_ASSERT_TRUE(insert_succeeded);
@@ -387,9 +417,10 @@ class [[nodiscard]] tree_verifier final {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  void insert_key_range(key_type start_key, std::size_t count,
-                        bool bypass_verifier = false) {
+  void insert_key_range_internal(key_type start_key, std::size_t count,
+                                 bool bypass_verifier = false) {
     if constexpr (std::is_same_v<key_type, key_view>) {
+      // decode to figure out the start key for the loop.
       unodb::key_decoder dec(start_key);
       std::uint64_t start_key_dec;
       dec.decode(start_key_dec);
@@ -405,8 +436,33 @@ class [[nodiscard]] tree_verifier final {
     }
   }
 
-  void try_insert(key_type k, unodb::value_view v) {
-    std::ignore = test_db.insert(k, v);
+ public:
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26455)
+  explicit tree_verifier(bool parallel_test_ = false)
+      : parallel_test{parallel_test_} {
+    assert_empty();
+#ifdef UNODB_DETAIL_WITH_STATS
+    assert_growing_inodes({0, 0, 0, 0});
+    assert_shrinking_inodes({0, 0, 0, 0});
+    assert_key_prefix_splits(0);
+#endif  // UNODB_DETAIL_WITH_STATS
+  }
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+
+  template <typename T>
+  void insert(T k, unodb::value_view v, bool bypass_verifier = false) {
+    insert_internal(coerce_key(k), v, bypass_verifier);
+  }
+
+  template <typename T>
+  void insert_key_range(T start_key, std::size_t count,
+                        bool bypass_verifier = false) {
+    insert_key_range_internal(coerce_key(start_key), count, bypass_verifier);
+  }
+
+  template <typename T>
+  bool try_insert(T k, unodb::value_view v) {
+    return test_db.insert(coerce_key(k), v);
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
@@ -452,44 +508,46 @@ class [[nodiscard]] tree_verifier final {
     }
   }
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<!std::is_same_v<Db2, unodb::olc_db<key_type>>, void> remove(
-      key_type k, bool bypass_verifier = false) {
-    do_remove(k, bypass_verifier);
+      T k, bool bypass_verifier = false) {
+    do_remove(coerce_key(k), bypass_verifier);
   }
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<std::is_same_v<Db2, unodb::olc_db<key_type>>, void> remove(
-      key_type k, bool bypass_verifier = false) {
+      T k, bool bypass_verifier = false) {
     const quiescent_state_on_scope_exit qsbr_after_get{};
-    do_remove(k, bypass_verifier);
+    do_remove(coerce_key(k), bypass_verifier);
   }
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<!std::is_same_v<Db2, unodb::olc_db<key_type>>, void>
-  try_remove(key_type k) {
-    std::ignore = test_db.remove(k);
+  try_remove(T k) {
+    std::ignore = test_db.remove(coerce_key(k));
   }
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<std::is_same_v<Db2, unodb::olc_db<key_type>>, void>
-  try_remove(key_type k) {
+  try_remove(T k) {
     const quiescent_state_on_scope_exit qsbr_after_get{};
-    std::ignore = test_db.remove(k);
+    std::ignore = test_db.remove(coerce_key(k));
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
-  void attempt_remove_missing_keys(
-      std::initializer_list<key_type> absent_keys) {
+  template <typename T>
+  void attempt_remove_missing_keys(std::initializer_list<T> absent_keys) {
 #ifdef UNODB_DETAIL_WITH_STATS
     const auto mem_use_before =
         parallel_test ? 0 : test_db.get_current_memory_use();
 #endif  // UNODB_DETAIL_WITH_STATS
 
     for (const auto absent_key : absent_keys) {
-      const auto remove_result = values.erase(to_ikey(absent_key));
+      const auto k{coerce_key(absent_key)};
+
+      const auto remove_result = values.erase(to_ikey(k));
       UNODB_ASSERT_EQ(remove_result, 0);
-      do_try_remove_missing_key(absent_key);
+      do_try_remove_missing_key(k);
 #ifdef UNODB_DETAIL_WITH_STATS
       if (!parallel_test) {
         UNODB_ASSERT_EQ(mem_use_before, test_db.get_current_memory_use());
@@ -499,17 +557,17 @@ class [[nodiscard]] tree_verifier final {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<!std::is_same_v<Db2, unodb::olc_db<key_type>>, void> try_get(
-      key_type k) const noexcept(noexcept(this->test_db.get(k))) {
-    std::ignore = test_db.get(k);
+      T k) const {  // noexcept(noexcept(this->test_db.get(k))) {
+    std::ignore = test_db.get(coerce_key(k));
   }
 
-  template <class Db2 = Db>
+  template <class Db2 = Db, typename T>
   std::enable_if_t<std::is_same_v<Db2, unodb::olc_db<key_type>>, void> try_get(
-      key_type k) const noexcept(noexcept(this->test_db.get(k))) {
+      T k) const {  // noexcept(noexcept(this->test_db.get(k))) {
     const quiescent_state_on_scope_exit qsbr_after_get{};
-    std::ignore = test_db.get(k);
+    std::ignore = test_db.get(coerce_key(k));
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26445)
@@ -525,11 +583,14 @@ class [[nodiscard]] tree_verifier final {
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
-  void check_absent_keys(std::initializer_list<key_type> absent_keys) const
-      noexcept(noexcept(this->try_get(unused_key))) {
+  template <typename T>
+  void check_absent_keys(std::initializer_list<T> absent_keys) const
+  //  noexcept(noexcept(this->try_get(unused_key)))
+  {
     for (const auto absent_key : absent_keys) {
-      UNODB_ASSERT_EQ(values.find(to_ikey(absent_key)), values.cend());
-      try_get(absent_key);
+      const auto k{coerce_key(absent_key)};
+      UNODB_ASSERT_EQ(values.find(to_ikey(k)), values.cend());
+      try_get(k);
     }
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
@@ -631,9 +692,6 @@ class [[nodiscard]] tree_verifier final {
   /// Used to retain arrays backing unodb::key_views.
   std::vector<std::array<std::byte, sizeof(std::uint64_t)>> key_views{};
 };
-
-// TODO(thompsonbry) variable length keys. declare key_view variants
-// here.
 
 using u64_db = unodb::db<std::uint64_t>;
 using u64_mutex_db = unodb::mutex_db<std::uint64_t>;

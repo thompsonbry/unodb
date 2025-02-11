@@ -2853,7 +2853,7 @@ class basic_inode_256 : public basic_inode_256_parent<ArtPolicy> {
       const auto child_index = static_cast<std::uint8_t>(i);
       if (children[child_index] != nullptr) {
         const auto key = static_cast<std::byte>(i);
-        return {{node_ptr{this, node_type::I48}, key, child_index,
+        return {{node_ptr{this, node_type::I256}, key, child_index,
                  this->get_key_prefix().get_snapshot()}};
       }
     }
