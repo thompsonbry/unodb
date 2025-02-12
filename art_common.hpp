@@ -16,6 +16,7 @@
 #include <iosfwd>  // IWYU pragma: keep
 #include <iostream>
 #include <span>
+#include <string_view>
 
 #include "heap.hpp"
 #include "portability_builtins.hpp"
@@ -227,18 +228,36 @@ class key_encoder {
   // TODO(thompsonbry) - variable length keys - handle floating point types
   // TODO(thompsonbry) - variable length keys - handle successors
   //
-  // TODO(thompsonbry) - variable length keys - handle unicode sort keys
-  // (caller must normalize, generate the sort key, and pad?)
-  //
   // TODO(thompsonbry) - variable length keys - attempt to simplify by
   // using templates for msb, bswap, and encode/decode of unsigned
   // values.
+ public:
+  /// Used for padding (maxlen, etc.).
+  using size_type = std::uint16_t;
+
+  /// The maximum length of a text component of the key.  Keys are
+  /// truncated to at most this many bytes and then logically extended
+  /// using the #pad byte and a trailing run length until the field is
+  /// logically #maxlen bytes wide.
+  static constexpr auto maxlen{std::numeric_limits<size_type>::max()};
+
+  /// The pad byte used when encoding variable length text into a key
+  /// to logically extend the text field to #maxlen bytes.  The pad
+  /// byte (which is added to the buffer as an unsigned value) is
+  /// followed by a run length count such that the key is logically
+  /// padded out to the maximum length of a text field, which is
+  /// #maxlen.
+  static constexpr auto pad{static_cast<std::byte>(0x00)};
+
  protected:
   // highest bit for various data types.
   static constexpr std::uint8_t msb8 = 1U << 7;
   static constexpr std::uint16_t msb16 = 1U << 15;
   static constexpr std::uint32_t msb32 = 1U << 31;
   static constexpr std::uint64_t msb64 = 1ULL << 63;
+
+  /// The number of bytes of data in the internal buffer.
+  [[nodiscard]] size_t size_bytes() const noexcept { return off; }
 
   /// The current capacity of the buffer.
   [[nodiscard]] size_t capacity() const noexcept { return cap; }
@@ -249,20 +268,6 @@ class key_encoder {
       ensure_capacity(off + req);  // resize
     }
   }
-
-  /// The maximum length of a text component of the key.  Keys are
-  /// truncated to at most this many bytes and then logically extended
-  /// using the #pad byte and a trailing run length until the field is
-  /// logically #maxlen bytes wide.
-  static constexpr auto maxlen{std::numeric_limits<std::uint16_t>::max()};
-
-  /// The pad byte used when encoding variable length text into a key
-  /// to logically extend the text field to #maxlen bytes.  The pad
-  /// byte (which is added to the buffer as an unsigned value) is
-  /// followed by a run length count such that the key is logically
-  /// padded out to the maximum length of a text field, which is
-  /// #maxlen.
-  static constexpr auto pad{static_cast<std::byte>(0x00)};
 
  public:
   /// setup a new key encoder.
@@ -285,9 +290,6 @@ class key_encoder {
   [[nodiscard]] key_view get_key_view() const noexcept {
     return key_view(buf, off);
   }
-
-  /// The number of bytes of data in the internal buffer.
-  [[nodiscard]] size_t size_bytes() const noexcept { return off; }
 
   //
   // signed integers
@@ -418,13 +420,41 @@ class key_encoder {
     //
     // Ensure enough room for the text, the pad byte, and the
     // run-length encoding of the pad byte.
-    ensure_available(text.size_bytes() + 1 + sizeof(maxlen));
-    const auto padlen = text.size_bytes() - maxlen;
+    const auto sz{text.size_bytes()};
+    ensure_available(sz + 1 + sizeof(size_type));
+    const auto padlen{static_cast<size_type>(maxlen - sz)};
     append(text);                            // append bytes to the buffer.
-    encode(static_cast<std::uint8_t>(pad));  // unsigned byte
+    encode(static_cast<std::uint8_t>(pad));  // encode as unsigned byte
     encode(padlen);  // logical run-length of the pad byte.
     return *this;
   }
+
+  /// convenience alias
+  key_encoder &encode_text(std::string_view data) {
+    return encode_text(std::span<const std::byte>(
+        reinterpret_cast<const std::byte *>(data.cbegin()), data.size()));
+  }
+
+  // FIXME(thompsonbry) compiler complains....
+  //
+  /// convenience alias
+  // key_encoder &encode_text(std::string data) {
+  //   return encode_text(std::span<const std::byte>(
+  //       reinterpret_cast<const std::byte*>(data.cbegin()), data.size()));
+  // }
+
+  /// convenience alias (usable with nul terminated C strings)
+  key_encoder &encode_text(const char *data) {
+    const auto len = strlen(data);
+    return encode_text(std::span<const std::byte>(
+        reinterpret_cast<const std::byte *>(data), len));
+  }
+
+  //
+  // Simple case - only acceptable if you do not need Unicode
+  // collation semantics and the data will be the final component of
+  // the key.
+  //
 
   /// Append a sequence of unsigned bytes to the encoded key.
   ///
@@ -432,17 +462,59 @@ class key_encoder {
   /// to the key in any position other than the final component of the
   /// key. It will not Do The Right Thing (DTRT).
   ///
-  /// @param data A sequence of bytes that will be appended to the
-  /// key.
-  //
-  // TODO Look at how to handle std::string_view, which is defined in
-  // terms of characters (CharT), not bytes.
+  /// @param data A sequence of bytes that will be appended to the key
+  /// - the byte 0x00 MUST NOT appear in the data.
   key_encoder &append(std::span<const std::byte> data) {
     const auto sz = data.size_bytes();
     ensure_available(sz);
     std::memcpy(buf + off, data.data(), sz);
     off += sz;
     return *this;
+  }
+
+  /// Append a sequence of unsigned bytes to the encoder key.
+  ///
+  /// Note: DO NOT use this method if you are attempting to add text
+  /// to the key in any position other than the final component of the
+  /// key. It will not Do The Right Thing (DTRT).
+  ///
+  /// @param data A sequence of bytes that will be appended to the key
+  /// - the byte 0x00 MUST NOT appear in the data.
+  key_encoder &append(std::string_view data) {
+    return append(std::span<const std::byte>(
+        reinterpret_cast<const std::byte *>(data.cbegin()), data.size()));
+  }
+
+  // FIXME(thompsonbry) compiler complains....
+  //
+  /// Append a sequence of characters (interpreted as unsigned bytes)
+  /// to the encoder key.
+  ///
+  /// Note: DO NOT use this method if you are attempting to add text
+  /// to the key in any position other than the final component of the
+  /// key. It will not Do The Right Thing (DTRT).
+  ///
+  /// @param data A sequence of bytes that will be appended to the key
+  /// - the byte 0x00 MUST NOT appear in the data.
+  // key_encoder &append(std::string data) {
+  //   return append(std::span<const std::byte>(
+  //       reinterpret_cast<const std::byte*>(data.cbegin()), data.size()));
+  // }
+
+  /// Append a sequence of characters (interpreted as unsigned bytes)
+  /// to the encoder key.
+  ///
+  /// Note: DO NOT use this method if you are attempting to add text
+  /// to the key in any position other than the final component of the
+  /// key. It will not Do The Right Thing (DTRT).
+  ///
+  /// @param data A sequence of bytes that will be appended to the
+  /// key.  The data MUST be terminated by a trailing nul byte
+  /// (0x00). The nul byte WILL NOT be copied into the key.
+  key_encoder &append(const char *data) {
+    const auto len = strlen(data);
+    return append(std::span<const std::byte>(
+        reinterpret_cast<const std::byte *>(data), len));
   }
 
  private:

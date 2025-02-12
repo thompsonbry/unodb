@@ -5,10 +5,12 @@
 
 // IWYU pragma: no_include <string>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -355,61 +357,139 @@ TEST(ARTKeyEncodeDecodeTest, Int64C00010) {
                               std::numeric_limits<T>::max());
 }
 
+//
+// Append span<const::byte> (aka unodb::key_view).
+//
+
+void do_encode_bytes_test(std::span<const std::byte> a) {
+  my_key_encoder enc;
+  const auto sz = a.size();
+  enc.append(a);
+  const auto cmp = std::memcmp(enc.get_key_view().data(), a.data(), sz);
+  EXPECT_EQ(0, cmp);
+  EXPECT_EQ(sz, enc.size_bytes());
+}
+
 /// Unit test look at the simple case of appending a sequence of bytes
 /// to the key_encoder.
-TEST(ARTKeyEncodeDecodeTest, UnsignedBytesC0001) {
-  constexpr auto test_data_0 = std::array<std::byte, 3>{
+TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
+  constexpr auto test_data_0 = std::array<const std::byte, 3>{
       std::byte{0x02}, std::byte{0x05}, std::byte{0x05}};
-  constexpr auto test_data_1 = std::array<std::byte, 3>{
+  constexpr auto test_data_1 = std::array<const std::byte, 3>{
       std::byte{0x03}, std::byte{0x00}, std::byte{0x05}};
-  constexpr auto test_data_2 = std::array<std::byte, 3>{
+  constexpr auto test_data_2 = std::array<const std::byte, 3>{
       std::byte{0x03}, std::byte{0x00}, std::byte{0x10}};
-  constexpr auto test_data_3 = std::array<std::byte, 3>{
+  constexpr auto test_data_3 = std::array<const std::byte, 3>{
       std::byte{0x03}, std::byte{0x05}, std::byte{0x05}};
-  constexpr auto test_data_4 = std::array<std::byte, 3>{
+  constexpr auto test_data_4 = std::array<const std::byte, 3>{
       std::byte{0x03}, std::byte{0x05}, std::byte{0x10}};
-  constexpr auto test_data_5 = std::array<std::byte, 3>{
+  constexpr auto test_data_5 = std::array<const std::byte, 3>{
       std::byte{0x03}, std::byte{0x10}, std::byte{0x05}};
-  constexpr auto test_data_6 = std::array<std::byte, 3>{
+  constexpr auto test_data_6 = std::array<const std::byte, 3>{
       std::byte{0x04}, std::byte{0x05}, std::byte{0x10}};
-  constexpr auto test_data_7 = std::array<std::byte, 3>{
+  constexpr auto test_data_7 = std::array<const std::byte, 3>{
       std::byte{0x04}, std::byte{0x10}, std::byte{0x05}};
 
-  using T = std::span<const std::byte>;
-
-  const std::array<T, 8> test_data = {
-      T{test_data_0},  // [0] { 02 05 05 }
-      T{test_data_1},  // [1] { 03 00 05 }
-      T{test_data_2},  // [2] { 03 00 10 }
-      T{test_data_3},  // [3] { 03 05 05 }
-      T{test_data_4},  // [4] { 03 05 10 }
-      T{test_data_5},  // [5] { 03 10 05 }
-      T{test_data_6},  // [6] { 04 05 10 }
-      T{test_data_7}   // [7] { 04 10 05 }
-  };
-
-  // Append each byte[] in turn and verify the state of the encoder.
-  // The encoder is reset after each key is appended.
-  unodb::key_encoder enc;
-  const size_t off = 0;
-  EXPECT_EQ(off, enc.size_bytes());
-  for (size_t i = 0; i < test_data.size(); i++) {
-    enc.append(test_data[i]);
-    const auto sz = enc.get_key_view().size_bytes();
-    const auto cmp =
-        std::memcmp(enc.get_key_view().data(), test_data[i].data(), sz);
-    EXPECT_EQ(0, cmp);
-    EXPECT_EQ(sz, enc.size_bytes());
-    enc.reset();
-  }
+  do_encode_bytes_test(std::span<const std::byte>(test_data_0));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_1));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_2));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_3));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_4));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_5));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_6));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_7));
 }
 
 //
-// Encoding of text fields (optionall truncated to maxlen and padded
+// append "C" string
+//
+
+void do_encode_cstring_test(const char* a) {
+  my_key_encoder enc;
+  const auto sz = strlen(a);
+  enc.append(a);
+  const auto cmp = std::memcmp(enc.get_key_view().data(), a, sz);
+  EXPECT_EQ(0, cmp);
+  EXPECT_EQ(sz, enc.size_bytes());
+}
+
+TEST(ARTKeyEncodeDecodeTest, AppendCStringC0001) {
+  do_encode_cstring_test("abc");
+  do_encode_cstring_test("def");
+  do_encode_cstring_test("gadzooks");
+  do_encode_cstring_test("banana");
+  do_encode_cstring_test("");
+}
+
+//
+// Encoding of text fields (optionaly truncated to maxlen and padded
 // out to maxlen via run length encoding).
 //
 
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {}
+// Helper class to hold copies of key_views from a key_encoder.  We
+// need to make copies because the key_view is backed by the data in
+// the encoder. So we copy the data out into a new allocation and
+// return a key_view backed by that allocation. The set of those
+// allocations is held by this factory object and they go out of scope
+// together.
+class key_factory {
+ public:
+  /// Used to retain arrays backing unodb::key_views.
+  std::vector<std::vector<std::byte>> key_views{};
+
+  /// Copy the data from the encoder into a new entry in #key_views.
+  unodb::key_view make_key_view(unodb::key_encoder& enc) {
+    auto kv{enc.get_key_view()};
+    const auto sz{kv.size()};
+    key_views.emplace_back(std::vector<std::byte>(sz));
+    auto& a = key_views.back();  // a *reference* to data emplaced_back.
+    std::copy(kv.data(), kv.data() + sz, a.begin());  // copy data to inner vec
+    return unodb::key_view(a.data(), sz);  // view of inner vec's data.
+  }
+};
+
+void do_simple_pad_test(const char* s) {
+  using ST = unodb::key_encoder::size_type;
+  const auto sz = strlen(s);
+  unodb::key_encoder enc;
+  const auto kv = enc.reset().encode_text(s).get_key_view();
+  EXPECT_EQ(kv.size(), sz + 1 + sizeof(ST)) << "[" << s << "]";
+  EXPECT_EQ(std::memcmp(s, kv.data(), sz), 0) << "[" << s << "]";
+  EXPECT_EQ(kv[sz], unodb::key_encoder::pad) << "[" << s << "]";
+  const ST padlen{static_cast<ST>(unodb::key_encoder::maxlen - sz)};
+  ST tmp;
+  memcpy(&tmp, kv.data() + sz + 1, sizeof(ST));  // copy out pad length.
+  ST tmp2 = unodb::detail::bswap(tmp);
+  EXPECT_EQ(tmp2, padlen) << "[" << s << "]";
+}
+
+/// Verify proper padding to maxlen.
+//
+// FIXME(thompsonbry) extend test to handle truncation.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
+  do_simple_pad_test("");
+  do_simple_pad_test("abc");
+  do_simple_pad_test("brown");
+  do_simple_pad_test("banana");
+}
+
+// FIXME(thompsonbry) extend test to verify the lexicographic sort
+// order obtained.
+TEST(ARTKeyEncodeDecodeTest, DISABLED_EncodeTextC0020) {
+  key_factory fac;
+  unodb::key_encoder enc;
+  fac.make_key_view(enc.reset().encode_text("bro"));
+  fac.make_key_view(enc.reset().encode_text("brown"));
+  fac.make_key_view(enc.reset().encode_text("bre"));
+  fac.make_key_view(enc.reset().encode_text("break"));
+  std::sort(fac.key_views.begin(), fac.key_views.end());
+  // constexpr std::string[4] = {
+  //   "bro",
+  //   "brown",
+  //   "bre",
+  //   "break"};
+  FAIL();
+}
 
 UNODB_END_TESTS()
 
