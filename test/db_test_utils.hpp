@@ -466,8 +466,9 @@ class [[nodiscard]] tree_verifier final {
   }
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
-  void preinsert_key_range_to_verifier_only(key_type start_key,
-                                            std::size_t count) {
+  template <typename T>
+  void preinsert_key_range_to_verifier_only(T start_key1, std::size_t count) {
+    const auto start_key{coerce_key(start_key1)};
     if constexpr (std::is_same_v<key_type, key_view>) {
       unodb::key_decoder dec(start_key);
       std::uint64_t start_key_dec;
@@ -491,7 +492,9 @@ class [[nodiscard]] tree_verifier final {
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-  void insert_preinserted_key_range(key_type start_key, std::size_t count) {
+  template <typename T>
+  void insert_preinserted_key_range(T start_key1, std::size_t count) {
+    const auto start_key{coerce_key(start_key1)};
     if constexpr (std::is_same_v<key_type, key_view>) {
       unodb::key_decoder dec(start_key);
       std::uint64_t start_key_dec;
@@ -594,6 +597,35 @@ class [[nodiscard]] tree_verifier final {
     }
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+
+  //
+  // scan API
+  //
+  //
+  // FIXME(thompsonbry) Add verification against ground truth into
+  // this API?  Maybe by having the caller NOT specify the lambda FN
+  // if they want built-in verification?  Some of the scan UTs are
+  // explicit about how the ground truth is populated, but their
+  // validation could still be replaced by validating against the
+  // tree_verifier::values map.
+
+  template <typename FN, typename T>
+  void scan(FN fn, bool fwd = true) {
+    test_db.scan_from(fn, fwd);
+  }
+
+  template <typename FN, typename T>
+  void scan_from(T from_key, FN fn, bool fwd = true) {
+    const auto fk{coerce_key(from_key)};
+    test_db.scan_from(fk, fn, fwd);
+  }
+
+  template <typename FN, typename T>
+  void scan_range(T from_key, T to_key, FN fn) {
+    const auto fk{coerce_key(from_key)};
+    const auto tk{coerce_key(to_key)};
+    test_db.scan_range(fk, tk, fn);
+  }
 
   void assert_empty() const {
     UNODB_ASSERT_TRUE(test_db.empty());
