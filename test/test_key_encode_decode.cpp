@@ -20,19 +20,8 @@
 
 namespace {
 
-// TODO(thompsonbry) : variable length keys.  Add coverage for
-// lexicographic ordering of all the interesting key types via the
-// key_encoder and their proper decoding (where possible) via the
-// decoder.
-//
-// TODO(thompsonbry) : variable length keys.  Add a microbenchmark for
-// the key_encoder & key_decoder.
-//
-// TODO(thompsonbry) : variable length keys.  To understand the
-// overhead associated with variable length keys vs fixed width known
-// type keys, compare performance for uint64_t as the Key type vs as
-// the sole component of a variable length key.
-//
+/// Test suite for key encoding, decoding, and the lexicographic
+/// ordering obtained from the encoded keys.
 template <class Db>
 class ARTKeyEncodeDecodeTest : public ::testing::Test {
  public:
@@ -400,6 +389,8 @@ TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
   do_encode_bytes_test(std::span<const std::byte>(test_data_7));
 }
 
+// FIXME(thompsonbry) variable length keys - float and double handling.
+
 //
 // append "C" string
 //
@@ -465,7 +456,8 @@ void do_simple_pad_test(const char* s) {
 
 /// Verify proper padding to maxlen.
 //
-// FIXME(thompsonbry) extend test to handle truncation.
+// FIXME(thompsonbry) variable length keys - extend test to handle
+// truncation.
 TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
   do_simple_pad_test("");
   do_simple_pad_test("abc");
@@ -473,23 +465,29 @@ TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
   do_simple_pad_test("banana");
 }
 
-// FIXME(thompsonbry) extend test to verify the lexicographic sort
-// order obtained.
+/// Verify the lexicographic sort order obtained for {bro, brown,
+/// break, bre}, including verifying that the pad byte causes a prefix
+/// such as "bro" to sort before a term which extends that prefix,
+/// such as "brown".
 TEST(ARTKeyEncodeDecodeTest, DISABLED_EncodeTextC0020) {
   key_factory fac;
   unodb::key_encoder enc;
-  fac.make_key_view(enc.reset().encode_text("bro"));
   fac.make_key_view(enc.reset().encode_text("brown"));
-  fac.make_key_view(enc.reset().encode_text("bre"));
+  fac.make_key_view(enc.reset().encode_text("bro"));
   fac.make_key_view(enc.reset().encode_text("break"));
+  fac.make_key_view(enc.reset().encode_text("bre"));
   std::sort(fac.key_views.begin(), fac.key_views.end());
-  // constexpr std::string[4] = {
-  //   "bro",
-  //   "brown",
-  //   "bre",
-  //   "break"};
-  FAIL();
+  EXPECT_TRUE(strcmp("bro", reinterpret_cast<const char*>(
+                                fac.key_views[0].data())) == 0);
+  EXPECT_TRUE(strcmp("brown", reinterpret_cast<const char*>(
+                                  fac.key_views[1].data())) == 0);
+  EXPECT_TRUE(strcmp("bre", reinterpret_cast<const char*>(
+                                fac.key_views[2].data())) == 0);
+  EXPECT_TRUE(strcmp("break", reinterpret_cast<const char*>(
+                                  fac.key_views[3].data())) == 0);
 }
+
+// FIXME(thompsonbry) variable length keys - multi-field tests.
 
 UNODB_END_TESTS()
 
