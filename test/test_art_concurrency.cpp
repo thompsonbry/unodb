@@ -221,6 +221,7 @@ class ARTConcurrencyTest : public ::testing::Test {
   ARTConcurrencyTest<Db> &operator=(ARTConcurrencyTest<Db> &&) = delete;
 };
 
+// FIXME(thompsonbry) variable length keys - enable key_view variants.
 using ConcurrentARTTypes =
     ::testing::Types<unodb::test::u64_mutex_db, unodb::test::u64_olc_db
                      // unodb::test::key_view_mutex_db,

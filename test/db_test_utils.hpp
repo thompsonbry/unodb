@@ -206,7 +206,8 @@ class [[nodiscard]] tree_verifier final {
     }
   }
 
-  /// Utility casts / converts the external key into the db::key_type.
+ public:
+  /// Coerce an external key into the db::key_type.
   ///
   /// Historically, the unit tests were written to some mixture of
   /// int, unsigned, and std::uint64_t keys and relied on implicit
@@ -214,9 +215,13 @@ class [[nodiscard]] tree_verifier final {
   /// promotion and also handles conversion from such simple keys to
   /// unodb::key_view.
   ///
-  /// Note that type promotion is explicitly to std::uint64_t since
-  /// that is the historical external type against which the unit
-  /// tests were written.
+  /// Note: Type promotion is explicitly to std::uint64_t since that
+  /// is the historical external type against which the unit tests
+  /// were written.
+  ///
+  /// Note: This method is used mostly internally within the
+  /// tree_verifier.  However, it is also used by test_art_iter to
+  /// from the type specific keys for the db::iterator::seek() API.
   ///
   /// @param key An exernal key.
   ///
@@ -230,7 +235,6 @@ class [[nodiscard]] tree_verifier final {
     return const_cast<tree_verifier<Db> *>(this)->coerce_key_internal(key);
   }
 
- public:
   /// Return an unodb::key_view backed by a std::array in an internal
   /// collection whose existance is scoped to the life cycle of the
   /// tree_verifier.
