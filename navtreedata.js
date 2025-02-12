@@ -29,7 +29,7 @@ var NAVTREE =
       [ "Introduction", "index.html#autotoc_md24", null ],
       [ "Requirements", "index.html#autotoc_md25", [
         [ "Build dependencies", "index.html#autotoc_md26", null ],
-        [ "Build dependencies, bundled as git submodules", "index.html#autotoc_md27", null ]
+        [ "Optional vendored dependencies, bundled as git submodules", "index.html#autotoc_md27", null ]
       ] ],
       [ "Building", "index.html#autotoc_md28", null ],
       [ "Platform-Specific Notes", "index.html#autotoc_md29", [
@@ -81,9 +81,10 @@ var NAVTREE =
       [ "Class Hierarchy", "hierarchy.html", "hierarchy" ],
       [ "Class Members", "functions.html", [
         [ "All", "functions.html", "functions_dup" ],
-        [ "Functions", "functions_func.html", null ],
+        [ "Functions", "functions_func.html", "functions_func" ],
         [ "Variables", "functions_vars.html", null ],
-        [ "Typedefs", "functions_type.html", null ]
+        [ "Typedefs", "functions_type.html", null ],
+        [ "Related Symbols", "functions_rela.html", null ]
       ] ]
     ] ],
     [ "Files", "files.html", [
@@ -99,9 +100,9 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"classunodb_1_1key__decoder.html#a8ba7dbdf11528130da1c4c37831d7e6f",
-"classunodb_1_1optimistic__lock_1_1write__guard.html#aecfbd1a3a70115e656ad5ae57de13d8f",
-"structunodb_1_1detail_1_1basic__art__key.html#adcd136279afad971b15c30847e2da1a6"
+"classunodb_1_1in__critical__section.html#a92b23cb51bcfebbdebec16d11a453c81",
+"classunodb_1_1optimistic__lock_1_1read__critical__section.html#a6824edf72423338a0da364766d9b952e",
+"group__optimistic-lock.html"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';

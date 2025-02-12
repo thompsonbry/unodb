@@ -123,9 +123,9 @@ Development CMake options</h2>
 <ul>
 <li><code>-DSTANDALONE=ON</code> always should be given when working on UnoDB itself, whereas for users with UnoDB as a part of another project it should be <code>OFF</code>. When turned on, it will build benchmarks by default and enable extra global debug checks that require entire programs to be compiled with them. Currently, this consists of the libstdc++ debug mode.</li>
 <li><code>-DMAINTAINER_MODE=ON</code> to enable maintainer diagnostics. This makes compilation warnings fatal.</li>
-<li><code>-DSANITIZE_ADDRESS=ON</code> to enable AddressSanitizer and, if available, LeakSanitizer. It is incompatible with the <code>-DSANITIZE_THREAD=ON</code> option.</li>
-<li><code>-DSANITIZE_THREAD=ON</code> to enable ThreadSanitizer. It is incompatible with the <code>-DSANITIZE_ADDRESS=ON</code> option, not available under MSVC, and will disable libfuzzer support if it would be enabled otherwise.</li>
-<li><code>-DSANITIZE_UB=ON</code> to enable UndefinedBehaviorSanitizer. It is compatible with other sanitizer options, although some <a href="https://github.com/google/sanitizers/issues/1106">false positive</a> might occur. Not available under MSVC.</li>
+<li><code>-DSANITIZE_ADDRESS=ON</code> to enable AddressSanitizer (asan) and, if available, LeakSanitizer. It is incompatible with the <code>-DSANITIZE_THREAD=ON</code> option.</li>
+<li><code>-DSANITIZE_THREAD=ON</code> to enable ThreadSanitizer (tsan). It is incompatible with the <code>-DSANITIZE_ADDRESS=ON</code> option, not available under MSVC, and will disable libfuzzer support if it would be enabled otherwise.</li>
+<li><code>-DSANITIZE_UB=ON</code> to enable UndefinedBehaviorSanitizer (ubsan). It is compatible with other sanitizer options, although some <a href="https://github.com/google/sanitizers/issues/1106">false positive</a> might occur. Not available under MSVC.</li>
 <li><code>-DSTATIC_ANALYSIS=ON</code> for GCC or MSVC compiler static analysis. LLVM analyzer is used without any CMake option, see the "Linting and static analysis" section below.</li>
 <li><code>-DIWYU=ON</code> to use include-what-you-use. It will take effect if building with clang.</li>
 <li><code>-DCPPCHECK_AGGRESSIVE=ON</code> to enable inconclusive cppcheck diagnostics. They will not fail a build.</li>
@@ -149,7 +149,7 @@ Code style guide</h2>
 <li>The code is <code>[[nodiscard]]</code>-maximalist. Every value-returning function and method starts out as <code>[[nodiscard]]</code> by default, and is only changed if there is a clear need to both handle and ignore the return value.</li>
 <li>The code follows the Almost Always Auto guideline.</li>
 <li><code>const</code> should be used everywhere it is possible to do so, with the exception of by-value function parameters and class fields that support moving from.</li>
-<li><code>constexpr</code> should be applied everywhere it is legal to do so. Perhaps one day we will have compile-time Adaptive Radix Tree.</li>
+<li><code>constexpr</code> (and <code>consteval</code>) should be applied everywhere it is legal to do so. Perhaps one day we will have a compile-time Adaptive Radix Tree.</li>
 <li>All C++ standard library symbols must be namespace-qualified, and this includes symbols shared with C. For example <code>std::size_t</code>.</li>
 <li>Automatic code formatting can be configured through git clean/fuzz filters. To enable this feature, do <code>git config --local include.path ../.gitconfig</code>. If you need to temporarily disable it, run <code>git config --local --unset include.path</code>.</li>
 <li>The code that cannot be possibly tested by short deterministic tests, for example, because it handles rarely-occurring non-deterministic concurrency conditions, should be excluded from coverage testing with <code>// LCOV_EXCL_LINE</code> comment for a single line or with <code>// LCOV_EXCL_START</code>, <code>// LCOV_EXCL_STOP</code> start and end markers for a block.</li>
@@ -224,7 +224,7 @@ Benchmarking</h2>
 <li><p class="startli">To measure the effect of a patch, Google Benchmark provides <a href="https://github.com/google/benchmark/blob/main/docs/tools.md#u-test">U-Test</a> feature. Let's say you changed N16 node fields, but only for the OLC case. Then you can run N16-specific tests, filtered for the OLC. The next command is in the directory with benchmark executables, and the baseline executables are at <code>/foo/bar/baseline</code>:</p>
 <div class="fragment"><div class="line">python3 ../../../3rd_party/benchmark/tools/compare.py benchmarks \</div>
 <div class="line">   /foo/bar/baseline/micro_benchmark_olc \</div>
-<div class="line">   ./micro_benchmark_olc --benchmark_repetitions=9</div>
+<div class="line">   ./micro_benchmark_olc --benchmark_repetitions=9 --benchmark_filter=&#39;olc_db&#39;</div>
 </div><!-- fragment --></li>
 </ul>
 <h2><a class="anchor" id="autotoc_md13"></a>
