@@ -243,15 +243,26 @@ class key_encoder {
   /// The current capacity of the buffer.
   [[nodiscard]] size_t capacity() const noexcept { return cap; }
 
-  /// The number of bytes of data in the internal buffer.
-  [[nodiscard]] size_t size_bytes() const noexcept { return off; }
-
   /// Ensure that the buffer can hold at least [req] additional bytes.
   void ensure_available(size_t req) {
     if (UNODB_DETAIL_UNLIKELY(off + req > cap)) {
       ensure_capacity(off + req);  // resize
     }
   }
+
+  /// The maximum length of a text component of the key.  Keys are
+  /// truncated to at most this many bytes and then logically extended
+  /// using the #pad byte and a trailing run length until the field is
+  /// logically #maxlen bytes wide.
+  static constexpr auto maxlen{std::numeric_limits<std::uint16_t>::max()};
+
+  /// The pad byte used when encoding variable length text into a key
+  /// to logically extend the text field to #maxlen bytes.  The pad
+  /// byte (which is added to the buffer as an unsigned value) is
+  /// followed by a run length count such that the key is logically
+  /// padded out to the maximum length of a text field, which is
+  /// #maxlen.
+  static constexpr auto pad{static_cast<std::byte>(0x00)};
 
  public:
   /// setup a new key encoder.
@@ -274,6 +285,9 @@ class key_encoder {
   [[nodiscard]] key_view get_key_view() const noexcept {
     return key_view(buf, off);
   }
+
+  /// The number of bytes of data in the internal buffer.
+  [[nodiscard]] size_t size_bytes() const noexcept { return off; }
 
   //
   // signed integers
@@ -362,6 +376,72 @@ class key_encoder {
     UNODB_DETAIL_ASSERT(sizeof(u) == sizeof(v));
     std::memcpy(buf + off, &u, sizeof(v));
     off += sizeof(v);
+    return *this;
+  }
+
+  /// This method may be used to encode Unicode (UTF8) sort keys into
+  /// a key and is required for use cases where the text field is not
+  /// the terminal component of the key.  You can also get away with
+  /// encoding any C string data as long as the data does not include
+  /// a nul (0x00) byte.
+  ///
+  /// The caller is responsible for using a quality library (e.g.,
+  /// ICU) to (a) normalize their Unicode data; and (b) generate a
+  /// Unicode sort key from their Unicode data.  The sort key will
+  /// impose specific collation ordering semantics as configured by
+  /// the application (locale, collation strength, decomposition
+  /// mode).
+  ///
+  /// The key_build accepts a view onto some sequence of bytes, which
+  /// must not include a nul (0x00) byte.  The view will be truncated
+  /// to at most #maxlen bytes.  If the data is less than #maxlen
+  /// bytes, then a #pad byte is added and a run count to logically
+  /// extend the text field in the key to #maxlen bytes. The
+  /// truncation and padding keeps multi-field keys with embedded
+  /// variable length text fields aligned such that the field
+  /// following a variable length text field does not bleed into the
+  /// lexiographic ordering of the variable length text field. It is
+  /// not necessary to do this if the text is the only component in
+  /// the key.  In that case, you can simply append the bytes using
+  /// key_encoder::append().
+  key_encoder &encode_text(std::span<const std::byte> text) {
+    // truncate view to at most maxlen bytes.
+    text = (text.size_bytes() > maxlen) ? text.subspan(maxlen) : text;
+    // Note: Because the [pad] is 0x00, we do not need to strip off
+    // trailing pad bytes in the [text] since 0x00 is disallowed.  If
+    // the pad byte was 0x20 (space), then we WOULD need to strip off
+    // any trailing space characters here by walking backwards over
+    // the text and finding the first non-space character.  A failure
+    // to do that when [pad] is a legal character would result in
+    // "...0x20" not comparing as equals with "...".
+    static_assert(static_cast<std::byte>(0) == pad);  // codifies assertion
+    //
+    // Ensure enough room for the text, the pad byte, and the
+    // run-length encoding of the pad byte.
+    ensure_available(text.size_bytes() + 1 + sizeof(maxlen));
+    const auto padlen = text.size_bytes() - maxlen;
+    append(text);                            // append bytes to the buffer.
+    encode(static_cast<std::uint8_t>(pad));  // unsigned byte
+    encode(padlen);  // logical run-length of the pad byte.
+    return *this;
+  }
+
+  /// Append a sequence of unsigned bytes to the encoded key.
+  ///
+  /// Note: DO NOT use this method if you are attempting to add text
+  /// to the key in any position other than the final component of the
+  /// key. It will not Do The Right Thing (DTRT).
+  ///
+  /// @param data A sequence of bytes that will be appended to the
+  /// key.
+  //
+  // TODO Look at how to handle std::string_view, which is defined in
+  // terms of characters (CharT), not bytes.
+  key_encoder &append(std::span<const std::byte> data) {
+    const auto sz = data.size_bytes();
+    ensure_available(sz);
+    std::memcpy(buf + off, data.data(), sz);
+    off += sz;
     return *this;
   }
 

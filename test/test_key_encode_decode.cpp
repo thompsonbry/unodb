@@ -355,6 +355,62 @@ TEST(ARTKeyEncodeDecodeTest, Int64C00010) {
                               std::numeric_limits<T>::max());
 }
 
+/// Unit test look at the simple case of appending a sequence of bytes
+/// to the key_encoder.
+TEST(ARTKeyEncodeDecodeTest, UnsignedBytesC0001) {
+  constexpr auto test_data_0 = std::array<std::byte, 3>{
+      std::byte{0x02}, std::byte{0x05}, std::byte{0x05}};
+  constexpr auto test_data_1 = std::array<std::byte, 3>{
+      std::byte{0x03}, std::byte{0x00}, std::byte{0x05}};
+  constexpr auto test_data_2 = std::array<std::byte, 3>{
+      std::byte{0x03}, std::byte{0x00}, std::byte{0x10}};
+  constexpr auto test_data_3 = std::array<std::byte, 3>{
+      std::byte{0x03}, std::byte{0x05}, std::byte{0x05}};
+  constexpr auto test_data_4 = std::array<std::byte, 3>{
+      std::byte{0x03}, std::byte{0x05}, std::byte{0x10}};
+  constexpr auto test_data_5 = std::array<std::byte, 3>{
+      std::byte{0x03}, std::byte{0x10}, std::byte{0x05}};
+  constexpr auto test_data_6 = std::array<std::byte, 3>{
+      std::byte{0x04}, std::byte{0x05}, std::byte{0x10}};
+  constexpr auto test_data_7 = std::array<std::byte, 3>{
+      std::byte{0x04}, std::byte{0x10}, std::byte{0x05}};
+
+  using T = std::span<const std::byte>;
+
+  const std::array<T, 8> test_data = {
+      T{test_data_0},  // [0] { 02 05 05 }
+      T{test_data_1},  // [1] { 03 00 05 }
+      T{test_data_2},  // [2] { 03 00 10 }
+      T{test_data_3},  // [3] { 03 05 05 }
+      T{test_data_4},  // [4] { 03 05 10 }
+      T{test_data_5},  // [5] { 03 10 05 }
+      T{test_data_6},  // [6] { 04 05 10 }
+      T{test_data_7}   // [7] { 04 10 05 }
+  };
+
+  // Append each byte[] in turn and verify the state of the encoder.
+  // The encoder is reset after each key is appended.
+  unodb::key_encoder enc;
+  const size_t off = 0;
+  EXPECT_EQ(off, enc.size_bytes());
+  for (size_t i = 0; i < test_data.size(); i++) {
+    enc.append(test_data[i]);
+    const auto sz = enc.get_key_view().size_bytes();
+    const auto cmp =
+        std::memcmp(enc.get_key_view().data(), test_data[i].data(), sz);
+    EXPECT_EQ(0, cmp);
+    EXPECT_EQ(sz, enc.size_bytes());
+    enc.reset();
+  }
+}
+
+//
+// Encoding of text fields (optionall truncated to maxlen and padded
+// out to maxlen via run length encoding).
+//
+
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {}
+
 UNODB_END_TESTS()
 
 }  // namespace
