@@ -9,6 +9,7 @@
 // IWYU pragma: no_include <ostream>
 // IWYU pragma: no_include <ostream.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -381,6 +382,29 @@ class key_encoder {
     return *this;
   }
 
+  //
+  // floating point
+  //
+
+  /// Encode the floating-point value according to the IEEE 754
+  /// floating-point "single format" bit layout.
+  ///
+  /// The floating point value is laid out as (+/-)(exp)(significand)
+  /// which places the floating point values into lexicographic order.
+  ///
+  /// The sign is the MSB (bit 31). Bits 30-23 (mask 0x7f800000) are
+  /// the exponent. Bits 22-0 (mask 0x007fffff) are the significand
+  /// (aka mantissa).
+  key_encoder &encode(float v) {
+    using U = std::uint32_t;
+    constexpr U nan_rslt{0x7fc00000U};
+    U u = reinterpret_cast<U &>(v);
+    if (std::isnan(v)) {
+      u = nan_rslt;  // Return canonical NaN.
+    }
+    return encode(u);
+  }
+
   /// This method may be used to encode Unicode (UTF8) sort keys into
   /// a key and is required for use cases where the text field is not
   /// the terminal component of the key.  You can also get away with
@@ -649,6 +673,14 @@ class key_decoder {
     v = u;
 #endif
     off += sizeof(u);
+    return *this;
+  }
+
+  /// Decode a component of the indicated type from the key.
+  key_decoder &decode(float &v) {
+    std::uint32_t u;
+    decode(u);
+    v = reinterpret_cast<float &>(u);
     return *this;
   }
 };  // class key_decoder

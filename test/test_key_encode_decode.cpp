@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -389,7 +390,107 @@ TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
   do_encode_bytes_test(std::span<const std::byte>(test_data_7));
 }
 
-// FIXME(thompsonbry) variable length keys - float and double handling.
+//
+// FIXME(thompsonbry) variable length keys - double handling.
+//
+
+/// Can be used for anything (handles NaN as a special case).
+void do_encode_decode_float_test(const float expected) {
+  using U = std::uint32_t;
+  using F = float;
+  // encode
+  unodb::key_encoder enc;
+  enc.reset().encode(expected);
+  // Check decode as float (round trip).
+  F actual;
+  {
+    unodb::key_decoder dec{enc.get_key_view()};
+    dec.decode(actual);
+  }
+  if (std::isnan(expected)) {
+    // Verify canonical NaN.
+    EXPECT_TRUE(std::isnan(actual));
+    U u;
+    unodb::key_decoder dec{enc.get_key_view()};
+    dec.decode(u);
+    EXPECT_EQ(u, 0x7fc00000U);  // specific known value.
+    // This checks the high bits with is:nan.  It then verifies that
+    // the encoded NaN has the significant in the low bits per
+    // std::nanf().
+    //
+    // EXPECT_EQ( u & 0xff800000U,
+    //            reinterpret_cast<const U&>(expected) & 0xff800000U);
+  } else {
+    EXPECT_EQ(actual, expected);
+    if (reinterpret_cast<const U&>(expected) == 0U) {
+      // Verify that the encoded value is 0U.
+      U u;
+      unodb::key_decoder dec{enc.get_key_view()};
+      dec.decode(u);
+      EXPECT_EQ(u, 0U);  // specific known value.
+    }
+  }
+}
+
+/// Test encode/decode of various floating point values.
+TEST(ARTKeyEncodeDecodeTest, FloatC0001) {
+  using F = float;
+  do_encode_decode_float_test(0);
+  do_encode_decode_float_test(10.001F);
+  do_encode_decode_float_test(-10.001F);
+  do_encode_decode_float_test(std::numeric_limits<F>::min());
+  do_encode_decode_float_test(std::numeric_limits<F>::lowest());
+  do_encode_decode_float_test(std::numeric_limits<F>::max());
+  do_encode_decode_float_test(std::numeric_limits<F>::epsilon());
+  do_encode_decode_float_test(-std::numeric_limits<F>::denorm_min());
+}
+
+/// inf
+TEST(ARTKeyEncodeDecodeTest, FloatC0002Infinity) {
+  using F = float;
+  using U = std::uint32_t;
+  constexpr auto inf = std::numeric_limits<F>::infinity();
+  EXPECT_EQ(reinterpret_cast<const U&>(inf), 0x7f800000U);
+  do_encode_decode_float_test(inf);
+}
+
+/// -inf
+TEST(ARTKeyEncodeDecodeTest, FloatC0003NegInfinity) {
+  using F = float;
+  using U = std::uint32_t;
+  constexpr auto ninf = -std::numeric_limits<F>::infinity();
+  static_assert(sizeof(ninf) == sizeof(float));
+  static_assert(std::numeric_limits<float>::is_iec559, "IEEE 754 required");
+  static_assert(ninf < std::numeric_limits<float>::lowest());
+  static_assert(std::isinf(ninf));
+  static_assert(!std::isnan(ninf));
+  EXPECT_EQ(reinterpret_cast<const U&>(ninf), 0xff800000U);
+  do_encode_decode_float_test(ninf);
+}
+
+/// quiet_NaN
+TEST(ARTKeyEncodeDecodeTest, FloatC0004QuietNaN) {
+  using F = float;
+  constexpr F f{std::numeric_limits<F>::quiet_NaN()};
+  EXPECT_TRUE(std::isnan(f));
+  do_encode_decode_float_test(f);
+}
+
+/// signaling_NaN
+TEST(ARTKeyEncodeDecodeTest, FloatC0005SignalingNan) {
+  using F = float;
+  constexpr F f{std::numeric_limits<F>::signaling_NaN()};
+  EXPECT_TRUE(std::isnan(f));
+  do_encode_decode_float_test(f);
+}
+
+/// NaN can be formed for any floating point value using std::nanf().
+TEST(ARTKeyEncodeDecodeTest, FloatC0006NumericNaN) {
+  do_encode_decode_float_test(std::nanf("-1"));
+  do_encode_decode_float_test(std::nanf("1"));
+  do_encode_decode_float_test(std::nanf("100.1"));
+  do_encode_decode_float_test(std::nanf("-100.1"));
+}
 
 //
 // append "C" string
