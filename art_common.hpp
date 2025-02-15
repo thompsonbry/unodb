@@ -403,6 +403,8 @@ class key_encoder {
       u = nan_rslt;  // Return canonical NaN.
     }
     return encode(u);
+    // using S = std::int32_t;
+    // return encode( reinterpret_cast<S&>( u ) );
   }
 
   /// Encode the double precision floating-point value according to
@@ -415,6 +417,8 @@ class key_encoder {
       u = nan_rslt;  // Return canonical NaN.
     }
     return encode(u);
+    // using S = std::int64_t;
+    // return encode( reinterpret_cast<S&>( u ) );
   }
 
   /// This method may be used to encode Unicode (UTF8) sort keys into

@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <sstream>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -45,32 +46,45 @@ class my_key_encoder : public unodb::key_encoder {
 
 constexpr auto INITIAL_CAPACITY = my_key_encoder::get_initial_capacity();
 
-// Test helper verifies that [ekey1] < [ekey2].
+/// Test helper verifies that [ekey1] < [ekey2].
+///
+/// @param ekey1 An external key of some type.
+///
+/// @param ekey2 Another external key of the same type.
 template <typename T>
 void do_encode_decode_lt_test(const T ekey1, const T ekey2) {
+  EXPECT_NE(ekey1, ekey2);  // not the same ekey.
   unodb::key_encoder enc1{};
   unodb::key_encoder enc2{};  // separate decoder (backed by different span).
   const auto ikey1 = enc1.encode(ekey1).get_key_view();  // into encoder buf!
   const auto ikey2 = enc2.encode(ekey2).get_key_view();  // into encoder buf!
   EXPECT_TRUE(compare(ikey1, ikey1) == 0);               // compare w/ self
   EXPECT_TRUE(compare(ikey2, ikey2) == 0);               // compare w/ self
-  EXPECT_NE(ekey1, ekey2);                               // not the same ekey.
   EXPECT_TRUE(compare(ikey1, ikey2) != 0);               // not the same ikey.
-  EXPECT_TRUE(compare(ikey1, ikey2) < 0)                 // 1 LT 2
-      << ": key1(" << ekey1 << ")"
-      << ", key2(" << ekey2 << ")";
-  EXPECT_TRUE(compare(ikey2, ikey1) > 0)  // 2 > 1
-      << ": key1(" << ekey1 << ")"
-      << ", key2(" << ekey2 << ")";
-  // Verify that we can round trip both values.
-  unodb::key_decoder dec1{ikey1};
-  unodb::key_decoder dec2{ikey2};
-  T akey1;
-  T akey2;
-  dec1.decode(akey1);
-  dec2.decode(akey2);
-  EXPECT_EQ(ekey1, akey1);
-  EXPECT_EQ(ekey2, akey2);
+  // Check the core assertion for this test helper. The internal keys
+  // (after encoding) obey the asserted ordering over the external
+  // keys (before encoding).
+  if (!(compare(ikey1, ikey2) < 0)) {
+    std::stringstream ss1;
+    std::stringstream ss2;
+    unodb::detail::dump_key(ss1, ikey1);
+    unodb::detail::dump_key(ss2, ikey2);
+    FAIL() << "ikey1 < ikey2"
+           << ": ekey1(" << ekey1 << ")[" << ss1.str() << "]"
+           << ", ekey2(" << ekey2 << ")[" << ss2.str() << "]";
+  } else {
+    // Verify key2 > key1
+    EXPECT_TRUE(compare(ikey2, ikey1) > 0);
+    // Verify that we can round trip both values.
+    unodb::key_decoder dec1{ikey1};
+    unodb::key_decoder dec2{ikey2};
+    T akey1;
+    T akey2;
+    dec1.decode(akey1);
+    dec2.decode(akey2);
+    EXPECT_EQ(ekey1, akey1);
+    EXPECT_EQ(ekey2, akey2);
+  }
 }
 
 UNODB_START_TESTS()
