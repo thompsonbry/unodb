@@ -19,6 +19,7 @@
 #include <span>
 #include <string_view>
 
+#include "duckdb_encode_decode.hpp"
 #include "heap.hpp"
 #include "portability_builtins.hpp"
 
@@ -224,14 +225,14 @@ inline void ensure_capacity(std::byte *&buf,     // buffer to resize
 /// of key components.  This class supports the various kinds of
 /// primitive data types and provides support for the caller to pass
 /// through Unicode sort keys.
+///
+/// Note: This class is NOT final so people can extend or override the
+/// key_encoder (and key_decoder) for language specific handling of
+/// order within floating point values, handling of NULLs, etc.
 class key_encoder {
-  //
-  // TODO(thompsonbry) - variable length keys - handle floating point types
   // TODO(thompsonbry) - variable length keys - handle successors
   //
-  // TODO(thompsonbry) - variable length keys - attempt to simplify by
-  // using templates for msb, bswap, and encode/decode of unsigned
-  // values.
+  // TODO(thompsonbry) - variable length keys - handle nulls?
  public:
   /// Used for padding (maxlen, etc.).
   using size_type = std::uint16_t;
@@ -386,39 +387,22 @@ class key_encoder {
   // floating point
   //
 
-  /// Encode the floating-point value according to the IEEE 754
-  /// floating-point "single format" bit layout.
+  /// Encode the floating-point value.
   ///
-  /// The floating point value is laid out as (+/-)(exp)(significand)
-  /// which places the floating point values into lexicographic order.
-  ///
-  /// The sign is the MSB (bit 31). Bits 30-23 (mask 0x7f800000) are
-  /// the exponent. Bits 22-0 (mask 0x007fffff) are the significand
-  /// (aka mantissa).
+  /// Note: Encoding maps all NaN values to a single canonical NaN.
+  /// This means that decoding is not perfect and various kinds of NaN
+  /// all decode as a single canonical NaN.
   key_encoder &encode(float v) {
-    using U = std::uint32_t;
-    constexpr U nan_rslt{0x7fc00000U};
-    U u = reinterpret_cast<U &>(v);
-    if (std::isnan(v)) {
-      u = nan_rslt;  // Return canonical NaN.
-    }
-    return encode(u);
-    // using S = std::int32_t;
-    // return encode( reinterpret_cast<S&>( u ) );
+    return encode(unodb::detail::EncodeFloatingPoint<std::uint32_t>(v));
   }
 
-  /// Encode the double precision floating-point value according to
-  /// the IEEE 754 floating-point "single format" bit layout.
+  /// Encode the double precision value.
+  ///
+  /// Note: Encoding maps all NaN values to a single canonical NaN.
+  /// This means that decoding is not perfect and various kinds of NaN
+  /// all decode as a single canonical NaN.
   key_encoder &encode(double v) {
-    using U = std::uint64_t;
-    constexpr U nan_rslt{0x7ff8000000000000ULL};
-    U u = reinterpret_cast<U &>(v);
-    if (std::isnan(v)) {
-      u = nan_rslt;  // Return canonical NaN.
-    }
-    return encode(u);
-    // using S = std::int64_t;
-    // return encode( reinterpret_cast<S&>( u ) );
+    return encode(unodb::detail::EncodeFloatingPoint<std::uint64_t>(v));
   }
 
   /// This method may be used to encode Unicode (UTF8) sort keys into
@@ -582,6 +566,10 @@ class key_encoder {
 /// those keys (except for Unicode sort keys).  To use this class, you
 /// need to know how a given key was encoded as a sequence of key
 /// components.
+///
+/// Note: This class is NOT final so people can extend or override the
+/// key_decoder (and key_encoder) for language specific handling of
+/// order within floating point values, handling of NULLs, etc.
 class key_decoder {
  private:
   const std::byte *buf;  /// the data to be decoded
@@ -692,34 +680,30 @@ class key_decoder {
     return *this;
   }
 
-  /// Decode a component of the indicated type from the key.
+  /// Decode a single-precision floating point value from the key.
+  ///
+  /// Note: Encoding maps all NaN values to a single canonical NaN.
+  /// This means that decoding is not perfect and various kinds of NaN
+  /// all decode as a single canonical NaN.
   key_decoder &decode(float &v) {
     std::uint32_t u;
     decode(u);
-    v = reinterpret_cast<float &>(u);
+    v = unodb::detail::DecodeFloatingPoint<float>(u);
     return *this;
   }
 
-  /// Decode a component of the indicated type from the key.
+  /// Decode a double-precision floating point value from the key.
+  ///
+  /// Note: Encoding maps all NaN values to a single canonical NaN.
+  /// This means that decoding is not perfect and various kinds of NaN
+  /// all decode as a single canonical NaN.
   key_decoder &decode(double &v) {
     std::uint64_t u;
     decode(u);
-    v = reinterpret_cast<double &>(u);
+    v = unodb::detail::DecodeFloatingPoint<double>(u);
     return *this;
   }
 };  // class key_decoder
-
-/// An instance of this exception is thrown if there is an attempt to
-/// insert a key which is a prefix of another key.  Applications using
-/// variable length or composite keys SHOULD use the key_encoder to
-/// avoid this problem.
-///
-/// TODO(thompsonbry) Create a subclass of runtime_error for unodb
-/// specific runtime errors.  This is one case.  The other cases are
-/// key too long and value too long.
-#define UNODB_KEY_CONTRACT_VIOLATION() \
-  throw new std::runtime_error(        \
-      "Key contract violation: A key must not be a prefix of an existing key")
 
 }  // namespace unodb
 

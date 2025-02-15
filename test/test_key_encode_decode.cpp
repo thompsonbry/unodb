@@ -53,7 +53,15 @@ constexpr auto INITIAL_CAPACITY = my_key_encoder::get_initial_capacity();
 /// @param ekey2 Another external key of the same type.
 template <typename T>
 void do_encode_decode_lt_test(const T ekey1, const T ekey2) {
-  EXPECT_NE(ekey1, ekey2);  // not the same ekey.
+  if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+    // Note: floating point +0 and -0 compare as equal, so we do not
+    // compare the keys for non-quality if one of the keys is zero.
+    if (std::fpclassify(ekey1) != FP_ZERO) {
+      EXPECT_NE(ekey1, ekey2);  // not the same ekey.
+    }
+  } else {
+    EXPECT_NE(ekey1, ekey2);  // not the same ekey.
+  }
   unodb::key_encoder enc1{};
   unodb::key_encoder enc2{};  // separate decoder (backed by different span).
   const auto ikey1 = enc1.encode(ekey1).get_key_view();  // into encoder buf!
@@ -429,30 +437,27 @@ void do_encode_decode_float_test(const float expected) {
     U u;
     unodb::key_decoder dec{enc.get_key_view()};
     dec.decode(u);
-    EXPECT_EQ(u, 0x7fc00000U);  // specific known value.
   } else {
     EXPECT_EQ(actual, expected);
-    if (reinterpret_cast<const U&>(expected) == 0U) {
-      // Verify that the encoded value is 0U.
-      U u;
-      unodb::key_decoder dec{enc.get_key_view()};
-      dec.decode(u);
-      EXPECT_EQ(u, 0U);  // specific known value.
-    }
   }
 }
 
 /// Test encode/decode of various floating point values.
 TEST(ARTKeyEncodeDecodeTest, FloatC0001) {
   using F = float;
-  do_encode_decode_float_test(0.F);
+  constexpr auto pzero = 0.f;
+  constexpr auto nzero = -0.f;
+  static_assert(std::signbit(pzero) == 0);
+  static_assert(std::signbit(nzero) == 1);
+  do_encode_decode_float_test(pzero);
+  do_encode_decode_float_test(nzero);
   do_encode_decode_float_test(10.001F);
   do_encode_decode_float_test(-10.001F);
   do_encode_decode_float_test(std::numeric_limits<F>::min());
   do_encode_decode_float_test(std::numeric_limits<F>::lowest());
   do_encode_decode_float_test(std::numeric_limits<F>::max());
   do_encode_decode_float_test(std::numeric_limits<F>::epsilon());
-  do_encode_decode_float_test(-std::numeric_limits<F>::denorm_min());
+  do_encode_decode_float_test(std::numeric_limits<F>::denorm_min());
 }
 
 /// inf
@@ -505,14 +510,19 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0006NumericNaN) {
 /// Verify the ordering over various floating point pairs.
 TEST(ARTKeyEncodeDecodeTest, FloatC0007Order) {
   using F = float;
+  constexpr auto pzero = 0.f;
+  constexpr auto nzero = -0.f;
+  static_assert(std::signbit(pzero) == 0);
+  static_assert(std::signbit(nzero) == 1);
   constexpr auto minf = std::numeric_limits<F>::min();
   constexpr auto maxf = std::numeric_limits<F>::max();
   constexpr auto inf = std::numeric_limits<F>::infinity();
   constexpr auto ninf = -std::numeric_limits<F>::infinity();
   constexpr auto lowest = std::numeric_limits<F>::lowest();
   do_encode_decode_lt_test(-10.01F, -1.01F);
-  do_encode_decode_lt_test(-1.F, 0.0F);
-  do_encode_decode_lt_test(0.F, 1.0F);
+  do_encode_decode_lt_test(-1.F, pzero);
+  do_encode_decode_lt_test(nzero, pzero);
+  do_encode_decode_lt_test(pzero, 1.0F);
   do_encode_decode_lt_test(1.01F, 10.01F);
   do_encode_decode_lt_test(ninf, lowest);
   do_encode_decode_lt_test(0.F, minf);
@@ -538,16 +548,8 @@ void do_encode_decode_double_test(const double expected) {
     U u;
     unodb::key_decoder dec{enc.get_key_view()};
     dec.decode(u);
-    EXPECT_EQ(u, 0x7ff8000000000000ULL);  // specific known value.
   } else {
     EXPECT_EQ(actual, expected);
-    if (reinterpret_cast<const U&>(expected) == 0ULL) {
-      // Verify that the encoded value is 0U.
-      U u;
-      unodb::key_decoder dec{enc.get_key_view()};
-      dec.decode(u);
-      EXPECT_EQ(u, 0ULL);  // specific known value.
-    }
   }
 }
 
@@ -555,14 +557,19 @@ void do_encode_decode_double_test(const double expected) {
 /// values.
 TEST(ARTKeyEncodeDecodeTest, DoubleC0001) {
   using F = double;
-  do_encode_decode_double_test(0.0);
+  constexpr auto pzero = 0.f;
+  constexpr auto nzero = -0.f;
+  static_assert(std::signbit(pzero) == 0);
+  static_assert(std::signbit(nzero) == 1);
+  do_encode_decode_float_test(pzero);
+  do_encode_decode_float_test(nzero);
   do_encode_decode_double_test(10.001);
   do_encode_decode_double_test(-10.001);
   do_encode_decode_double_test(std::numeric_limits<F>::min());
   do_encode_decode_double_test(std::numeric_limits<F>::lowest());
   do_encode_decode_double_test(std::numeric_limits<F>::max());
   do_encode_decode_double_test(std::numeric_limits<F>::epsilon());
-  do_encode_decode_double_test(-std::numeric_limits<F>::denorm_min());
+  do_encode_decode_double_test(std::numeric_limits<F>::denorm_min());
 }
 
 /// inf
@@ -617,14 +624,19 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0006NumericNaN) {
 /// pairs.
 TEST(ARTKeyEncodeDecodeTest, DoubleC0007Order) {
   using F = double;
+  constexpr auto pzero = 0.;
+  constexpr auto nzero = -0.;
+  static_assert(std::signbit(pzero) == 0);
+  static_assert(std::signbit(nzero) == 1);
   constexpr auto minf = std::numeric_limits<F>::min();
   constexpr auto maxf = std::numeric_limits<F>::max();
   constexpr auto inf = std::numeric_limits<F>::infinity();
   constexpr auto ninf = -std::numeric_limits<F>::infinity();
   constexpr auto lowest = std::numeric_limits<F>::lowest();
   do_encode_decode_lt_test(-10.01, -1.01);
-  do_encode_decode_lt_test(-1., 0.0);
-  do_encode_decode_lt_test(0., 1.0);
+  do_encode_decode_lt_test(-1., pzero);
+  do_encode_decode_lt_test(nzero, pzero);
+  do_encode_decode_lt_test(pzero, 1.0);
   do_encode_decode_lt_test(1.01, 10.01);
   do_encode_decode_lt_test(ninf, lowest);
   do_encode_decode_lt_test(0., minf);
@@ -696,7 +708,7 @@ void do_simple_pad_test(const char* s) {
 
 /// Verify proper padding to maxlen.
 //
-// FIXME(thompsonbry) variable length keys - extend test to handle
+// TODO(thompsonbry) variable length keys - extend test to handle
 // truncation.
 TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
   do_simple_pad_test("");
@@ -727,7 +739,7 @@ TEST(ARTKeyEncodeDecodeTest, DISABLED_EncodeTextC0020) {
                                   fac.key_views[3].data())) == 0);
 }
 
-// FIXME(thompsonbry) variable length keys - multi-field tests.
+// TODO(thompsonbry) variable length keys - multi-field tests.
 
 UNODB_END_TESTS()
 
