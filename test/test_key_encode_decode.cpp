@@ -707,14 +707,41 @@ void do_simple_pad_test(const char* s) {
 }
 
 /// Verify proper padding to maxlen.
-//
-// TODO(thompsonbry) variable length keys - extend test to handle
-// truncation.
 TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
   do_simple_pad_test("");
   do_simple_pad_test("abc");
   do_simple_pad_test("brown");
   do_simple_pad_test("banana");
+}
+
+/// Helper generates a large string and feeds it into
+/// do_simple_pad_test().
+void do_pad_test_large_string(size_t nbytes) {
+  std::unique_ptr<void, decltype(std::free)*> ptr{malloc(nbytes), std::free};
+  auto p{reinterpret_cast<char*>(ptr.get())};
+  for (size_t i = 0; i < nbytes; i++) {
+    p[i] = ('a' + (i % 16));
+  }
+  do_simple_pad_test(p);
+}
+
+/// Unit test variant examines truncation for a key whose length is
+/// maxlen - 1.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0003) {
+  do_pad_test_large_string(unodb::key_encoder::maxlen - 1);
+}
+
+/// Unit test variant examines truncation for a key whose length is
+/// exactly maxlen.
+///
+/// TODO(thompsonbry) - unodb does not support keys longer than a u32
+/// size.  Once we add the optional pad byte and run length, we will
+/// be over that limit for a key component which is close to maxlen.
+/// Decide whether to reduce the maximum variable length key component
+/// length (maxlen), whether to increase the maximum key length,
+/// etc. and provide appropriate test coverage for these cases.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0002) {
+  do_pad_test_large_string(unodb::key_encoder::maxlen);
 }
 
 /// Verify the lexicographic sort order obtained for {bro, brown,
