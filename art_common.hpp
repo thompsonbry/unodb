@@ -405,6 +405,18 @@ class key_encoder {
     return encode(u);
   }
 
+  /// Encode the double precision floating-point value according to
+  /// the IEEE 754 floating-point "single format" bit layout.
+  key_encoder &encode(double v) {
+    using U = std::uint64_t;
+    constexpr U nan_rslt{0x7ff8000000000000ULL};
+    U u = reinterpret_cast<U &>(v);
+    if (std::isnan(v)) {
+      u = nan_rslt;  // Return canonical NaN.
+    }
+    return encode(u);
+  }
+
   /// This method may be used to encode Unicode (UTF8) sort keys into
   /// a key and is required for use cases where the text field is not
   /// the terminal component of the key.  You can also get away with
@@ -681,6 +693,14 @@ class key_decoder {
     std::uint32_t u;
     decode(u);
     v = reinterpret_cast<float &>(u);
+    return *this;
+  }
+
+  /// Decode a component of the indicated type from the key.
+  key_decoder &decode(double &v) {
+    std::uint64_t u;
+    decode(u);
+    v = reinterpret_cast<double &>(u);
     return *this;
   }
 };  // class key_decoder

@@ -391,7 +391,7 @@ TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
 }
 
 //
-// FIXME(thompsonbry) variable length keys - double handling.
+// float & double tests.
 //
 
 /// Can be used for anything (handles NaN as a special case).
@@ -414,12 +414,6 @@ void do_encode_decode_float_test(const float expected) {
     unodb::key_decoder dec{enc.get_key_view()};
     dec.decode(u);
     EXPECT_EQ(u, 0x7fc00000U);  // specific known value.
-    // This checks the high bits with is:nan.  It then verifies that
-    // the encoded NaN has the significant in the low bits per
-    // std::nanf().
-    //
-    // EXPECT_EQ( u & 0xff800000U,
-    //            reinterpret_cast<const U&>(expected) & 0xff800000U);
   } else {
     EXPECT_EQ(actual, expected);
     if (reinterpret_cast<const U&>(expected) == 0U) {
@@ -435,7 +429,7 @@ void do_encode_decode_float_test(const float expected) {
 /// Test encode/decode of various floating point values.
 TEST(ARTKeyEncodeDecodeTest, FloatC0001) {
   using F = float;
-  do_encode_decode_float_test(0);
+  do_encode_decode_float_test(0.F);
   do_encode_decode_float_test(10.001F);
   do_encode_decode_float_test(-10.001F);
   do_encode_decode_float_test(std::numeric_limits<F>::min());
@@ -490,6 +484,100 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0006NumericNaN) {
   do_encode_decode_float_test(std::nanf("1"));
   do_encode_decode_float_test(std::nanf("100.1"));
   do_encode_decode_float_test(std::nanf("-100.1"));
+}
+
+/// Can be used for anything (handles NaN as a special case).
+void do_encode_decode_double_test(const double expected) {
+  using U = std::uint64_t;
+  using F = double;
+  // encode
+  unodb::key_encoder enc;
+  enc.reset().encode(expected);
+  // Check decode as double (round trip).
+  F actual;
+  {
+    unodb::key_decoder dec{enc.get_key_view()};
+    dec.decode(actual);
+  }
+  if (std::isnan(expected)) {
+    // Verify canonical NaN.
+    EXPECT_TRUE(std::isnan(actual));
+    U u;
+    unodb::key_decoder dec{enc.get_key_view()};
+    dec.decode(u);
+    EXPECT_EQ(u, 0x7ff8000000000000ULL);  // specific known value.
+  } else {
+    EXPECT_EQ(actual, expected);
+    if (reinterpret_cast<const U&>(expected) == 0ULL) {
+      // Verify that the encoded value is 0U.
+      U u;
+      unodb::key_decoder dec{enc.get_key_view()};
+      dec.decode(u);
+      EXPECT_EQ(u, 0ULL);  // specific known value.
+    }
+  }
+}
+
+/// Test encode/decode of various double precisions floating point
+/// values.
+TEST(ARTKeyEncodeDecodeTest, DoubleC0001) {
+  using F = double;
+  do_encode_decode_double_test(0.0);
+  do_encode_decode_double_test(10.001);
+  do_encode_decode_double_test(-10.001);
+  do_encode_decode_double_test(std::numeric_limits<F>::min());
+  do_encode_decode_double_test(std::numeric_limits<F>::lowest());
+  do_encode_decode_double_test(std::numeric_limits<F>::max());
+  do_encode_decode_double_test(std::numeric_limits<F>::epsilon());
+  do_encode_decode_double_test(-std::numeric_limits<F>::denorm_min());
+}
+
+/// inf
+TEST(ARTKeyEncodeDecodeTest, DoubleC0002Infinity) {
+  using F = double;
+  using U = std::uint64_t;
+  constexpr auto inf = std::numeric_limits<F>::infinity();
+  EXPECT_EQ(reinterpret_cast<const U&>(inf), 0x7ff0000000000000ULL);
+  do_encode_decode_double_test(inf);
+}
+
+/// -inf
+TEST(ARTKeyEncodeDecodeTest, DoubleC0003NegInfinity) {
+  using F = double;
+  using U = std::uint64_t;
+  constexpr auto ninf = -std::numeric_limits<F>::infinity();
+  static_assert(sizeof(ninf) == sizeof(double));
+  static_assert(std::numeric_limits<double>::is_iec559, "IEEE 754 required");
+  static_assert(ninf < std::numeric_limits<double>::lowest());
+  static_assert(std::isinf(ninf));
+  static_assert(!std::isnan(ninf));
+  EXPECT_EQ(reinterpret_cast<const U&>(ninf), 0xfff0000000000000ULL);
+  do_encode_decode_double_test(ninf);
+}
+
+/// quiet_NaN
+TEST(ARTKeyEncodeDecodeTest, DoubleC0004QuietNaN) {
+  using F = double;
+  constexpr F f{std::numeric_limits<F>::quiet_NaN()};
+  EXPECT_TRUE(std::isnan(f));
+  do_encode_decode_double_test(f);
+}
+
+/// signaling_NaN
+TEST(ARTKeyEncodeDecodeTest, DoubleC0005SignalingNan) {
+  using F = double;
+  constexpr F f{std::numeric_limits<F>::signaling_NaN()};
+  EXPECT_TRUE(std::isnan(f));
+  do_encode_decode_double_test(f);
+}
+
+/// NaN can be formed for any double precision floating point value
+/// using std::nanf().
+TEST(ARTKeyEncodeDecodeTest, DoubleC0006NumericNaN) {
+  do_encode_decode_double_test(std::nan("-1"));
+  do_encode_decode_double_test(std::nan("1"));
+  do_encode_decode_double_test(std::nan("100.1"));
+  do_encode_decode_double_test(std::nan("-100.1"));
 }
 
 //
