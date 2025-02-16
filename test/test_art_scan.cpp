@@ -23,10 +23,7 @@
 
 namespace {
 
-// Test suite for scan() API for the ART.
-//
-// TODO(thompsonbry) variable length keys: unit tests for std::span<std::byte>
-//
+/// Test suite for scan() API for the ART.
 template <class Db>
 class ARTScanTest : public ::testing::Test {
  public:
@@ -154,6 +151,7 @@ void do_scan_range_test(std::uint64_t from_key, std::uint64_t to_key,
 //
 // template meta parameters.
 //
+// TODO(thompsonbry) variable length keys: unit tests for std::span<std::byte>
 using ARTTypes =
     ::testing::Types<unodb::test::u64_db, unodb::test::u64_mutex_db,
                      unodb::test::u64_olc_db>;

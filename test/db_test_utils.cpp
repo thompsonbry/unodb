@@ -19,9 +19,6 @@ namespace unodb {
 // Instantiate the various classes under test.
 //
 
-// TODO(thompsonbry) variable length keys. declare key_view variants
-// here.
-
 template class unodb::db<std::uint64_t>;
 template class unodb::mutex_db<std::uint64_t>;
 template class unodb::olc_db<std::uint64_t>;

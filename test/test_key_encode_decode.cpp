@@ -723,9 +723,6 @@ void do_pad_test_large_string(unodb::key_encoder& enc, size_t nbytes,
   std::unique_ptr<void, decltype(std::free)*> ptr{malloc(nbytes), std::free};
   auto p{reinterpret_cast<char*>(ptr.get())};
   std::memset(p, 'a', nbytes);  // fill with some char.
-  // for( size_t i = 0; i < nbytes; i++ ) {
-  //   p[ i ] = ( 'a' + (i % 16) );
-  // }
   do_simple_pad_test(enc, p);
   if (expect_truncation) {
     auto kv = enc.get_key_view();
@@ -793,7 +790,12 @@ TEST(ARTKeyEncodeDecodeTest, DISABLED_EncodeTextC0020) {
                                   fac.key_views[3].data())) == 0);
 }
 
-// TODO(thompsonbry) variable length keys - multi-field tests.
+// TODO(thompsonbry) variable length keys - successor(type)
+// implementation and test suite.
+
+// TODO(thompsonbry) variable length keys - multi-field tests. These
+// are based on successor semantics, but the various successor(type)
+// methods have not been implemented yet.
 
 UNODB_END_TESTS()
 

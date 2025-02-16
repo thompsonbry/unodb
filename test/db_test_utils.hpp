@@ -153,6 +153,9 @@ template <class Db>
 class [[nodiscard]] tree_verifier final {
   using key_type = typename Db::key_type;
 
+  // replaces the use of try_get(0) with a parameterized key type.
+  key_type unused_key{};
+
   /// Note: This is the historical type accepted for unodb::db keys.
   /// It is used in the tree_verifier to perform explicit type
   /// promotion where unit tests where using implicit type conversion
@@ -228,7 +231,7 @@ class [[nodiscard]] tree_verifier final {
   /// @return A db::key_type suitable for the db under test.
   template <typename T>
   key_type coerce_key(T key) const {
-    // FIXME(thompsonbry) - Look at why some callers are const.
+    // TODO(thompsonbry) - Look at why some callers are const.
     //
     // Some callers are const, but we need to add things into the
     // internal collections.
@@ -577,20 +580,31 @@ class [[nodiscard]] tree_verifier final {
   // NOLINTBEGIN(modernize-use-constraints)
   template <class Db2 = Db, typename T>
   std::enable_if_t<!std::is_same_v<Db2, unodb::olc_db<key_type>>, void> try_get(
-      T k) const {  // noexcept(noexcept(this->test_db.get(k))) {
+      T k) const noexcept(noexcept(this->test_db.get(k))) {
     std::ignore = test_db.get(coerce_key(k));
   }
 
   template <class Db2 = Db, typename T>
   std::enable_if_t<std::is_same_v<Db2, unodb::olc_db<key_type>>, void> try_get(
-      T k) const {  // noexcept(noexcept(this->test_db.get(k))) {
+      T k) const noexcept(noexcept(this->test_db.get(k))) {
     const quiescent_state_on_scope_exit qsbr_after_get{};
     std::ignore = test_db.get(coerce_key(k));
   }
   // NOLINTEND(modernize-use-constraints)
 
+  /// Verify that each key and value in the internal ground truth
+  /// collection can be found in the test_db. This also performs a
+  /// full scan of the test_db and verify that each (key,val) visited
+  /// in lexicographic order (we can't probe the ground truth with the
+  /// encoded keys so the number of keys visited by the scan can be
+  /// checked, but not whether each key is in the ground truth - doing
+  /// that requires knowledge about how the keys were encoded and the
+  /// encoding needs to be reversible, which it is not in the general
+  /// case).
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26445)
   void check_present_values() const {
+    // Probe the test_db for each key, verifying the expected value is
+    // found under that key.
     for (const auto &[key, value] : values) {
       if constexpr (std::is_same_v<typename Db::key_type, unodb::key_view>) {
         ASSERT_VALUE_FOR_KEY(Db, test_db, *key, value);
@@ -598,14 +612,44 @@ class [[nodiscard]] tree_verifier final {
         ASSERT_VALUE_FOR_KEY(Db, test_db, key, value);
       }
     }
+    // Scan the test_db.  For each (key,val) visited, verify (a) that
+    // each key is visited in lexicographic order; and (b) that each
+    // (key,val) pair also appears in the ground truth collection.
+    //
+    // Note: This depends on the ability to decode the key. Therefore,
+    // the caller SHOULD disable this scan when the keys do not
+    // support 100% faithful round-trip encoding and decoding.
+    unodb::test::pause_heap_faults guard{};
+    std::size_t n{0};
+    bool first = true;
+    unodb::key_view prev{};
+    auto fn = [&n, &first,
+               &prev](const unodb::visitor<typename Db::iterator> &visitor) {
+      const auto &kv = visitor.get_key();
+      if (UNODB_DETAIL_UNLIKELY(first)) {
+        prev = kv;
+        first = false;
+      } else {
+        EXPECT_TRUE(unodb::detail::compare(prev, kv) < 0);
+        prev = kv;
+      }
+      n++;
+      return false;
+    };
+    const_cast<Db &>(test_db).scan(fn);
+    // FIXME(thompsonbry) variable length keys - enable this assert.
+    // 3 OOM tests are failing (for each Db type) when this is enabled
+    // (off by one).  What is going on there?
+    //
+    // const auto sz = values.size();  // #of (key,val) pairs expected.
+    // UNODB_EXPECT_EQ(sz, n);
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
   template <typename T>
   void check_absent_keys(std::initializer_list<T> absent_keys) const
-  //  noexcept(noexcept(this->try_get(unused_key)))
-  {
+      noexcept(noexcept(this->try_get(unused_key))) {
     for (const auto absent_key : absent_keys) {
       const auto k{coerce_key(absent_key)};
       UNODB_ASSERT_EQ(values.find(to_ikey(k)), values.cend());
@@ -617,13 +661,13 @@ class [[nodiscard]] tree_verifier final {
   //
   // scan API
   //
-  //
-  // FIXME(thompsonbry) Add verification against ground truth into
-  // this API?  Maybe by having the caller NOT specify the lambda FN
-  // if they want built-in verification?  Some of the scan UTs are
-  // explicit about how the ground truth is populated, but their
-  // validation could still be replaced by validating against the
-  // tree_verifier::values map.
+
+  // TODO(thompsonbry) Add verification against ground truth into the
+  // scan() API calls?  Maybe by having the caller NOT specify the
+  // lambda FN if they want built-in verification?  Some of the scan
+  // UTs are explicit about how the ground truth is populated, but
+  // their validation could still be replaced by validating against
+  // the tree_verifier::values map.
 
   template <typename FN, typename T>
   void scan(FN fn, bool fwd = true) {
@@ -731,12 +775,12 @@ class [[nodiscard]] tree_verifier final {
   /// objects as keys in the map.  To handle this, key_view keys are
   /// wrapped as an owned typed.
   ///
-  // FIXME(thompsonbry) variable length keys - cleanup.
+  // TODO(thompsonbry) variable length keys - cleanup.  If we are
+  // using the r/b tree order, then keep std::map. Otherwise figure
+  // out how to setup the std::unordered_map for key_view since it is
+  // faster.
   std::map<ikey_type<Db>, unodb::value_view, comparator> values;
   // std::unordered_map<key_type, unodb::value_view, comparator> values;
-
-  // replaces the use of try_get(0) with a parameterized key type.
-  key_type unused_key{};
 
   const bool parallel_test;
 

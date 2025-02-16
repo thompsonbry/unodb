@@ -493,11 +493,19 @@ class key_encoder {
   // the key.
   //
 
-  /// Append a sequence of unsigned bytes to the encoded key.
+  /// Append a sequence of unsigned bytes to the encoded key (UNSAFE).
   ///
   /// Note: DO NOT use this method if you are attempting to add text
   /// to the key in any position other than the final component of the
-  /// key. It will not Do The Right Thing (DTRT).
+  /// key. It will NOT Do The Right Thing (DTRT).
+  ///
+  /// Note: it is NOT legal for one key to be a prefix of another key
+  /// (this is not allowed by the ART data structure and would imply
+  /// that internal nodes could point to leaves). Violations of this
+  /// contract can only arise with string data, and only then when you
+  /// do not use encode_text().  The encode_text() methods properly
+  /// handle this case by (a) truncating to maxlen; and (b) logically
+  /// padding out all text fields to maxlen.
   ///
   /// @param data A sequence of bytes that will be appended to the key
   /// - the byte 0x00 MUST NOT appear in the data.
@@ -509,11 +517,20 @@ class key_encoder {
     return *this;
   }
 
-  /// Append a sequence of unsigned bytes to the encoder key.
+  /// Append a sequence of unsigned bytes to the encoder key (UNSAFE).
   ///
   /// Note: DO NOT use this method if you are attempting to add text
   /// to the key in any position other than the final component of the
-  /// key. It will not Do The Right Thing (DTRT).
+  /// key. It will NOT Do The Right Thing (DTRT).
+  ///
+  ///
+  /// Note: it is NOT legal for one key to be a prefix of another key
+  /// (this is not allowed by the ART data structure and would imply
+  /// that internal nodes could point to leaves). Violations of this
+  /// contract can only arise with string data, and only then when you
+  /// do not use encode_text().  The encode_text() methods properly
+  /// handle this case by (a) truncating to maxlen; and (b) logically
+  /// padding out all text fields to maxlen.
   ///
   /// @param data A sequence of bytes that will be appended to the key
   /// - the byte 0x00 MUST NOT appear in the data.
