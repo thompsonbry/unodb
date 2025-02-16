@@ -39,6 +39,14 @@ using value_view = std::span<const std::byte>;
 /// length (std::span).
 using key_view = std::span<const std::byte>;
 
+/// A type alias determining the maximum size of a key that may be
+/// stored in the index.
+using key_size_type = std::uint32_t;
+
+/// A type alias determining the maximum size of a value that may be
+/// stored in the index.
+using value_size_type = std::uint32_t;
+
 /// An object visited by the scan API.  The visitor passed to the
 /// caller's lambda by the scan for each index entry visited by the
 /// scan.
@@ -234,22 +242,27 @@ class key_encoder {
   //
   // TODO(thompsonbry) - variable length keys - handle nulls?
  public:
-  /// Used for padding (maxlen, etc.).
-  using size_type = std::uint16_t;
-
-  /// The maximum length of a text component of the key.  Keys are
-  /// truncated to at most this many bytes and then logically extended
-  /// using the #pad byte and a trailing run length until the field is
-  /// logically #maxlen bytes wide.
-  static constexpr auto maxlen{std::numeric_limits<size_type>::max()};
+  /// This indirectly determines the #maxlen and is used as the size
+  /// for the run-length encoding of the padding.
+  using size_type = std::uint16_t;  // unodb::key_size_type;
 
   /// The pad byte used when encoding variable length text into a key
   /// to logically extend the text field to #maxlen bytes.  The pad
   /// byte (which is added to the buffer as an unsigned value) is
   /// followed by a run length count such that the key is logically
   /// padded out to the maximum length of a text field, which is
-  /// #maxlen.
+  /// #maxlen.  The run length count is expressed in the #size_type.
   static constexpr auto pad{static_cast<std::byte>(0x00)};
+
+  /// The maximum length of a text component of the key.  Keys are
+  /// truncated to at most this many bytes and then logically extended
+  /// using the #pad byte and a trailing run length until the field is
+  /// logically #maxlen bytes wide.
+  ///
+  /// Note: unodb does not support keys longer than a u32 size, so we
+  /// subtract off
+  static constexpr auto maxlen{std::numeric_limits<size_type>::max() -
+                               sizeof(pad) - sizeof(size_type)};
 
  protected:
   // highest bit for various data types.
@@ -432,7 +445,7 @@ class key_encoder {
   /// key_encoder::append().
   key_encoder &encode_text(std::span<const std::byte> text) {
     // truncate view to at most maxlen bytes.
-    text = (text.size_bytes() > maxlen) ? text.subspan(maxlen) : text;
+    text = (text.size_bytes() > maxlen) ? text.subspan(0, maxlen) : text;
     // Note: Because the [pad] is 0x00, we do not need to strip off
     // trailing pad bytes in the [text] since 0x00 is disallowed.  If
     // the pad byte was 0x20 (space), then we WOULD need to strip off

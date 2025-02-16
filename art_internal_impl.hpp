@@ -97,13 +97,13 @@ namespace unodb::detail {
 template <class Key, class Header>
 class [[nodiscard]] basic_leaf final : public Header {
  public:
-  /// A type alias determining the maximum size of a value that may be
+  /// A type alias determining the maximum size of a key that may be
   /// stored in the index.
-  using key_size_type = std::uint32_t;
+  using key_size_type = unodb::key_size_type;
 
   /// A type alias determining the maximum size of a value that may be
   /// stored in the index.
-  using value_size_type = std::uint32_t;
+  using value_size_type = unodb::value_size_type;
 
   /// The maximum size of any key in bytes.
   static constexpr std::size_t max_key_size =

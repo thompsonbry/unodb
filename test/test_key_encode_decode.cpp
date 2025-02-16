@@ -691,57 +691,84 @@ class key_factory {
   }
 };
 
-void do_simple_pad_test(const char* s) {
+void do_simple_pad_test(unodb::key_encoder& enc, const char* s) {
   using ST = unodb::key_encoder::size_type;
-  const auto sz = strlen(s);
-  unodb::key_encoder enc;
+  const auto len = strlen(s);                         // text length.
+  const auto sz = (len > unodb::key_encoder::maxlen)  // truncated len.
+                      ? unodb::key_encoder::maxlen
+                      : len;
   const auto kv = enc.reset().encode_text(s).get_key_view();
-  EXPECT_EQ(kv.size(), sz + 1 + sizeof(ST)) << "[" << s << "]";
-  EXPECT_EQ(std::memcmp(s, kv.data(), sz), 0) << "[" << s << "]";
-  EXPECT_EQ(kv[sz], unodb::key_encoder::pad) << "[" << s << "]";
+  // Check expected resulting key length.
+  EXPECT_EQ(kv.size(), sz + sizeof(unodb::key_encoder::pad) + sizeof(ST))
+      << "text(" << sz << ")[" << (sz < 100 ? s : "...") << "]";
+  // Verify that the first N bytes are the same as the given text.
+  EXPECT_EQ(std::memcmp(s, kv.data(), sz), 0)
+      << "text(" << sz << ")[" << (sz < 100 ? s : "...") << "]";
+  // Check for the pad byte.
+  EXPECT_EQ(kv[sz], unodb::key_encoder::pad)
+      << "text(" << sz << ")[" << (sz < 100 ? s : "...") << "]";
+  // Check the pad length.
   const ST padlen{static_cast<ST>(unodb::key_encoder::maxlen - sz)};
   ST tmp;
   memcpy(&tmp, kv.data() + sz + 1, sizeof(ST));  // copy out pad length.
-  ST tmp2 = unodb::detail::bswap(tmp);
-  EXPECT_EQ(tmp2, padlen) << "[" << s << "]";
-}
-
-/// Verify proper padding to maxlen.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
-  do_simple_pad_test("");
-  do_simple_pad_test("abc");
-  do_simple_pad_test("brown");
-  do_simple_pad_test("banana");
+  const ST tmp2 = unodb::detail::bswap(tmp);     // decode.
+  EXPECT_EQ(tmp2, padlen) << "text(" << sz << ")[" << (sz < 100 ? s : "...")
+                          << "]";
 }
 
 /// Helper generates a large string and feeds it into
 /// do_simple_pad_test().
-void do_pad_test_large_string(size_t nbytes) {
+void do_pad_test_large_string(unodb::key_encoder& enc, size_t nbytes,
+                              bool expect_truncation = false) {
   std::unique_ptr<void, decltype(std::free)*> ptr{malloc(nbytes), std::free};
   auto p{reinterpret_cast<char*>(ptr.get())};
-  for (size_t i = 0; i < nbytes; i++) {
-    p[i] = ('a' + (i % 16));
+  std::memset(p, 'a', nbytes);  // fill with some char.
+  // for( size_t i = 0; i < nbytes; i++ ) {
+  //   p[ i ] = ( 'a' + (i % 16) );
+  // }
+  do_simple_pad_test(enc, p);
+  if (expect_truncation) {
+    auto kv = enc.get_key_view();
+    const size_t max_key_size = unodb::key_encoder::maxlen +
+                                sizeof(unodb::key_encoder::pad) +
+                                sizeof(unodb::key_encoder::size_type);
+    EXPECT_EQ(kv.size(), max_key_size);
   }
-  do_simple_pad_test(p);
+}
+
+/// Verify proper padding to maxlen.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
+  unodb::key_encoder enc;
+  do_simple_pad_test(enc, "");
+  do_simple_pad_test(enc, "abc");
+  do_simple_pad_test(enc, "brown");
+  do_simple_pad_test(enc, "banana");
 }
 
 /// Unit test variant examines truncation for a key whose length is
 /// maxlen - 1.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0003) {
-  do_pad_test_large_string(unodb::key_encoder::maxlen - 1);
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0002) {
+  unodb::key_encoder enc;
+  do_pad_test_large_string(enc, unodb::key_encoder::maxlen - 1);
 }
 
 /// Unit test variant examines truncation for a key whose length is
 /// exactly maxlen.
-///
-/// TODO(thompsonbry) - unodb does not support keys longer than a u32
-/// size.  Once we add the optional pad byte and run length, we will
-/// be over that limit for a key component which is close to maxlen.
-/// Decide whether to reduce the maximum variable length key component
-/// length (maxlen), whether to increase the maximum key length,
-/// etc. and provide appropriate test coverage for these cases.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0002) {
-  do_pad_test_large_string(unodb::key_encoder::maxlen);
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0003) {
+  unodb::key_encoder enc;
+  do_pad_test_large_string(enc, unodb::key_encoder::maxlen);
+}
+
+/// Unit test where the key is truncated.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0004) {
+  unodb::key_encoder enc;
+  do_pad_test_large_string(enc, unodb::key_encoder::maxlen + 1, true);
+}
+
+/// Unit test where the key is truncated.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0005) {
+  unodb::key_encoder enc;
+  do_pad_test_large_string(enc, unodb::key_encoder::maxlen + 2, true);
 }
 
 /// Verify the lexicographic sort order obtained for {bro, brown,
