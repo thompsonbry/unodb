@@ -951,12 +951,6 @@ bool db<Key>::insert_internal(art_key_type k, value_view v) {
       if (UNODB_DETAIL_UNLIKELY(cmp == 0)) {
         return false;  // exists
       }
-      // FIXME(thompsonbry) variable length keys - reject key prefix.
-      //
-      // if (UNODB_DETAIL_UNLIKELY(cmp < 0)) {
-      //   UNODB_KEY_CONTRACT_VIOLATION();
-      // }
-      //
       // Replace the existing leaf with a new N4 and put the existing
       // leaf and the leaf for the caller's key and value under the
       // new inode as its direct children.
@@ -981,8 +975,6 @@ bool db<Key>::insert_internal(art_key_type k, value_view v) {
       // than the desired match.  We need to split this inode into a
       // new N4 whose children are the existing inode and a new child
       // leaf.
-      //
-      // FIXME(thompsonbry) variable length keys - reject key prefix.
       auto leaf = art_policy::make_db_leaf_ptr(k, v, *this);
       auto new_node = inode_4::create(*this, *node, shared_prefix_len, depth,
                                       std::move(leaf));
@@ -997,8 +989,6 @@ bool db<Key>::insert_internal(art_key_type k, value_view v) {
     }
     // key_prefix bytes were absorbed during the descent.  Now we need
     // to either descend along an existing child or create a new child.
-    //
-    // FIXME(thompsonbry) variable length keys - reject key prefix. here too?
     UNODB_DETAIL_ASSERT(shared_prefix_len == key_prefix_length);
     depth += key_prefix_length;
     remaining_key.shift_right(key_prefix_length);

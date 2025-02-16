@@ -418,31 +418,28 @@ class key_encoder {
     return encode(unodb::detail::EncodeFloatingPoint<std::uint64_t>(v));
   }
 
-  /// This method may be used to encode Unicode (UTF8) sort keys into
-  /// a key and is required for use cases where the text field is not
-  /// the terminal component of the key.  You can also get away with
-  /// encoding any C string data as long as the data does not include
-  /// a nul (0x00) byte.
+  /// This method (a) correctly handles keys which are prefixes of
+  /// other keys; (b) may be used to encode Unicode (UTF8) sort keys
+  /// into a key; and (c) and is required for use cases where the text
+  /// field is not the terminal component of the key.
   ///
-  /// The caller is responsible for using a quality library (e.g.,
-  /// ICU) to (a) normalize their Unicode data; and (b) generate a
-  /// Unicode sort key from their Unicode data.  The sort key will
-  /// impose specific collation ordering semantics as configured by
-  /// the application (locale, collation strength, decomposition
-  /// mode).
+  /// When handling Unicode, the caller is responsible for using a
+  /// quality library (e.g., ICU) to (a) normalize their Unicode data;
+  /// and (b) generate a Unicode sort key from their Unicode data.
+  /// The sort key will impose specific collation ordering semantics
+  /// as configured by the application (locale, collation strength,
+  /// decomposition mode).
   ///
   /// The key_build accepts a view onto some sequence of bytes, which
-  /// must not include a nul (0x00) byte.  The view will be truncated
+  /// MUST NOT include a nul (0x00) byte.  The view will be truncated
   /// to at most #maxlen bytes.  If the data is less than #maxlen
   /// bytes, then a #pad byte is added and a run count to logically
   /// extend the text field in the key to #maxlen bytes. The
-  /// truncation and padding keeps multi-field keys with embedded
+  /// truncation and padding (a) ensures that no key is a prefix of
+  /// another key; and (b) keeps multi-field keys with embedded
   /// variable length text fields aligned such that the field
   /// following a variable length text field does not bleed into the
-  /// lexiographic ordering of the variable length text field. It is
-  /// not necessary to do this if the text is the only component in
-  /// the key.  In that case, you can simply append the bytes using
-  /// key_encoder::append().
+  /// lexiographic ordering of the variable length text field.
   key_encoder &encode_text(std::span<const std::byte> text) {
     // truncate view to at most maxlen bytes.
     text = (text.size_bytes() > maxlen) ? text.subspan(0, maxlen) : text;
@@ -523,7 +520,6 @@ class key_encoder {
   /// to the key in any position other than the final component of the
   /// key. It will NOT Do The Right Thing (DTRT).
   ///
-  ///
   /// Note: it is NOT legal for one key to be a prefix of another key
   /// (this is not allowed by the ART data structure and would imply
   /// that internal nodes could point to leaves). Violations of this
@@ -561,6 +557,14 @@ class key_encoder {
   /// Note: DO NOT use this method if you are attempting to add text
   /// to the key in any position other than the final component of the
   /// key. It will not Do The Right Thing (DTRT).
+  ///
+  /// Note: it is NOT legal for one key to be a prefix of another key
+  /// (this is not allowed by the ART data structure and would imply
+  /// that internal nodes could point to leaves). Violations of this
+  /// contract can only arise with string data, and only then when you
+  /// do not use encode_text().  The encode_text() methods properly
+  /// handle this case by (a) truncating to maxlen; and (b) logically
+  /// padding out all text fields to maxlen.
   ///
   /// @param data A sequence of bytes that will be appended to the
   /// key.  The data MUST be terminated by a trailing nul byte
