@@ -1344,17 +1344,11 @@ typename db<Key>::iterator& db<Key>::iterator::seek(art_key_type search_key,
 UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=pure")
 template <typename Key>
 key_view db<Key>::iterator::get_key() {
-  // TODO(thompsonbry) : variable length keys. Eventually this will
-  // need to use the stack to reconstruct the key from the path from
-  // the root to this leaf.  Right now it is relying on the fact that
-  // simple fixed width keys are stored directly in the leaves.
-  //
-  // Note: We can not simplify this until the leaf has a variable
-  // length prefix consisting of the suffix of the key (the part not
-  // already matched by the inode path).
+  // FIXME(thompsonbry) : variable length keys. Enable this code path.
+  // The key_buffer SHOULD be propertly maintained now.  Also do this
+  // for the olc iterator.
   //
   // return keybuf_.get_key_view();
-  //
   UNODB_DETAIL_ASSERT(valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
