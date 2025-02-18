@@ -418,10 +418,13 @@ class key_encoder {
     return encode(unodb::detail::EncodeFloatingPoint<std::uint64_t>(v));
   }
 
-  /// This method (a) correctly handles keys which are prefixes of
-  /// other keys; (b) may be used to encode Unicode (UTF8) sort keys
-  /// into a key; and (c) and is required for use cases where the text
-  /// field is not the terminal component of the key.
+  /// This encodes ASCII text or Unicode sort keys.  Keys are
+  /// logically padded out to #maxlen bytes and will be truncated if
+  /// they would exceed #maxlen.
+  ///
+  /// Note: The ART index disallows keys which are prefixes of other
+  /// keys.  The logical padding addresses this and other issues while
+  /// preserving lexicographic ordering.
   ///
   /// When handling Unicode, the caller is responsible for using a
   /// quality library (e.g., ICU) to (a) normalize their Unicode data;
@@ -430,16 +433,15 @@ class key_encoder {
   /// as configured by the application (locale, collation strength,
   /// decomposition mode).
   ///
-  /// The key_build accepts a view onto some sequence of bytes, which
-  /// MUST NOT include a nul (0x00) byte.  The view will be truncated
-  /// to at most #maxlen bytes.  If the data is less than #maxlen
-  /// bytes, then a #pad byte is added and a run count to logically
-  /// extend the text field in the key to #maxlen bytes. The
-  /// truncation and padding (a) ensures that no key is a prefix of
-  /// another key; and (b) keeps multi-field keys with embedded
-  /// variable length text fields aligned such that the field
-  /// following a variable length text field does not bleed into the
-  /// lexiographic ordering of the variable length text field.
+  /// @param A view onto some sequence of bytes, which MUST NOT
+  /// include a nul (0x00) byte.  The view will be truncated to at
+  /// most #maxlen bytes.  A #pad byte and a run count are added to
+  /// make all text fields logically #maxlen bytes. The truncation and
+  /// padding (a) ensures that no key is a prefix of another key; and
+  /// (b) keeps multi-field keys with embedded variable length text
+  /// fields aligned such that the field following a variable length
+  /// text field does not bleed into the lexiographic ordering of the
+  /// variable length text field.
   key_encoder &encode_text(std::span<const std::byte> text) {
     // truncate view to at most maxlen bytes.
     text = (text.size_bytes() > maxlen) ? text.subspan(0, maxlen) : text;

@@ -153,6 +153,9 @@ class db final {
   /// as produced by unodb::key_encoder.
   ///
   /// @return true iff the key value pair was inserted.
+  ///
+  /// @see key_encoder, which provides for encoding text and
+  /// multi-field records when Key is unodb::key_view.
   [[nodiscard]] bool insert(Key insert_key, value_view v) {
     const art_key_type k{insert_key};
     return insert_internal(k, v);

@@ -105,6 +105,19 @@ template <typename T>
 #endif
 }
 
+/// Performs a "bit_cast".
+template <typename To, typename From>
+[[nodiscard, gnu::pure]] To bit_cast(From input) {
+  // TODO(laurynas) What conditional compilation expressions can we
+  // use to back this with std::bit_cast on platforms where that
+  // method is defined?
+  //
+  // return std::bit_cast<To&>( input )
+  UNODB_DETAIL_DISABLE_WARNING("-Wundefined-reinterpret-cast")
+  return reinterpret_cast<To&>(input);
+  UNODB_DETAIL_RESTORE_WARNINGS()
+}
+
 }  // namespace unodb::detail
 
 #endif

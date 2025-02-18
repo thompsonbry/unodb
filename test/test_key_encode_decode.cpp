@@ -447,8 +447,8 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0001) {
   using F = float;
   constexpr auto pzero = 0.f;
   constexpr auto nzero = -0.f;
-  static_assert(std::signbit(pzero) == 0);
-  static_assert(std::signbit(nzero) == 1);
+  EXPECT_TRUE(std::signbit(pzero) == 0);
+  EXPECT_TRUE(std::signbit(nzero) == 1);
   do_encode_decode_float_test(pzero);
   do_encode_decode_float_test(nzero);
   do_encode_decode_float_test(10.001F);
@@ -465,7 +465,7 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0002Infinity) {
   using F = float;
   using U = std::uint32_t;
   constexpr auto inf = std::numeric_limits<F>::infinity();
-  EXPECT_EQ(reinterpret_cast<const U&>(inf), 0x7f800000U);
+  EXPECT_EQ(unodb::detail::bit_cast<const U>(inf), 0x7f800000U);
   do_encode_decode_float_test(inf);
 }
 
@@ -479,7 +479,7 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0003NegInfinity) {
   static_assert(ninf < std::numeric_limits<float>::lowest());
   static_assert(std::isinf(ninf));
   static_assert(!std::isnan(ninf));
-  EXPECT_EQ(reinterpret_cast<const U&>(ninf), 0xff800000U);
+  EXPECT_EQ(unodb::detail::bit_cast<const U>(ninf), 0xff800000U);
   do_encode_decode_float_test(ninf);
 }
 
@@ -512,8 +512,8 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0007Order) {
   using F = float;
   constexpr auto pzero = 0.f;
   constexpr auto nzero = -0.f;
-  static_assert(std::signbit(pzero) == 0);
-  static_assert(std::signbit(nzero) == 1);
+  EXPECT_TRUE(std::signbit(pzero) == 0);
+  EXPECT_TRUE(std::signbit(nzero) == 1);
   constexpr auto minf = std::numeric_limits<F>::min();
   constexpr auto maxf = std::numeric_limits<F>::max();
   constexpr auto inf = std::numeric_limits<F>::infinity();
@@ -559,8 +559,8 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0001) {
   using F = double;
   constexpr auto pzero = 0.f;
   constexpr auto nzero = -0.f;
-  static_assert(std::signbit(pzero) == 0);
-  static_assert(std::signbit(nzero) == 1);
+  EXPECT_TRUE(std::signbit(pzero) == 0);
+  EXPECT_TRUE(std::signbit(nzero) == 1);
   do_encode_decode_float_test(pzero);
   do_encode_decode_float_test(nzero);
   do_encode_decode_double_test(10.001);
@@ -577,7 +577,7 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0002Infinity) {
   using F = double;
   using U = std::uint64_t;
   constexpr auto inf = std::numeric_limits<F>::infinity();
-  EXPECT_EQ(reinterpret_cast<const U&>(inf), 0x7ff0000000000000ULL);
+  EXPECT_EQ(unodb::detail::bit_cast<const U>(inf), 0x7ff0000000000000ULL);
   do_encode_decode_double_test(inf);
 }
 
@@ -591,7 +591,7 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0003NegInfinity) {
   static_assert(ninf < std::numeric_limits<double>::lowest());
   static_assert(std::isinf(ninf));
   static_assert(!std::isnan(ninf));
-  EXPECT_EQ(reinterpret_cast<const U&>(ninf), 0xfff0000000000000ULL);
+  EXPECT_EQ(unodb::detail::bit_cast<const U>(ninf), 0xfff0000000000000ULL);
   do_encode_decode_double_test(ninf);
 }
 
@@ -626,8 +626,8 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0007Order) {
   using F = double;
   constexpr auto pzero = 0.;
   constexpr auto nzero = -0.;
-  static_assert(std::signbit(pzero) == 0);
-  static_assert(std::signbit(nzero) == 1);
+  EXPECT_TRUE(std::signbit(pzero) == 0);
+  EXPECT_TRUE(std::signbit(nzero) == 1);
   constexpr auto minf = std::numeric_limits<F>::min();
   constexpr auto maxf = std::numeric_limits<F>::max();
   constexpr auto inf = std::numeric_limits<F>::infinity();

@@ -201,6 +201,9 @@ class olc_db final {
   /// as produced by unodb::key_encoder.
   ///
   /// @return true iff the key value pair was inserted.
+  ///
+  /// @see key_encoder, which provides for encoding text and
+  /// multi-field records when Key is unodb::key_view.
   [[nodiscard]] bool insert(Key insert_key, unodb::value_view v) {
     // TODO(thompsonbry) There should be a lambda variant of this to
     // handle conflicts and support upsert or delete-upsert
