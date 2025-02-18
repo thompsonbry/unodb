@@ -7,28 +7,20 @@
 // IWYU pragma: no_include <string>
 // IWYU pragma: no_include "gtest/gtest.h"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <tuple>
-#include <utility>
-#include <vector>
 
 #include <gtest/gtest.h>
 
-#include "art.hpp"
 #include "art_common.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
-#include "test_utils.hpp"
-#include "thread_sync.hpp"
 
 namespace {
-using unodb::detail::thread_syncs;
-using unodb::test::test_values;
 
 template <class Db>
 class ARTKeyViewCorrectnessTest : public ::testing::Test {
@@ -70,7 +62,7 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
-  constexpr auto& val = unodb::test::test_values[0];
+  const auto& val = unodb::test::test_values[0];
   verifier.insert(enc.reset().encode_text("").get_key_view(), val);
   verifier.insert(enc.reset().encode_text("a").get_key_view(), val);
   verifier.insert(enc.reset().encode_text("abba").get_key_view(), val);
@@ -94,7 +86,7 @@ TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
 TYPED_TEST(ARTKeyViewCorrectnessTest, StringKeysWithoutProperEncoding) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
-  constexpr auto& val = unodb::test::test_values[0];
+  const auto& val = unodb::test::test_values[0];
   verifier.insert(enc.reset().append("abba").get_key_view(), val);
   verifier.insert(enc.reset().append("banana").get_key_view(), val);
   verifier.insert(enc.reset().append("camel").get_key_view(), val);
@@ -103,8 +95,6 @@ TYPED_TEST(ARTKeyViewCorrectnessTest, StringKeysWithoutProperEncoding) {
   verifier.insert(enc.reset().append("zebra").get_key_view(), val);
   verifier.check_present_values();  // checks keys and key ordering.
 }
-
-/// TODO(thompsonbry) multi-field keys tests
 
 UNODB_END_TESTS()
 

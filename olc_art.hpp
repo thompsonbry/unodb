@@ -2704,7 +2704,7 @@ key_view olc_db<Key>::iterator::get_key() {
   // leaf regardless of whether the leaf has been deleted.  This is
   // part of the design semantics for the OLC ART scan.
   //
-  // FIXME(thompsonbry) : variable length keys. The simplest case
+  // TODO(thompsonbry) : variable length keys. The simplest case
   // where this does not work today is a single root leaf.  In that
   // case, there is no inode path and we can not properly track the
   // key in the key_buffer.

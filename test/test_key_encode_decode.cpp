@@ -10,7 +10,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
+#include <memory>
+#include <span>
 #include <sstream>
 #include <vector>
 
@@ -19,6 +23,7 @@
 #include "art_common.hpp"
 #include "art_internal.hpp"
 #include "gtest_utils.hpp"
+#include "portability_builtins.hpp"
 
 namespace {
 
@@ -80,19 +85,18 @@ void do_encode_decode_lt_test(const T ekey1, const T ekey2) {
     FAIL() << "ikey1 < ikey2"
            << ": ekey1(" << ekey1 << ")[" << ss1.str() << "]"
            << ", ekey2(" << ekey2 << ")[" << ss2.str() << "]";
-  } else {
-    // Verify key2 > key1
-    EXPECT_TRUE(compare(ikey2, ikey1) > 0);
-    // Verify that we can round trip both values.
-    unodb::key_decoder dec1{ikey1};
-    unodb::key_decoder dec2{ikey2};
-    T akey1;
-    T akey2;
-    dec1.decode(akey1);
-    dec2.decode(akey2);
-    EXPECT_EQ(ekey1, akey1);
-    EXPECT_EQ(ekey2, akey2);
   }
+  // Verify key2 > key1
+  EXPECT_TRUE(compare(ikey2, ikey1) > 0);
+  // Verify that we can round trip both values.
+  unodb::key_decoder dec1{ikey1};
+  unodb::key_decoder dec2{ikey2};
+  T akey1;
+  T akey2;
+  dec1.decode(akey1);
+  dec2.decode(akey2);
+  EXPECT_EQ(ekey1, akey1);
+  EXPECT_EQ(ekey2, akey2);
 }
 
 UNODB_START_TESTS()
@@ -445,8 +449,8 @@ void do_encode_decode_float_test(const float expected) {
 /// Test encode/decode of various floating point values.
 TEST(ARTKeyEncodeDecodeTest, FloatC0001) {
   using F = float;
-  constexpr auto pzero = 0.f;
-  constexpr auto nzero = -0.f;
+  constexpr auto pzero = 0.F;
+  constexpr auto nzero = -0.F;
   EXPECT_TRUE(std::signbit(pzero) == 0);
   EXPECT_TRUE(std::signbit(nzero) == 1);
   do_encode_decode_float_test(pzero);
@@ -510,8 +514,8 @@ TEST(ARTKeyEncodeDecodeTest, FloatC0006NumericNaN) {
 /// Verify the ordering over various floating point pairs.
 TEST(ARTKeyEncodeDecodeTest, FloatC0007Order) {
   using F = float;
-  constexpr auto pzero = 0.f;
-  constexpr auto nzero = -0.f;
+  constexpr auto pzero = 0.F;
+  constexpr auto nzero = -0.F;
   EXPECT_TRUE(std::signbit(pzero) == 0);
   EXPECT_TRUE(std::signbit(nzero) == 1);
   constexpr auto minf = std::numeric_limits<F>::min();
@@ -557,8 +561,8 @@ void do_encode_decode_double_test(const double expected) {
 /// values.
 TEST(ARTKeyEncodeDecodeTest, DoubleC0001) {
   using F = double;
-  constexpr auto pzero = 0.f;
-  constexpr auto nzero = -0.f;
+  constexpr auto pzero = 0.F;
+  constexpr auto nzero = -0.F;
   EXPECT_TRUE(std::signbit(pzero) == 0);
   EXPECT_TRUE(std::signbit(nzero) == 1);
   do_encode_decode_float_test(pzero);
@@ -649,7 +653,7 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0007Order) {
 
 void do_encode_cstring_test(const char* a) {
   my_key_encoder enc;
-  const auto sz = strlen(a);
+  const auto sz = std::strlen(a);
   enc.append(a);
   const auto cmp = std::memcmp(enc.get_key_view().data(), a, sz);
   EXPECT_EQ(0, cmp);
@@ -684,16 +688,16 @@ class key_factory {
   unodb::key_view make_key_view(unodb::key_encoder& enc) {
     auto kv{enc.get_key_view()};
     const auto sz{kv.size()};
-    key_views.emplace_back(std::vector<std::byte>(sz));
+    key_views.emplace_back(sz);
     auto& a = key_views.back();  // a *reference* to data emplaced_back.
     std::copy(kv.data(), kv.data() + sz, a.begin());  // copy data to inner vec
-    return unodb::key_view(a.data(), sz);  // view of inner vec's data.
+    return {a.data(), sz};  // view of inner vec's data.
   }
 };
 
 void do_simple_pad_test(unodb::key_encoder& enc, const char* s) {
   using ST = unodb::key_encoder::size_type;
-  const auto len = strlen(s);                         // text length.
+  const auto len = std::strlen(s);                    // text length.
   const auto sz = (len > unodb::key_encoder::maxlen)  // truncated len.
                       ? unodb::key_encoder::maxlen
                       : len;
@@ -710,8 +714,8 @@ void do_simple_pad_test(unodb::key_encoder& enc, const char* s) {
   // Check the pad length.
   const ST padlen{static_cast<ST>(unodb::key_encoder::maxlen - sz)};
   ST tmp;
-  memcpy(&tmp, kv.data() + sz + 1, sizeof(ST));  // copy out pad length.
-  const ST tmp2 = unodb::detail::bswap(tmp);     // decode.
+  std::memcpy(&tmp, kv.data() + sz + 1, sizeof(ST));  // copy out pad length.
+  const ST tmp2 = unodb::detail::bswap(tmp);          // decode.
   EXPECT_EQ(tmp2, padlen) << "text(" << sz << ")[" << (sz < 100 ? s : "...")
                           << "]";
 }
@@ -720,8 +724,12 @@ void do_simple_pad_test(unodb::key_encoder& enc, const char* s) {
 /// do_simple_pad_test().
 void do_pad_test_large_string(unodb::key_encoder& enc, size_t nbytes,
                               bool expect_truncation = false) {
-  std::unique_ptr<void, decltype(std::free)*> ptr{malloc(nbytes), std::free};
-  auto p{reinterpret_cast<char*>(ptr.get())};
+  UNODB_DETAIL_DISABLE_WARNING("-Wcppcoreguidelines-no-malloc")
+  UNODB_DETAIL_DISABLE_WARNING("-Whicpp-no-malloc")
+  std::unique_ptr<void, decltype(std::free)*> ptr{std::malloc(nbytes),
+                                                  std::free};
+  UNODB_DETAIL_RESTORE_WARNINGS()
+  auto* p{reinterpret_cast<char*>(ptr.get())};
   std::memset(p, 'a', nbytes);  // fill with some char.
   do_simple_pad_test(enc, p);
   if (expect_truncation) {
@@ -780,22 +788,15 @@ TEST(ARTKeyEncodeDecodeTest, DISABLED_EncodeTextC0020) {
   fac.make_key_view(enc.reset().encode_text("break"));
   fac.make_key_view(enc.reset().encode_text("bre"));
   std::sort(fac.key_views.begin(), fac.key_views.end());
-  EXPECT_TRUE(strcmp("bro", reinterpret_cast<const char*>(
-                                fac.key_views[0].data())) == 0);
-  EXPECT_TRUE(strcmp("brown", reinterpret_cast<const char*>(
-                                  fac.key_views[1].data())) == 0);
-  EXPECT_TRUE(strcmp("bre", reinterpret_cast<const char*>(
-                                fac.key_views[2].data())) == 0);
-  EXPECT_TRUE(strcmp("break", reinterpret_cast<const char*>(
-                                  fac.key_views[3].data())) == 0);
+  EXPECT_TRUE(std::strcmp("bro", reinterpret_cast<const char*>(
+                                     fac.key_views[0].data())) == 0);
+  EXPECT_TRUE(std::strcmp("brown", reinterpret_cast<const char*>(
+                                       fac.key_views[1].data())) == 0);
+  EXPECT_TRUE(std::strcmp("bre", reinterpret_cast<const char*>(
+                                     fac.key_views[2].data())) == 0);
+  EXPECT_TRUE(std::strcmp("break", reinterpret_cast<const char*>(
+                                       fac.key_views[3].data())) == 0);
 }
-
-// TODO(thompsonbry) variable length keys - successor(type)
-// implementation and test suite.
-
-// TODO(thompsonbry) variable length keys - multi-field tests. These
-// are based on successor semantics, but the various successor(type)
-// methods have not been implemented yet.
 
 UNODB_END_TESTS()
 

@@ -107,14 +107,15 @@ template <typename T>
 
 /// Performs a "bit_cast".
 template <typename To, typename From>
-[[nodiscard, gnu::pure]] To bit_cast(From input) {
+[[nodiscard, gnu::pure]] const To bit_cast(From input) {
   // TODO(laurynas) What conditional compilation expressions can we
   // use to back this with std::bit_cast on platforms where that
   // method is defined?
   //
   // return std::bit_cast<To&>( input )
-  UNODB_DETAIL_DISABLE_WARNING("-Wundefined-reinterpret-cast")
-  return reinterpret_cast<To&>(input);
+  UNODB_DETAIL_DISABLE_CLANG_WARNING("-Wundefined-reinterpret-cast")
+  UNODB_DETAIL_DISABLE_GCC_WARNING("-Wstrict-aliasing")
+  return *reinterpret_cast<const To*>(reinterpret_cast<const void*>(&input));
   UNODB_DETAIL_RESTORE_WARNINGS()
 }
 

@@ -1353,7 +1353,7 @@ UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=pure")
 template <typename Key>
 key_view db<Key>::iterator::get_key() {
   UNODB_DETAIL_ASSERT(valid());  // by contract
-  // FIXME(thompsonbry) : variable length keys. The simplest case
+  // TODO(thompsonbry) : variable length keys. The simplest case
   // where this does not work today is a single root leaf.  In that
   // case, there is no inode path and we can not properly track the
   // key in the key_buffer.

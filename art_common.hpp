@@ -238,9 +238,6 @@ inline void ensure_capacity(std::byte *&buf,     // buffer to resize
 /// key_encoder (and key_decoder) for language specific handling of
 /// order within floating point values, handling of NULLs, etc.
 class key_encoder {
-  // TODO(thompsonbry) - variable length keys - handle successors
-  //
-  // TODO(thompsonbry) - variable length keys - handle nulls?
  public:
   /// This indirectly determines the #maxlen and is used as the size
   /// for the run-length encoding of the padding.
@@ -471,14 +468,6 @@ class key_encoder {
         reinterpret_cast<const std::byte *>(data.cbegin()), data.size()));
   }
 
-  // FIXME(thompsonbry) compiler complains....
-  //
-  /// convenience alias
-  // key_encoder &encode_text(std::string data) {
-  //   return encode_text(std::span<const std::byte>(
-  //       reinterpret_cast<const std::byte*>(data.cbegin()), data.size()));
-  // }
-
   /// convenience alias (usable with nul terminated C strings)
   key_encoder &encode_text(const char *data) {
     const auto len = strlen(data);
@@ -536,22 +525,6 @@ class key_encoder {
     return append(std::span<const std::byte>(
         reinterpret_cast<const std::byte *>(data.cbegin()), data.size()));
   }
-
-  // FIXME(thompsonbry) compiler complains....
-  //
-  /// Append a sequence of characters (interpreted as unsigned bytes)
-  /// to the encoder key.
-  ///
-  /// Note: DO NOT use this method if you are attempting to add text
-  /// to the key in any position other than the final component of the
-  /// key. It will not Do The Right Thing (DTRT).
-  ///
-  /// @param data A sequence of bytes that will be appended to the key
-  /// - the byte 0x00 MUST NOT appear in the data.
-  // key_encoder &append(std::string data) {
-  //   return append(std::span<const std::byte>(
-  //       reinterpret_cast<const std::byte*>(data.cbegin()), data.size()));
-  // }
 
   /// Append a sequence of characters (interpreted as unsigned bytes)
   /// to the encoder key.
