@@ -286,6 +286,10 @@ class db final {
         os << "iter::stack:: empty\n";
         return;
       }
+      // Dump the key buffer maintained by the iterator.
+      os << "keybuf=";
+      detail::dump_key(os, keybuf_.get_key_view());
+      os << "\n";
       // Create a new stack and copy everything there.  Using the new
       // stack, print out the stack in top-bottom order.  This avoids
       // modifications to the existing stack for the iterator.
@@ -301,6 +305,7 @@ class db final {
            << std::setw(2) << static_cast<std::uint64_t>(e.child_index)
            << std::dec << ", prefix(" << e.prefix.length() << ")=";
         detail::dump_key(os, e.prefix.get_key_view());
+        os << ", ";
         art_policy::dump_node(os, np, false /*recursive*/);
         if (np.type() != node_type::LEAF) os << '\n';
         tmp.pop();
@@ -391,8 +396,8 @@ class db final {
     /// Pop an entry from the stack and truncate the key buffer.
     void pop() {
       const auto prefix_len = top().prefix.length();
-      stack_.pop();
       keybuf_.pop(prefix_len);
+      stack_.pop();
     }
 
     /// Return the entry (if any) on the top of the stack.
@@ -1344,12 +1349,13 @@ typename db<Key>::iterator& db<Key>::iterator::seek(art_key_type search_key,
 UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=pure")
 template <typename Key>
 key_view db<Key>::iterator::get_key() {
-  // FIXME(thompsonbry) : variable length keys. Enable this code path.
-  // The key_buffer SHOULD be propertly maintained now.  Also do this
-  // for the olc iterator.
+  UNODB_DETAIL_ASSERT(valid());  // by contract
+  // FIXME(thompsonbry) : variable length keys. The simplest case
+  // where this does not work today is a single root leaf.  In that
+  // case, there is no inode path and we can not properly track the
+  // key in the key_buffer.
   //
   // return keybuf_.get_key_view();
-  UNODB_DETAIL_ASSERT(valid());  // by contract
   const auto& e = stack_.top();
   const auto& node = e.node;
   UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);      // On a leaf.

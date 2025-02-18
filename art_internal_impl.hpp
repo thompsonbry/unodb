@@ -94,6 +94,12 @@ namespace unodb::detail {
 /// two can result in significant space savings.  Further, the
 /// key_size and the value_size can be represented as variable length
 /// unsigned integers for a more compact data record.
+///
+/// TODO(thompsonbry) The leaf should be replaced by the use of a
+/// variant {Value,node_ptr} entry in the inode along with a bit mask
+/// to indicate for each position whether it is a leaf or a node.
+/// This provides a significant optimization for secondary index use
+/// cases.
 template <class Key, class Header>
 class [[nodiscard]] basic_leaf final : public Header {
  public:

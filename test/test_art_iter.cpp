@@ -22,9 +22,6 @@
 namespace {
 
 // Test suite for an ART iterator.
-//
-// TODO(thompsonbry) variable length keys :: unit tests for
-// std::span<std::byte>
 template <class Db>
 class ARTIteratorTest : public ::testing::Test {
  public:
@@ -75,7 +72,7 @@ TYPED_TEST(ARTIteratorTest, singleLeafIteratorOneValue) {
   auto b = db.test_only_iterator();
   b.first();  // obtain iterator.
   UNODB_EXPECT_TRUE(b.valid());
-  UNODB_EXPECT_TRUE(decode(b.get_key()) == 0);
+  UNODB_EXPECT_EQ(decode(b.get_key()), 0);
   UNODB_EXPECT_TRUE(
       std::ranges::equal(b.get_val(), unodb::test::test_values[0]));
   b.next();                       // advance.
@@ -92,14 +89,14 @@ TYPED_TEST(ARTIteratorTest, I4AndTwoLeavesForwardScan) {
   b.first();  // obtain iterator.
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 0);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[0]));
   }
   b.next();  // advance
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 1);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 1);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[1]));
   }
@@ -117,14 +114,14 @@ TYPED_TEST(ARTIteratorTest, I4AndTwoLeavesReverseScan) {
   b.last();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 1);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 1);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[1]));
   }
   b.prior();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 0);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[0]));
   }
@@ -148,21 +145,21 @@ TYPED_TEST(ARTIteratorTest, C0001) {
   b.first();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa00);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 0xaa00);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[0]));
   }
   b.next();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xaa01);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 0xaa01);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[1]));
   }
   b.next();
   UNODB_EXPECT_TRUE(b.valid());
   {
-    UNODB_EXPECT_TRUE(decode(b.get_key()) == 0xab00);
+    UNODB_EXPECT_EQ(decode(b.get_key()), 0xab00);
     UNODB_EXPECT_TRUE(
         std::ranges::equal(b.get_val(), unodb::test::test_values[2]));
   }

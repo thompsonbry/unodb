@@ -118,8 +118,8 @@ static constexpr size_t INITIAL_BUFFER_CAPACITY = 256;
 /// Dump a std::span byte-wise (works on any key_view).
 template <typename T>
 [[gnu::cold]] void dump_key(std::ostream &os, key_view key) {
-  os << "key: 0x";
   const auto sz = key.size_bytes();
+  os << "key(" << sz << "): 0x";
   for (std::size_t i = 0; i < sz; ++i) unodb::detail::dump_byte(os, key[i]);
 }
 
@@ -127,8 +127,8 @@ template <typename T>
 template <typename T>
 [[gnu::cold]] void dump_key(std::ostream &os, T key) {
   if constexpr (std::is_same_v<T, key_view>) {
-    os << "key: 0x";
     const auto sz = key.size_bytes();
+    os << "key(" << sz << "): 0x";
     for (std::size_t i = 0; i < sz; ++i) unodb::detail::dump_byte(os, key[i]);
   } else {
     os << "key: 0x" << std::hex << std::setfill('0') << std::setw(sizeof(key))
