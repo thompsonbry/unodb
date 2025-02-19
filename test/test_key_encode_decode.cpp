@@ -845,6 +845,26 @@ TEST(ARTKeyEncodeDecodeTest, EncodeTextC0021) {
 #endif
 }
 
+/// Verifies that an embedded nul byte is supported.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0022) {
+  key_factory fac;
+  unodb::key_encoder enc;
+  // Use std::array rather than "C" strings since the nul would
+  // otherwise be interpreted as the end of the C string.
+  constexpr auto a1 = std::array<const std::byte, 5>{
+      std::byte{'b'}, std::byte{'r'}, std::byte{0}, std::byte{'w'},
+      std::byte{'n'}};
+  using S = std::span<const std::byte>;
+  const auto k1 = fac.make_key_view(enc.reset().encode_text(S(a1)));
+  EXPECT_EQ(k1.size_bytes(),
+            a1.size() + 1 + sizeof(unodb::key_encoder::size_type));
+#ifndef NDEBUG
+  std::cerr << "k1=";
+  unodb::detail::dump_key(std::cerr, k1);
+  std::cerr << "\n";
+#endif
+}
+
 UNODB_END_TESTS()
 
 }  // namespace
