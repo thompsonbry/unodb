@@ -47,6 +47,10 @@ class my_key_encoder : public unodb::key_encoder {
   size_t capacity() { return key_encoder::capacity(); }
   size_t size_bytes() { return key_encoder::size_bytes(); }
   void ensure_available(size_t req) { key_encoder::ensure_available(req); }
+  my_key_encoder& append_bytes(std::span<const std::byte> data) {
+    key_encoder::append_bytes(data);
+    return *this;
+  }
 };
 
 constexpr auto INITIAL_CAPACITY = my_key_encoder::get_initial_capacity();
@@ -375,51 +379,6 @@ TEST(ARTKeyEncodeDecodeTest, Int64C00010) {
                            std::numeric_limits<T>::max());
 }
 
-#ifdef UNODB_C_STRING_API
-//
-// Append span<const::byte> (aka unodb::key_view).
-//
-
-void do_encode_bytes_test(std::span<const std::byte> a) {
-  my_key_encoder enc;
-  const auto sz = a.size();
-  enc.append(a);
-  const auto cmp = std::memcmp(enc.get_key_view().data(), a.data(), sz);
-  EXPECT_EQ(0, cmp);
-  EXPECT_EQ(sz, enc.size_bytes());
-}
-
-/// Unit test look at the simple case of appending a sequence of bytes
-/// to the key_encoder.
-TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
-  constexpr auto test_data_0 = std::array<const std::byte, 3>{
-      std::byte{0x02}, std::byte{0x05}, std::byte{0x05}};
-  constexpr auto test_data_1 = std::array<const std::byte, 3>{
-      std::byte{0x03}, std::byte{0x00}, std::byte{0x05}};
-  constexpr auto test_data_2 = std::array<const std::byte, 3>{
-      std::byte{0x03}, std::byte{0x00}, std::byte{0x10}};
-  constexpr auto test_data_3 = std::array<const std::byte, 3>{
-      std::byte{0x03}, std::byte{0x05}, std::byte{0x05}};
-  constexpr auto test_data_4 = std::array<const std::byte, 3>{
-      std::byte{0x03}, std::byte{0x05}, std::byte{0x10}};
-  constexpr auto test_data_5 = std::array<const std::byte, 3>{
-      std::byte{0x03}, std::byte{0x10}, std::byte{0x05}};
-  constexpr auto test_data_6 = std::array<const std::byte, 3>{
-      std::byte{0x04}, std::byte{0x05}, std::byte{0x10}};
-  constexpr auto test_data_7 = std::array<const std::byte, 3>{
-      std::byte{0x04}, std::byte{0x10}, std::byte{0x05}};
-
-  do_encode_bytes_test(std::span<const std::byte>(test_data_0));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_1));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_2));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_3));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_4));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_5));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_6));
-  do_encode_bytes_test(std::span<const std::byte>(test_data_7));
-}
-#endif
-
 //
 // float & double tests.
 //
@@ -650,6 +609,51 @@ TEST(ARTKeyEncodeDecodeTest, DoubleC0007Order) {
 }
 
 //
+// Append span<const::byte> (aka unodb::key_view).
+//
+
+void do_encode_bytes_test(std::span<const std::byte> a) {
+  my_key_encoder enc;
+  const auto sz = a.size();
+  enc.append_bytes(a);
+  const auto cmp = std::memcmp(enc.get_key_view().data(), a.data(), sz);
+  EXPECT_EQ(0, cmp);
+  EXPECT_EQ(sz, enc.size_bytes());
+}
+
+/// Unit test look at the simple case of appending a sequence of bytes
+/// to the key_encoder.
+TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
+  constexpr auto test_data_0 = std::array<const std::byte, 3>{
+      std::byte{0x02}, std::byte{0x05}, std::byte{0x05}};
+  constexpr auto test_data_1 = std::array<const std::byte, 3>{
+      std::byte{0x03}, std::byte{0x00}, std::byte{0x05}};
+  constexpr auto test_data_2 = std::array<const std::byte, 3>{
+      std::byte{0x03}, std::byte{0x00}, std::byte{0x10}};
+  constexpr auto test_data_3 = std::array<const std::byte, 3>{
+      std::byte{0x03}, std::byte{0x05}, std::byte{0x05}};
+  constexpr auto test_data_4 = std::array<const std::byte, 3>{
+      std::byte{0x03}, std::byte{0x05}, std::byte{0x10}};
+  constexpr auto test_data_5 = std::array<const std::byte, 3>{
+      std::byte{0x03}, std::byte{0x10}, std::byte{0x05}};
+  constexpr auto test_data_6 = std::array<const std::byte, 3>{
+      std::byte{0x04}, std::byte{0x05}, std::byte{0x10}};
+  constexpr auto test_data_7 = std::array<const std::byte, 3>{
+      std::byte{0x04}, std::byte{0x10}, std::byte{0x05}};
+
+  do_encode_bytes_test(std::span<const std::byte>(test_data_0));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_1));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_2));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_3));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_4));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_5));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_6));
+  do_encode_bytes_test(std::span<const std::byte>(test_data_7));
+}
+
+#ifdef UNODB_C_STRING_API
+
+//
 // append "C" string
 //
 
@@ -669,6 +673,8 @@ TEST(ARTKeyEncodeDecodeTest, AppendCStringC0001) {
   do_encode_cstring_test("banana");
   do_encode_cstring_test("");
 }
+
+#endif  // UNODB_C_STRING_API
 
 //
 // Encoding of text fields (optionaly truncated to maxlen and padded
@@ -752,26 +758,26 @@ TEST(ARTKeyEncodeDecodeTest, EncodeTextC0001) {
 
 /// Unit test variant examines truncation for a key whose length is
 /// maxlen - 1.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0002) {
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0012) {
   unodb::key_encoder enc;
   do_pad_test_large_string(enc, unodb::key_encoder::maxlen - 1);
 }
 
 /// Unit test variant examines truncation for a key whose length is
 /// exactly maxlen.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0003) {
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0013) {
   unodb::key_encoder enc;
   do_pad_test_large_string(enc, unodb::key_encoder::maxlen);
 }
 
 /// Unit test where the key is truncated.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0004) {
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0014) {
   unodb::key_encoder enc;
   do_pad_test_large_string(enc, unodb::key_encoder::maxlen + 1, true);
 }
 
 /// Unit test where the key is truncated.
-TEST(ARTKeyEncodeDecodeTest, EncodeTextC0005) {
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0015) {
   unodb::key_encoder enc;
   do_pad_test_large_string(enc, unodb::key_encoder::maxlen + 2, true);
 }
@@ -780,22 +786,63 @@ TEST(ARTKeyEncodeDecodeTest, EncodeTextC0005) {
 /// break, bre}, including verifying that the pad byte causes a prefix
 /// such as "bro" to sort before a term which extends that prefix,
 /// such as "brown".
-TEST(ARTKeyEncodeDecodeTest, DISABLED_EncodeTextC0020) {
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0020) {
   key_factory fac;
   unodb::key_encoder enc;
-  fac.make_key_view(enc.reset().encode_text("brown"));
-  fac.make_key_view(enc.reset().encode_text("bro"));
-  fac.make_key_view(enc.reset().encode_text("break"));
-  fac.make_key_view(enc.reset().encode_text("bre"));
+  const auto k0 = fac.make_key_view(enc.reset().encode_text("brown"));
+  const auto k1 = fac.make_key_view(enc.reset().encode_text("bro"));
+  const auto k2 = fac.make_key_view(enc.reset().encode_text("break"));
+  const auto k3 = fac.make_key_view(enc.reset().encode_text("bre"));
+#ifndef NDEBUG
+  std::cerr << "k0=";
+  unodb::detail::dump_key(std::cerr, k0);
+  std::cerr << "\n";
+  std::cerr << "k1=";
+  unodb::detail::dump_key(std::cerr, k1);
+  std::cerr << "\n";
+  std::cerr << "k2=";
+  unodb::detail::dump_key(std::cerr, k2);
+  std::cerr << "\n";
+  std::cerr << "k3=";
+  unodb::detail::dump_key(std::cerr, k3);
+  std::cerr << "\n";
+#endif
+  // Now sort and look at the expected sort order.
   std::sort(fac.key_views.begin(), fac.key_views.end());
-  EXPECT_TRUE(std::strcmp("bro", reinterpret_cast<const char*>(
-                                     fac.key_views[0].data())) == 0);
-  EXPECT_TRUE(std::strcmp("brown", reinterpret_cast<const char*>(
-                                       fac.key_views[1].data())) == 0);
-  EXPECT_TRUE(std::strcmp("bre", reinterpret_cast<const char*>(
-                                     fac.key_views[2].data())) == 0);
-  EXPECT_TRUE(std::strcmp("break", reinterpret_cast<const char*>(
-                                       fac.key_views[3].data())) == 0);
+  EXPECT_TRUE(compare(k3, fac.key_views[0]) == 0);  // bre
+  EXPECT_TRUE(compare(k2, fac.key_views[1]) == 0);  // break
+  EXPECT_TRUE(compare(k1, fac.key_views[2]) == 0);  // bro
+  EXPECT_TRUE(compare(k0, fac.key_views[3]) == 0);  // brown
+}
+
+/// Verify that trailing nul (0x00) bytes are removed as part of the
+/// truncation and logical padding logic.
+TEST(ARTKeyEncodeDecodeTest, EncodeTextC0021) {
+  key_factory fac;
+  unodb::key_encoder enc;
+  // Use std::array rather than "C" strings since the nul would
+  // otherwise be interpreted as the end of the C string.
+  constexpr auto a1 = std::array<const std::byte, 5>{
+      std::byte{'b'}, std::byte{'r'}, std::byte{'o'}, std::byte{'w'},
+      std::byte{'n'}};
+  constexpr auto a2 = std::array<const std::byte, 6>{
+      std::byte{'b'}, std::byte{'r'}, std::byte{'o'},
+      std::byte{'w'}, std::byte{'n'}, std::byte{0x00}};
+  using S = std::span<const std::byte>;
+  const auto k1 = fac.make_key_view(enc.reset().encode_text(S(a1)));
+  const auto k2 = fac.make_key_view(enc.reset().encode_text(S(a2)));
+  EXPECT_TRUE(compare(k1, k2) == 0);  // same sort order.
+  EXPECT_EQ(k1.size(), k2.size());    // same number of bytes.
+  EXPECT_EQ(k1.size_bytes(),
+            a1.size() + 1 + sizeof(unodb::key_encoder::size_type));
+#ifndef NDEBUG
+  std::cerr << "k1=";
+  unodb::detail::dump_key(std::cerr, k1);
+  std::cerr << "\n";
+  std::cerr << "k2=";
+  unodb::detail::dump_key(std::cerr, k2);
+  std::cerr << "\n";
+#endif
 }
 
 UNODB_END_TESTS()

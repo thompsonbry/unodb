@@ -265,8 +265,9 @@ class key_encoder {
   ///
   /// Note: unodb does not support keys longer than a u32 size, so we
   /// subtract off
-  static constexpr auto maxlen{std::numeric_limits<size_type>::max() -
-                               sizeof(pad) - sizeof(size_type)};
+  static constexpr auto maxlen{static_cast<size_type>(
+      std::numeric_limits<size_type>::max() - sizeof(pad) - sizeof(size_type))};
+  static_assert(sizeof(maxlen) == sizeof(size_type));
 
  protected:
   // highest bit for various data types.
@@ -448,30 +449,25 @@ class key_encoder {
   /// as configured by the application (locale, collation strength,
   /// decomposition mode).
   ///
-  /// @param A view onto some sequence of bytes, which MUST NOT
-  /// include a nul (0x00) byte.  The view will be truncated to at
-  /// most #maxlen bytes.  A #pad byte and a run count are added to
-  /// make all text fields logically #maxlen bytes. The truncation and
-  /// padding (a) ensures that no key is a prefix of another key; and
-  /// (b) keeps multi-field keys with embedded variable length text
-  /// fields aligned such that the field following a variable length
-  /// text field does not bleed into the lexiographic ordering of the
-  /// variable length text field.
+  /// @param A view onto some sequence of bytes.  The view will be
+  /// truncated to at most #maxlen bytes.  A #pad byte and a run count
+  /// are added to make all text fields logically #maxlen bytes. The
+  /// truncation and padding (a) ensures that no key is a prefix of
+  /// another key; and (b) keeps multi-field keys with embedded
+  /// variable length text fields aligned such that the field
+  /// following a variable length text field does not bleed into the
+  /// lexiographic ordering of the variable length text field.
   key_encoder &encode_text(std::span<const std::byte> text) {
     // truncate view to at most maxlen bytes.
     text = (text.size_bytes() > maxlen) ? text.subspan(0, maxlen) : text;
-    // Note: Because the [pad] is 0x00, we do not need to strip off
-    // trailing pad bytes in the [text] since 0x00 is disallowed.  If
-    // the pad byte was 0x20 (space), then we WOULD need to strip off
-    // any trailing space characters here by walking backwards over
-    // the text and finding the first non-space character.  A failure
-    // to do that when [pad] is a legal character would result in
-    // "...0x20" not comparing as equals with "...".
-    static_assert(static_cast<std::byte>(0) == pad);  // codifies assertion
-    //
+    // normalize padding by stripping off any trailing [pad] bytes.
+    auto sz = text.size_bytes();
+    for (; sz > 0; sz--) {
+      if (text[sz - 1] != pad) break;
+    }
+    text = text.subspan(0, sz);  // adjust span in case truncated.
     // Ensure enough room for the text, the pad byte, and the
     // run-length encoding of the pad byte.
-    const auto sz{text.size_bytes()};
     ensure_available(sz + 1 + sizeof(size_type));
     const auto padlen{static_cast<size_type>(maxlen - sz)};
     append_bytes(text);                      // append bytes to the buffer.
