@@ -375,6 +375,7 @@ TEST(ARTKeyEncodeDecodeTest, Int64C00010) {
                            std::numeric_limits<T>::max());
 }
 
+#ifdef UNODB_C_STRING_API
 //
 // Append span<const::byte> (aka unodb::key_view).
 //
@@ -417,6 +418,7 @@ TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
   do_encode_bytes_test(std::span<const std::byte>(test_data_6));
   do_encode_bytes_test(std::span<const std::byte>(test_data_7));
 }
+#endif
 
 //
 // float & double tests.
@@ -724,11 +726,9 @@ void do_simple_pad_test(unodb::key_encoder& enc, const char* s) {
 /// do_simple_pad_test().
 void do_pad_test_large_string(unodb::key_encoder& enc, size_t nbytes,
                               bool expect_truncation = false) {
-  UNODB_DETAIL_DISABLE_WARNING("-Wcppcoreguidelines-no-malloc")
-  UNODB_DETAIL_DISABLE_WARNING("-Whicpp-no-malloc")
-  std::unique_ptr<void, decltype(std::free)*> ptr{std::malloc(nbytes),
-                                                  std::free};
-  UNODB_DETAIL_RESTORE_WARNINGS()
+  // NOLINTNEXTLINE(cppcoreguidelines-no-malloc,cppcoreguidelines-owning-memory,hicpp-no-malloc)
+  const std::unique_ptr<void, decltype(std::free)*> ptr{std::malloc(nbytes),
+                                                        std::free};
   auto* p{reinterpret_cast<char*>(ptr.get())};
   std::memset(p, 'a', nbytes);  // fill with some char.
   do_simple_pad_test(enc, p);

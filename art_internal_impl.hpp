@@ -75,31 +75,18 @@ namespace unodb::detail {
 /// information in the header.  The leaf contains a copy of the key
 /// and a copy of the value.
 ///
-/// TODO(thompsonbry) variable length keys - update documentation
-/// about what is stored in the leaf once we have a clear decision.
-///
-/// TODO(thompsonbry) : variable length keys.  Consider adding a
-/// key_prefix to the leaf in which case the tree to the leaf needs to
-/// hold the full key except for that trailing 0-7 bytes which is
-/// stored on the leaf.
-///
-/// TODO(thompsonbry) : variable length keys.  The key should be
-/// optional on the leaf, except for perhaps a key_prefix.
-///
-/// TODO(thompsonbry) : variable length keys.  The key_size can be
-/// elided for fixed length keys.  The value size can be elided for
-/// fixed length values.  Both are common cases and should be handled
-/// via appropriate template specialization.  This is most important
-/// when the allocations are small and getting into a smaller power of
-/// two can result in significant space savings.  Further, the
-/// key_size and the value_size can be represented as variable length
-/// unsigned integers for a more compact data record.
-///
-/// TODO(thompsonbry) The leaf should be replaced by the use of a
-/// variant {Value,node_ptr} entry in the inode along with a bit mask
-/// to indicate for each position whether it is a leaf or a node.
-/// This provides a significant optimization for secondary index use
-/// cases.
+/// TODO(thompsonbry). Partial or no key in leaf.  Once we template
+/// for the Value type, we can optimize for u64 or smaller values, the
+/// leaf should be replaced by the use of a variant {Value,node_ptr}
+/// entry in the inode along with a bit mask to indicate for each
+/// position whether it is a leaf or a node.  This provides a
+/// significant optimization for secondary index use cases (tree
+/// height is reduced by one, no small allocations for leaves, the key
+/// is no longer explicitly stored, the key size is no longer stored,
+/// the value size is no longer stored, etc.).  However, we would
+/// still need to allocate a leaf for the case where Value is a
+/// std::span.  But this becomes a simple immutable data structure
+/// which exists solely to wrap the Value.
 template <class Key, class Header>
 class [[nodiscard]] basic_leaf final : public Header {
  public:
@@ -138,18 +125,7 @@ class [[nodiscard]] basic_leaf final : public Header {
 
   /// Return the binary comparable key stored in the leaf
   //
-  // TODO(thompsonbry) : variable length keys.  Where possible this
-  // must be changed to a method comparing a caller's key suffix
-  // against the key suffix stored in the leaf.  Calling contexts
-  // which assume that they can recover the entire key from the leaf
-  // are trouble for variable length keys.  Instead, the key must be
-  // buffered during the traversal down to the leaf and the leaf might
-  // have a tail fragment of the key.  That buffer can be wrapped and
-  // exposed as a std::span<const std::byte> (aka key_view).  If used,
-  // it should be renamed to get_key_view() and conditionally compiled
-  // depending on how we template the db, mutex_db, and olc_db (e.g.,
-  // iff they support storing the key in the leaf as a time over space
-  // optimization)
+  // TODO(thompsonbry) : Partial or no key in leaf?
   [[nodiscard, gnu::pure]] constexpr auto get_key() const noexcept {
     if constexpr (std::is_same_v<Key, key_view>) {
       return art_key_type{get_key_view()};
@@ -157,8 +133,7 @@ class [[nodiscard]] basic_leaf final : public Header {
       // Use memcpy since alignment is not guaranteed because the
       // [key] is not an explicit part of the leaf data structure.
       //
-      // TODO(thompsonbry) varkey - memory align leaf::data[0] to 8
-      // bytes?
+      // TODO(thompsonbry) memory align leaf::data[0] to 8 bytes?
       Key u{};
       std::memcpy(&u, data, sizeof(u));
       // Note: The encoded key is stored in the leaf.  Since the
@@ -170,20 +145,14 @@ class [[nodiscard]] basic_leaf final : public Header {
 
   /// Return a view onto the key stored in the leaf.
   //
-  // TODO(thompsonbry) : variable length keys.  Right now we are
-  // storing the full key in the leaf.  However, this will be changed
-  // to store only the key_prefix.  Or if we do store full keys (e.g.,
-  // for a short fixed width key type), then in that case the key view
-  // could be onto the full key.
+  // TODO(thompsonbry) : Partial or no key in leaf?
   [[nodiscard, gnu::pure]] constexpr auto get_key_view() const noexcept {
     return key_view{data, key_size};
   }
 
   /// Return true iff the two keys are the same.
   //
-  // TODO(thompsonbry) : variable length keys.  This should be changed
-  // to a method comparing a caller's key suffix against the key
-  // suffix stored in the leaf.
+  // TODO(thompsonbry) : Partial or no key in leaf?
   [[nodiscard, gnu::pure]] constexpr auto matches(
       art_key_type k) const noexcept {
     return cmp(k) == 0;
@@ -193,9 +162,7 @@ class [[nodiscard]] basic_leaf final : public Header {
   /// Return GT ZERO (0) if this key is greater than the caller's key.
   /// Return ZERO (0) if the two keys are the same.
   //
-  // TODO(thompsonbry) : variable length keys.  This should be changed
-  // to a method comparing a caller's key suffix against the key
-  // suffix stored in the leaf.
+  // TODO(thompsonbry) : Partial or no key in leaf?
   [[nodiscard, gnu::pure]] constexpr auto cmp(art_key_type k) const noexcept {
     return k.cmp(get_key_view());
   }
@@ -573,10 +540,11 @@ static constexpr key_prefix_size key_prefix_capacity = 7;
 /// view. So the data are atomically copied into this structure and it
 /// can expose the key_view over those data.
 union [[nodiscard]] key_prefix_snapshot {
-  // FIXME(thompsonbry) Can this be replaced by [using
+  // TODO(thompsonbry) Can this be replaced by [using
   // key_prefix_snapshot = key_prefix<std::uint64_t,
   // in_fake_critical_section>]?  We need the snapshot to be
-  // atomic. Does that work with this using decl?
+  // atomic. Does that work with this using decl? [it does not work
+  // trivially.]
  private:
   using key_prefix_data = std::array<std::byte, key_prefix_capacity>;
   struct [[nodiscard]] inode_fields {

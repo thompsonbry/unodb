@@ -23,6 +23,13 @@
 #include "heap.hpp"
 #include "portability_builtins.hpp"
 
+// FIXME(thompsonbry) - I think we should disable the "C String" API
+// since it can not be made generally useful without taking on some
+// other significant changes in the ART data structure (such as a leaf
+// associated with each inode).  For now, declaring a constant which
+// will allow us to conditionally compile the API.
+#define UNODB_C_STRING_API
+
 namespace unodb {
 
 template <typename Key>
@@ -281,6 +288,17 @@ class key_encoder {
     }
   }
 
+  /// Append a sequence of bytes to the key.  The caller is
+  /// responsible for not violating the ART contract (no key may be a
+  /// prefix of another key).
+  key_encoder &append_bytes(std::span<const std::byte> data) {
+    const auto sz = data.size_bytes();
+    ensure_available(sz);
+    std::memcpy(buf + off, data.data(), sz);
+    off += sz;
+    return *this;
+  }
+
  public:
   /// setup a new key encoder.
   key_encoder() noexcept = default;
@@ -456,7 +474,7 @@ class key_encoder {
     const auto sz{text.size_bytes()};
     ensure_available(sz + 1 + sizeof(size_type));
     const auto padlen{static_cast<size_type>(maxlen - sz)};
-    append(text);                            // append bytes to the buffer.
+    append_bytes(text);                      // append bytes to the buffer.
     encode(static_cast<std::uint8_t>(pad));  // encode as unsigned byte
     encode(padlen);  // logical run-length of the pad byte.
     return *this;
@@ -475,6 +493,7 @@ class key_encoder {
         reinterpret_cast<const std::byte *>(data), len));
   }
 
+#ifdef UNODB_C_STRING_API
   //
   // Simple case - only acceptable if you do not need Unicode
   // collation semantics and the data will be the final component of
@@ -549,6 +568,7 @@ class key_encoder {
     return append(std::span<const std::byte>(
         reinterpret_cast<const std::byte *>(data), len));
   }
+#endif
 
  private:
   /// Ensure that we have at least the specified capacity in the
