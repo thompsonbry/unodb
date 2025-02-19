@@ -261,10 +261,9 @@ class key_encoder {
   /// The maximum length of a text component of the key.  Keys are
   /// truncated to at most this many bytes and then logically extended
   /// using the #pad byte and a trailing run length until the field is
-  /// logically #maxlen bytes wide.
-  ///
-  /// Note: unodb does not support keys longer than a u32 size, so we
-  /// subtract off
+  /// logically #maxlen bytes wide.  This field is computed such that
+  /// the total byte width of the encoded text can be indexed by
+  /// sizeof(size_type).
   static constexpr auto maxlen{static_cast<size_type>(
       std::numeric_limits<size_type>::max() - sizeof(pad) - sizeof(size_type))};
   static_assert(sizeof(maxlen) == sizeof(size_type));
@@ -510,8 +509,8 @@ class key_encoder {
   /// handle this case by (a) truncating to maxlen; and (b) logically
   /// padding out all text fields to maxlen.
   ///
-  /// @param data A sequence of bytes that will be appended to the key
-  /// - the byte 0x00 MUST NOT appear in the data.
+  /// @param data A sequence of bytes that will be appended to the
+  /// key.
   key_encoder &append(std::span<const std::byte> data) {
     const auto sz = data.size_bytes();
     ensure_available(sz);
@@ -534,8 +533,8 @@ class key_encoder {
   /// handle this case by (a) truncating to maxlen; and (b) logically
   /// padding out all text fields to maxlen.
   ///
-  /// @param data A sequence of bytes that will be appended to the key
-  /// - the byte 0x00 MUST NOT appear in the data.
+  /// @param data A sequence of bytes that will be appended to the
+  /// key.
   key_encoder &append(std::string_view data) {
     return append(std::span<const std::byte>(
         reinterpret_cast<const std::byte *>(data.cbegin()), data.size()));
@@ -556,9 +555,8 @@ class key_encoder {
   /// handle this case by (a) truncating to maxlen; and (b) logically
   /// padding out all text fields to maxlen.
   ///
-  /// @param data A sequence of bytes that will be appended to the
-  /// key.  The data MUST be terminated by a trailing nul byte
-  /// (0x00). The nul byte WILL NOT be copied into the key.
+  /// @param data A C string containing a sequence of bytes that will
+  /// be appended to the key.
   key_encoder &append(const char *data) {
     const auto len = strlen(data);
     return append(std::span<const std::byte>(
