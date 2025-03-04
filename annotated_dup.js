@@ -6,7 +6,9 @@ var annotated_dup =
           [ "tree_shape_snapshot", "classunodb_1_1benchmark_1_1detail_1_1tree__shape__snapshot.html", null ]
         ] ],
         [ "batched_prng", "classunodb_1_1benchmark_1_1batched__prng.html", null ],
-        [ "concurrent_benchmark", "classunodb_1_1benchmark_1_1concurrent__benchmark.html", null ]
+        [ "concurrent_benchmark", "classunodb_1_1benchmark_1_1concurrent__benchmark.html", null ],
+        [ "growing_tree_node_stats", "classunodb_1_1benchmark_1_1growing__tree__node__stats.html", null ],
+        [ "tree_stats", "structunodb_1_1benchmark_1_1tree__stats.html", null ]
       ] ],
       [ "detail", "namespaceunodb_1_1detail.html", [
         [ "basic_art_key", "structunodb_1_1detail_1_1basic__art__key.html", "structunodb_1_1detail_1_1basic__art__key" ],
@@ -24,9 +26,9 @@ var annotated_dup =
         [ "basic_node_ptr", "classunodb_1_1detail_1_1basic__node__ptr.html", null ],
         [ "db_inode_qsbr_deleter", "classunodb_1_1detail_1_1db__inode__qsbr__deleter.html", null ],
         [ "db_leaf_qsbr_deleter", "classunodb_1_1detail_1_1db__leaf__qsbr__deleter.html", null ],
-        [ "dealloc_vector_list_node", "structunodb_1_1detail_1_1dealloc__vector__list__node.html", null ],
+        [ "dealloc_vector_list_node", "structunodb_1_1detail_1_1dealloc__vector__list__node.html", "structunodb_1_1detail_1_1dealloc__vector__list__node" ],
         [ "deallocation_request", "structunodb_1_1detail_1_1deallocation__request.html", "structunodb_1_1detail_1_1deallocation__request" ],
-        [ "deferred_requests", "classunodb_1_1detail_1_1deferred__requests.html", null ],
+        [ "deferred_requests", "classunodb_1_1detail_1_1deferred__requests.html", "classunodb_1_1detail_1_1deferred__requests" ],
         [ "dependent_false", "structunodb_1_1detail_1_1dependent__false.html", null ],
         [ "fake_inode", "classunodb_1_1detail_1_1fake__inode.html", null ],
         [ "impl_helpers", "structunodb_1_1detail_1_1impl__helpers.html", null ],
