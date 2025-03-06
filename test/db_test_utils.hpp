@@ -595,6 +595,8 @@ class [[nodiscard]] tree_verifier final {
   }
   // NOLINTEND(modernize-use-constraints)
 
+  void assert_root_not_leaf() const { test_db.assert_root_not_leaf(); }
+
   /// Verify that each key and value in the internal ground truth collection can
   /// be found in the test db. This also performs a full scan of the test db and
   /// verify that each (key,val) visited in lexicographic order (we can't probe

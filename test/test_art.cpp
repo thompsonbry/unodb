@@ -46,26 +46,28 @@ TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeEmptyValue) {
   verifier.check_absent_keys({1});
   verifier.insert(1, {});
 
+  verifier.assert_root_not_leaf();
   verifier.check_present_values();
   verifier.check_absent_keys({0});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
-#endif  // UNODB_DETAIL_WITH_STATS
+  verifier.assert_node_counts({0, 1, 0, 0, 0});  // one I4
+  verifier.assert_growing_inodes({1, 0, 0, 0});  // one I4
+#endif                                           // UNODB_DETAIL_WITH_STATS
 }
 
 TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeNonemptyValue) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.insert(1, unodb::test::test_values[2]);
 
+  verifier.assert_root_not_leaf();
   verifier.check_present_values();
   verifier.check_absent_keys({0, 2});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
-#endif  // UNODB_DETAIL_WITH_STATS
+  verifier.assert_node_counts({0, 1, 0, 0, 0});  // one I4
+  verifier.assert_growing_inodes({1, 0, 0, 0});  // one I4
+#endif                                           // UNODB_DETAIL_WITH_STATS
 }
 
 UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
@@ -90,15 +92,18 @@ TYPED_TEST(ARTCorrectnessTest, TooLongValue) {
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+// TODO(thompsonbry) no root leaf. rename test to reflect changes in
+// ART maintenance.
 TYPED_TEST(ARTCorrectnessTest, ExpandLeafToNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert(0, unodb::test::test_values[1]);
+  verifier.assert_root_not_leaf();
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
-#endif  // UNODB_DETAIL_WITH_STATS
+  verifier.assert_node_counts({0, 1, 0, 0, 0});  // one I4
+  verifier.assert_growing_inodes({1, 0, 0, 0});  // one I4
+#endif                                           // UNODB_DETAIL_WITH_STATS
 
   verifier.insert(1, unodb::test::test_values[2]);
 

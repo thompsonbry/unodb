@@ -76,6 +76,40 @@ TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
   verifier.check_present_values();  // checks keys and key ordering.
 }
 
+/// This test inserts a single key which is longer than the
+/// unodb::detail::key_prefix plus the `key_byte`.  In this case, the
+/// key needs to be unfolded as a sequence of inodes until the entire
+/// key is absorbed.  Thus, the tree depth for this single key is
+/// `key.size_bytes() / 8`.
+///
+// TODO(thompsonbry) no root leaf.  Write more unit tests to probe
+// more cases.
+TYPED_TEST(ARTKeyViewCorrectnessTest, SingleKeyUnfoldedByINodePath) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  // key is an 8-byte prefix of the key we insert.
+  constexpr auto a0 = std::array<std::byte, 8>{
+      std::byte{0x00}, std::byte{0x01}, std::byte{0x02}, std::byte{0x03},
+      std::byte{0x04}, std::byte{0x05}, std::byte{0x06}, std::byte{0x07}};
+  // key is 16-bytes long, so it terminates on the second inode.
+  constexpr auto a1 = std::array<std::byte, 16>{
+      std::byte{0x00}, std::byte{0x01}, std::byte{0x02}, std::byte{0x03},
+      std::byte{0x04}, std::byte{0x05}, std::byte{0x06}, std::byte{0x07},
+      std::byte{0x10}, std::byte{0x11}, std::byte{0x12}, std::byte{0x13},
+      std::byte{0x14}, std::byte{0x15}, std::byte{0x16}, std::byte{0x17}};
+  unodb::key_view k0{a0};
+  unodb::key_view k1{a1};
+  verifier.insert(k1, unodb::test::test_values[2]);
+
+  verifier.assert_root_not_leaf();
+  verifier.check_present_values();
+  verifier.check_absent_keys({k0});
+
+#ifdef UNODB_DETAIL_WITH_STATS
+  verifier.assert_node_counts({0, 2, 0, 0, 0});  // two I4
+  verifier.assert_growing_inodes({2, 0, 0, 0});  // two I4
+#endif                                           // UNODB_DETAIL_WITH_STATS
+}
+
 UNODB_END_TESTS()
 
 }  // namespace

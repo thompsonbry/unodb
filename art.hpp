@@ -509,10 +509,22 @@ class db final {
   // TEST ONLY METHODS
   //
 
-  // Used to write the iterator tests.
+  /// TEST ONLY (used to write the iterator tests).
   auto test_only_iterator() { return iterator(*this); }
 
+  /// TEST ONLY (used to verify that the root is not a leaf (it may be
+  /// nullptr)).
+  void assert_root_not_leaf() const {
+    auto node = root;
+    if (node == nullptr) return;
+    auto node_type = node.type();
+    if (node_type == node_type::LEAF)
+      throw std::runtime_error("root is a leaf");
+  }
+
+  //
   // Stats
+  //
 
 #ifdef UNODB_DETAIL_WITH_STATS
 
