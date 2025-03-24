@@ -149,8 +149,8 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structunodb_1_1detail_1_1dealloc__vector__list__node.html">dealloc_vector_list_node</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Node in a linked list for orphaned (issued by threads that have quit since) deallocation requests.  <a href="structunodb_1_1detail_1_1dealloc__vector__list__node.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structunodb_1_1detail_1_1deallocation__request.html">deallocation_request</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Pending deallocation request for QSBR-managed memory.  <a href="structunodb_1_1detail_1_1deallocation__request.html#details">More...</a><br /></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classunodb_1_1detail_1_1deallocation__request.html">deallocation_request</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Pending deallocation request for QSBR-managed memory.  <a href="classunodb_1_1detail_1_1deallocation__request.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classunodb_1_1detail_1_1deferred__requests.html">deferred_requests</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A scope guard that executes deallocation requests upon destruction.  <a href="classunodb_1_1detail_1_1deferred__requests.html#details">More...</a><br /></td></tr>
@@ -209,6 +209,7 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">Helper for registering the main thread with QSBR.  <a href="structunodb_1_1detail_1_1set__qsbr__per__thread__in__main__thread.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classunodb_1_1detail_1_1thread__sync.html">thread_sync</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A simple one-way synchronization mechanism to make one thread wait until another one signals it.  <a href="classunodb_1_1detail_1_1thread__sync.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classunodb_1_1detail_1_1tree__depth.html">tree_depth</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">A typed class representing the number of key bytes consumed along some path in the tree.  <a href="classunodb_1_1detail_1_1tree__depth.html#details">More...</a><br /></td></tr>
@@ -356,7 +357,7 @@ using&#160;</td><td class="memItemRight" valign="bottom"><b>qsbr_thread_count_ty
 <tr class="memdesc:a78bbb5caf501cb09276604dab64723bf"><td class="mdescLeft">&#160;</td><td class="mdescRight">Type for counting QSBR-managed threads. <br /></td></tr>
 <tr class="separator:a78bbb5caf501cb09276604dab64723bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3c98952bb0651c3bd50ab5de879cfeff" id="r_a3c98952bb0651c3bd50ab5de879cfeff"><td class="memItemLeft" align="right" valign="top"><a id="a3c98952bb0651c3bd50ab5de879cfeff" name="a3c98952bb0651c3bd50ab5de879cfeff"></a>
-using&#160;</td><td class="memItemRight" valign="bottom"><b>dealloc_request_vector</b> = std::vector&lt; <a class="el" href="structunodb_1_1detail_1_1deallocation__request.html">deallocation_request</a> &gt;</td></tr>
+using&#160;</td><td class="memItemRight" valign="bottom"><b>dealloc_request_vector</b> = std::vector&lt; <a class="el" href="classunodb_1_1detail_1_1deallocation__request.html">deallocation_request</a> &gt;</td></tr>
 <tr class="memdesc:a3c98952bb0651c3bd50ab5de879cfeff"><td class="mdescLeft">&#160;</td><td class="mdescRight">Vector of deallocation requests. <br /></td></tr>
 <tr class="separator:a3c98952bb0651c3bd50ab5de879cfeff"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -403,12 +404,12 @@ template&lt;typename T &gt; </td></tr>
 <tr class="memitem:ae50fbbc0bfcabb917d60da68dd6ea193" id="r_ae50fbbc0bfcabb917d60da68dd6ea193"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#ae50fbbc0bfcabb917d60da68dd6ea193">ensure_capacity</a> (std::byte *&amp;buf, size_t &amp;cap, size_t off, size_t min_capacity)</td></tr>
 <tr class="memdesc:ae50fbbc0bfcabb917d60da68dd6ea193"><td class="mdescLeft">&#160;</td><td class="mdescRight">Utility method for power of two expansion of buffers (internal API, forward declaration).  <br /></td></tr>
 <tr class="separator:ae50fbbc0bfcabb917d60da68dd6ea193"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af5030f37896f8bba5cc0b0ae42c13e39" id="r_af5030f37896f8bba5cc0b0ae42c13e39"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#af5030f37896f8bba5cc0b0ae42c13e39">compare</a> (const void *a, const size_t alen, const void *b, const size_t blen)</td></tr>
-<tr class="memdesc:af5030f37896f8bba5cc0b0ae42c13e39"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lexicographic comparison of bytes.  <br /></td></tr>
-<tr class="separator:af5030f37896f8bba5cc0b0ae42c13e39"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ae5f3470a117bc313445d80544c37fb87" id="r_ae5f3470a117bc313445d80544c37fb87"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#ae5f3470a117bc313445d80544c37fb87">compare</a> (const <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> a, const <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> b)</td></tr>
-<tr class="memdesc:ae5f3470a117bc313445d80544c37fb87"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lexicographic comparison of key_views.  <br /></td></tr>
-<tr class="separator:ae5f3470a117bc313445d80544c37fb87"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a60d6d8602d9590be64fd0031611bbf07" id="r_a60d6d8602d9590be64fd0031611bbf07"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a60d6d8602d9590be64fd0031611bbf07">compare</a> (const void *a, const size_t alen, const void *b, const size_t blen) noexcept</td></tr>
+<tr class="memdesc:a60d6d8602d9590be64fd0031611bbf07"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lexicographic comparison of bytes.  <br /></td></tr>
+<tr class="separator:a60d6d8602d9590be64fd0031611bbf07"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a749463245ed07a65e2df960ac1beb847" id="r_a749463245ed07a65e2df960ac1beb847"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a749463245ed07a65e2df960ac1beb847">compare</a> (const <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> a, const <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> b) noexcept</td></tr>
+<tr class="memdesc:a749463245ed07a65e2df960ac1beb847"><td class="mdescLeft">&#160;</td><td class="mdescRight">Lexicographic comparison of key_views.  <br /></td></tr>
+<tr class="separator:a749463245ed07a65e2df960ac1beb847"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7d9586a5c7fc84c4bbc05b716fd1ce03" id="r_a7d9586a5c7fc84c4bbc05b716fd1ce03"><td class="memItemLeft" align="right" valign="top">std::uint64_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a7d9586a5c7fc84c4bbc05b716fd1ce03">get_u64</a> (<a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">key_view</a> key) noexcept</td></tr>
 <tr class="memdesc:a7d9586a5c7fc84c4bbc05b716fd1ce03"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the first 64-bits of the encoded key.  <br /></td></tr>
 <tr class="separator:a7d9586a5c7fc84c4bbc05b716fd1ce03"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -433,35 +434,30 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>msg_stacktrace_abort<
 <tr class="memitem:a73ccae20a7fde29e0381b903bbf0c58a" id="r_a73ccae20a7fde29e0381b903bbf0c58a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a73ccae20a7fde29e0381b903bbf0c58a">assert_failure</a> (const char *file, int line, const char *func, const char *condition) noexcept</td></tr>
 <tr class="memdesc:a73ccae20a7fde29e0381b903bbf0c58a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Assert failure implementation for standalone debug build.  <br /></td></tr>
 <tr class="separator:a73ccae20a7fde29e0381b903bbf0c58a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0d491f30fd1fb7d9f1b689bd13787a25" id="r_a0d491f30fd1fb7d9f1b689bd13787a25"><td class="memTemplParams" colspan="2"><a id="a0d491f30fd1fb7d9f1b689bd13787a25" name="a0d491f30fd1fb7d9f1b689bd13787a25"></a>
+<tr class="memitem:aa11dfd956f06126308971d516d631d85" id="r_aa11dfd956f06126308971d516d631d85"><td class="memTemplParams" colspan="2"><a id="aa11dfd956f06126308971d516d631d85" name="aa11dfd956f06126308971d516d631d85"></a>
 template&lt;typename T &gt; </td></tr>
-<tr class="memitem:a0d491f30fd1fb7d9f1b689bd13787a25"><td class="memTemplItemLeft" align="right" valign="top">constexpr T&#160;</td><td class="memTemplItemRight" valign="bottom"><b>msb</b> ()</td></tr>
-<tr class="memdesc:a0d491f30fd1fb7d9f1b689bd13787a25"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return value with the most significant bit set for the indicated type. <br /></td></tr>
-<tr class="separator:a0d491f30fd1fb7d9f1b689bd13787a25"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3ad43e31791f2eca2de685bf1dd31a5f" id="r_a3ad43e31791f2eca2de685bf1dd31a5f"><td class="memItemLeft" align="right" valign="top"><a id="a3ad43e31791f2eca2de685bf1dd31a5f" name="a3ad43e31791f2eca2de685bf1dd31a5f"></a>
-template&lt;&gt; </td></tr>
-<tr class="memitem:a3ad43e31791f2eca2de685bf1dd31a5f"><td class="memTemplItemLeft" align="right" valign="top">constexpr std::uint64_t&#160;</td><td class="memTemplItemRight" valign="bottom"><b>msb&lt; std::uint64_t &gt;</b> ()</td></tr>
-<tr class="separator:a3ad43e31791f2eca2de685bf1dd31a5f"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a8e06f531545f3567ffccecdfb842444b" id="r_a8e06f531545f3567ffccecdfb842444b"><td class="memItemLeft" align="right" valign="top"><a id="a8e06f531545f3567ffccecdfb842444b" name="a8e06f531545f3567ffccecdfb842444b"></a>
-template&lt;&gt; </td></tr>
-<tr class="memitem:a8e06f531545f3567ffccecdfb842444b"><td class="memTemplItemLeft" align="right" valign="top">constexpr std::uint32_t&#160;</td><td class="memTemplItemRight" valign="bottom"><b>msb&lt; std::uint32_t &gt;</b> ()</td></tr>
-<tr class="separator:a8e06f531545f3567ffccecdfb842444b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa11dfd956f06126308971d516d631d85"><td class="memTemplItemLeft" align="right" valign="top">consteval T&#160;</td><td class="memTemplItemRight" valign="bottom"><b>msb</b> () noexcept</td></tr>
+<tr class="memdesc:aa11dfd956f06126308971d516d631d85"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return value with most significant bit set for the indicated type <em>T</em>. <br /></td></tr>
+<tr class="separator:aa11dfd956f06126308971d516d631d85"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1a84ca13cdff9a7f70720ddb0041d0d1" id="r_a1a84ca13cdff9a7f70720ddb0041d0d1"><td class="memTemplParams" colspan="2">template&lt;typename U , typename F &gt; </td></tr>
 <tr class="memitem:a1a84ca13cdff9a7f70720ddb0041d0d1"><td class="memTemplItemLeft" align="right" valign="top">U&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a1a84ca13cdff9a7f70720ddb0041d0d1">encode_floating_point</a> (F x) noexcept</td></tr>
+<tr class="memdesc:a1a84ca13cdff9a7f70720ddb0041d0d1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Encode floating-point value to lexicographic sort key.  <br /></td></tr>
 <tr class="separator:a1a84ca13cdff9a7f70720ddb0041d0d1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a75f7fa26a657bd2a5640cf369c639d17" id="r_a75f7fa26a657bd2a5640cf369c639d17"><td class="memTemplParams" colspan="2"><a id="a75f7fa26a657bd2a5640cf369c639d17" name="a75f7fa26a657bd2a5640cf369c639d17"></a>
-template&lt;typename F , typename U &gt; </td></tr>
-<tr class="memitem:a75f7fa26a657bd2a5640cf369c639d17"><td class="memTemplItemLeft" align="right" valign="top">F&#160;</td><td class="memTemplItemRight" valign="bottom"><b>decode_floating_point</b> (U input) noexcept</td></tr>
+<tr class="memitem:a75f7fa26a657bd2a5640cf369c639d17" id="r_a75f7fa26a657bd2a5640cf369c639d17"><td class="memTemplParams" colspan="2">template&lt;typename F , typename U &gt; </td></tr>
+<tr class="memitem:a75f7fa26a657bd2a5640cf369c639d17"><td class="memTemplItemLeft" align="right" valign="top">F&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a75f7fa26a657bd2a5640cf369c639d17">decode_floating_point</a> (U input) noexcept</td></tr>
+<tr class="memdesc:a75f7fa26a657bd2a5640cf369c639d17"><td class="mdescLeft">&#160;</td><td class="mdescRight">Convert lexicographic sort key to original floating-point value.  <br /></td></tr>
 <tr class="separator:a75f7fa26a657bd2a5640cf369c639d17"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a09737ff3b123b65375a00570dbd62502" id="r_a09737ff3b123b65375a00570dbd62502"><td class="memTemplParams" colspan="2"><a id="a09737ff3b123b65375a00570dbd62502" name="a09737ff3b123b65375a00570dbd62502"></a>
 template&lt;typename T &gt; </td></tr>
 <tr class="memitem:a09737ff3b123b65375a00570dbd62502"><td class="memTemplItemLeft" align="right" valign="top">consteval auto&#160;</td><td class="memTemplItemRight" valign="bottom"><b>alignment_for_new</b> () noexcept</td></tr>
+<tr class="memdesc:a09737ff3b123b65375a00570dbd62502"><td class="mdescLeft">&#160;</td><td class="mdescRight">Get minimum alignment to use when allocating objects of type <em>T</em>. <br /></td></tr>
 <tr class="separator:a09737ff3b123b65375a00570dbd62502"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a67151fe8291fd24bff04038739700b1f" id="r_a67151fe8291fd24bff04038739700b1f"><td class="memItemLeft" align="right" valign="top"><a id="a67151fe8291fd24bff04038739700b1f" name="a67151fe8291fd24bff04038739700b1f"></a>
-void *&#160;</td><td class="memItemRight" valign="bottom"><b>allocate_aligned</b> (std::size_t size, std::size_t alignment=__STDCPP_DEFAULT_NEW_ALIGNMENT__)</td></tr>
+<tr class="memitem:a67151fe8291fd24bff04038739700b1f" id="r_a67151fe8291fd24bff04038739700b1f"><td class="memItemLeft" align="right" valign="top">void *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a67151fe8291fd24bff04038739700b1f">allocate_aligned</a> (std::size_t size, std::size_t alignment=__STDCPP_DEFAULT_NEW_ALIGNMENT__)</td></tr>
+<tr class="memdesc:a67151fe8291fd24bff04038739700b1f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocate aligned heap memory.  <br /></td></tr>
 <tr class="separator:a67151fe8291fd24bff04038739700b1f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a857e30bf5bbe06e321300ee868010df9" id="r_a857e30bf5bbe06e321300ee868010df9"><td class="memItemLeft" align="right" valign="top"><a id="a857e30bf5bbe06e321300ee868010df9" name="a857e30bf5bbe06e321300ee868010df9"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>free_aligned</b> (void *ptr) noexcept</td></tr>
+<tr class="memdesc:a857e30bf5bbe06e321300ee868010df9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Free heap memory allocated with <a class="el" href="namespaceunodb_1_1detail.html#a67151fe8291fd24bff04038739700b1f" title="Allocate aligned heap memory.">allocate_aligned()</a>. <br /></td></tr>
 <tr class="separator:a857e30bf5bbe06e321300ee868010df9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa3da3568c516e9447ccaa528462a136e" id="r_aa3da3568c516e9447ccaa528462a136e"><td class="memTemplParams" colspan="2">template&lt;<a class="el" href="namespaceunodb.html#a074fabb6a852ee032fb9b7f35a64b8e3">node_type</a> NodeType&gt; </td></tr>
 <tr class="memitem:aa3da3568c516e9447ccaa528462a136e"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#aa3da3568c516e9447ccaa528462a136e">is_internal_static_assert</a> () noexcept</td></tr>
@@ -493,11 +489,11 @@ auto&#160;</td><td class="memItemRight" valign="bottom"><b>obsolete_child_by_ind
 template&lt;typename Key , typename Value &gt; </td></tr>
 <tr class="memitem:a5e1748db6157f77efb62fa8097966b1a"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><b>create_leaf_if_needed</b> (olc_db_leaf_unique_ptr&lt; Key, Value &gt; &amp;cached_leaf, <a class="el" href="structunodb_1_1detail_1_1basic__art__key.html">basic_art_key</a>&lt; Key &gt; k, <a class="el" href="namespaceunodb.html#ae25127f715f2aac269da8a3616284c0b">unodb::value_view</a> v, <a class="el" href="classunodb_1_1olc__db.html">unodb::olc_db</a>&lt; Key, Value &gt; &amp;db_instance)</td></tr>
 <tr class="separator:a5e1748db6157f77efb62fa8097966b1a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a96397ebc5738a36fcdf69a3f84bcb4a0" id="r_a96397ebc5738a36fcdf69a3f84bcb4a0"><td class="memTemplParams" colspan="2"><a id="a96397ebc5738a36fcdf69a3f84bcb4a0" name="a96397ebc5738a36fcdf69a3f84bcb4a0"></a>
+<tr class="memitem:a6da3355dc2b016836da8179235257ad4" id="r_a6da3355dc2b016836da8179235257ad4"><td class="memTemplParams" colspan="2"><a id="a6da3355dc2b016836da8179235257ad4" name="a6da3355dc2b016836da8179235257ad4"></a>
 template&lt;typename T &gt; </td></tr>
-<tr class="memitem:a96397ebc5738a36fcdf69a3f84bcb4a0"><td class="memTemplItemLeft" align="right" valign="top">T&#160;</td><td class="memTemplItemRight" valign="bottom"><b>bswap</b> (T x)</td></tr>
-<tr class="memdesc:a96397ebc5738a36fcdf69a3f84bcb4a0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reverse the order of bytes in <em>x</em>. <br /></td></tr>
-<tr class="separator:a96397ebc5738a36fcdf69a3f84bcb4a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6da3355dc2b016836da8179235257ad4"><td class="memTemplItemLeft" align="right" valign="top">T&#160;</td><td class="memTemplItemRight" valign="bottom"><b>bswap</b> (T x) noexcept</td></tr>
+<tr class="memdesc:a6da3355dc2b016836da8179235257ad4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reverse the order of bytes in <em>x</em>. <br /></td></tr>
+<tr class="separator:a6da3355dc2b016836da8179235257ad4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5572532b0d5ba02cbbfb5e876bd59925" id="r_a5572532b0d5ba02cbbfb5e876bd59925"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
 <tr class="memitem:a5572532b0d5ba02cbbfb5e876bd59925"><td class="memTemplItemLeft" align="right" valign="top">std::uint8_t&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a5572532b0d5ba02cbbfb5e876bd59925">ctz</a> (T x) noexcept</td></tr>
 <tr class="memdesc:a5572532b0d5ba02cbbfb5e876bd59925"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the number of trailing zero bits in <em>x</em>.  <br /></td></tr>
@@ -506,10 +502,10 @@ template&lt;typename T &gt; </td></tr>
 unsigned&#160;</td><td class="memItemRight" valign="bottom"><b>popcount</b> (unsigned x) noexcept</td></tr>
 <tr class="memdesc:a60cd68db0acc4264f225af504457f974"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return the number of one bits in <em>x</em>. <br /></td></tr>
 <tr class="separator:a60cd68db0acc4264f225af504457f974"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a51412b807a2c1c439846c458bd4cbaea" id="r_a51412b807a2c1c439846c458bd4cbaea"><td class="memTemplParams" colspan="2"><a id="a51412b807a2c1c439846c458bd4cbaea" name="a51412b807a2c1c439846c458bd4cbaea"></a>
+<tr class="memitem:ae1bd0a219522dc54b6e2726f277e9677" id="r_ae1bd0a219522dc54b6e2726f277e9677"><td class="memTemplParams" colspan="2"><a id="ae1bd0a219522dc54b6e2726f277e9677" name="ae1bd0a219522dc54b6e2726f277e9677"></a>
 template&lt;typename To , typename From &gt; </td></tr>
-<tr class="memitem:a51412b807a2c1c439846c458bd4cbaea"><td class="memTemplItemLeft" align="right" valign="top">constexpr To&#160;</td><td class="memTemplItemRight" valign="bottom"><b>bit_cast</b> (From input)</td></tr>
-<tr class="separator:a51412b807a2c1c439846c458bd4cbaea"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae1bd0a219522dc54b6e2726f277e9677"><td class="memTemplItemLeft" align="right" valign="top">constexpr To&#160;</td><td class="memTemplItemRight" valign="bottom"><b>bit_cast</b> (From input) noexcept</td></tr>
+<tr class="separator:ae1bd0a219522dc54b6e2726f277e9677"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa9aa17872190ea6f43fde638f1129514" id="r_aa9aa17872190ea6f43fde638f1129514"><td class="memItemLeft" align="right" valign="top">std::ostream &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#aa9aa17872190ea6f43fde638f1129514">operator&lt;&lt;</a> (std::ostream &amp;os <a class="el" href="group__internal.html#ga5e11cdd5f7dc641ab4d60165ddb5297d">UNODB_DETAIL_LIFETIMEBOUND</a>, <a class="el" href="classunodb_1_1detail_1_1qsbr__epoch.html">qsbr_epoch</a> value)</td></tr>
 <tr class="memdesc:aa9aa17872190ea6f43fde638f1129514"><td class="mdescLeft">&#160;</td><td class="mdescRight">Print the epoch <em>value</em> to the output stream <em>os</em>.  <br /></td></tr>
 <tr class="separator:aa9aa17872190ea6f43fde638f1129514"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -539,14 +535,67 @@ constexpr std::size_t&#160;</td><td class="memItemRight" valign="bottom"><b>inod
 <tr class="memitem:ac7fc26e8bd3beb685ef91e9cc7e6672d" id="r_ac7fc26e8bd3beb685ef91e9cc7e6672d"><td class="memItemLeft" align="right" valign="top">constexpr <a class="el" href="namespaceunodb_1_1detail.html#a78bbb5caf501cb09276604dab64723bf">qsbr_thread_count_type</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#ac7fc26e8bd3beb685ef91e9cc7e6672d">max_qsbr_threads</a> = (2UL &lt;&lt; 29U) - 1U</td></tr>
 <tr class="memdesc:ac7fc26e8bd3beb685ef91e9cc7e6672d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Maximum number of threads that can participate in QSBR simultaneously.  <br /></td></tr>
 <tr class="separator:ac7fc26e8bd3beb685ef91e9cc7e6672d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a04a041b47bebde8ed0f3bd97327e450c" id="r_a04a041b47bebde8ed0f3bd97327e450c"><td class="memItemLeft" align="right" valign="top"><a id="a04a041b47bebde8ed0f3bd97327e450c" name="a04a041b47bebde8ed0f3bd97327e450c"></a>
-std::array&lt; <a class="el" href="classunodb_1_1detail_1_1thread__sync.html">thread_sync</a>, 6 &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>thread_syncs</b></td></tr>
+<tr class="memitem:a04a041b47bebde8ed0f3bd97327e450c" id="r_a04a041b47bebde8ed0f3bd97327e450c"><td class="memItemLeft" align="right" valign="top">std::array&lt; <a class="el" href="classunodb_1_1detail_1_1thread__sync.html">thread_sync</a>, 6 &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceunodb_1_1detail.html#a04a041b47bebde8ed0f3bd97327e450c">thread_syncs</a></td></tr>
+<tr class="memdesc:a04a041b47bebde8ed0f3bd97327e450c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Global array of thread synchronization objects.  <br /></td></tr>
 <tr class="separator:a04a041b47bebde8ed0f3bd97327e450c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Namespace for the UnoDB internal implementation details. </p>
 <p>It is not part of the public API, and it may change at any time. </p>
 </div><h2 class="groupheader">Function Documentation</h2>
+<a id="a67151fe8291fd24bff04038739700b1f" name="a67151fe8291fd24bff04038739700b1f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a67151fe8291fd24bff04038739700b1f">&#9670;&#160;</a></span>allocate_aligned()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void * unodb::detail::allocate_aligned </td>
+          <td>(</td>
+          <td class="paramtype">std::size_t&#160;</td>
+          <td class="paramname"><em>size</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::size_t&#160;</td>
+          <td class="paramname"><em>alignment</em> = <code>__STDCPP_DEFAULT_NEW_ALIGNMENT__</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Allocate aligned heap memory. </p>
+<p>The allocated block should be freed with <a class="el" href="namespaceunodb_1_1detail.html#a857e30bf5bbe06e321300ee868010df9" title="Free heap memory allocated with allocate_aligned().">free_aligned()</a>. In debug builds, the allocation failure injector is hooked.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">size</td><td>Size of memory to allocate in bytes </td></tr>
+    <tr><td class="paramname">alignment</td><td>Memory alignment boundary </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Pointer to allocated memory block </dd></dl>
+<dl class="exception"><dt>Exceptions</dt><dd>
+  <table class="exception">
+    <tr><td class="paramname">`std::bad_alloc`</td><td>if the allocation fails </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
 <a id="a73ccae20a7fde29e0381b903bbf0c58a" name="a73ccae20a7fde29e0381b903bbf0c58a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a73ccae20a7fde29e0381b903bbf0c58a">&#9670;&#160;</a></span>assert_failure()</h2>
 
@@ -643,8 +692,8 @@ std::array&lt; <a class="el" href="classunodb_1_1detail_1_1thread__sync.html">th
 
 </div>
 </div>
-<a id="ae5f3470a117bc313445d80544c37fb87" name="ae5f3470a117bc313445d80544c37fb87"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae5f3470a117bc313445d80544c37fb87">&#9670;&#160;</a></span>compare() <span class="overload">[1/2]</span></h2>
+<a id="a749463245ed07a65e2df960ac1beb847" name="a749463245ed07a65e2df960ac1beb847"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a749463245ed07a65e2df960ac1beb847">&#9670;&#160;</a></span>compare() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -672,7 +721,7 @@ std::array&lt; <a class="el" href="classunodb_1_1detail_1_1thread__sync.html">th
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">noexcept</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
@@ -682,8 +731,8 @@ std::array&lt; <a class="el" href="classunodb_1_1detail_1_1thread__sync.html">th
 
 </div>
 </div>
-<a id="af5030f37896f8bba5cc0b0ae42c13e39" name="af5030f37896f8bba5cc0b0ae42c13e39"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af5030f37896f8bba5cc0b0ae42c13e39">&#9670;&#160;</a></span>compare() <span class="overload">[2/2]</span></h2>
+<a id="a60d6d8602d9590be64fd0031611bbf07" name="a60d6d8602d9590be64fd0031611bbf07"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a60d6d8602d9590be64fd0031611bbf07">&#9670;&#160;</a></span>compare() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -723,7 +772,7 @@ std::array&lt; <a class="el" href="classunodb_1_1detail_1_1thread__sync.html">th
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">noexcept</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
@@ -809,6 +858,51 @@ template&lt;typename T &gt; </div>
 
 </div>
 </div>
+<a id="a75f7fa26a657bd2a5640cf369c639d17" name="a75f7fa26a657bd2a5640cf369c639d17"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a75f7fa26a657bd2a5640cf369c639d17">&#9670;&#160;</a></span>decode_floating_point()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<div class="memtemplate">
+template&lt;typename F , typename U &gt; </div>
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">F unodb::detail::decode_floating_point </td>
+          <td>(</td>
+          <td class="paramtype">U&#160;</td>
+          <td class="paramname"><em>input</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">noexcept</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Convert lexicographic sort key to original floating-point value. </p>
+<p>Reverses the encoding done by <a class="el" href="namespaceunodb_1_1detail.html#a1a84ca13cdff9a7f70720ddb0041d0d1" title="Encode floating-point value to lexicographic sort key.">encode_floating_point()</a>.</p>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">F</td><td>The floating-point type to decode to </td></tr>
+    <tr><td class="paramname">U</td><td>The unsigned integer type to decode from </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">input</td><td>The lexicographic sort key </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>The original floating-point value </dd></dl>
+
+</div>
+</div>
 <a id="a1a84ca13cdff9a7f70720ddb0041d0d1" name="a1a84ca13cdff9a7f70720ddb0041d0d1"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a1a84ca13cdff9a7f70720ddb0041d0d1">&#9670;&#160;</a></span>encode_floating_point()</h2>
 
@@ -834,9 +928,29 @@ template&lt;typename U , typename F &gt; </div>
   </tr>
 </table>
 </div><div class="memdoc">
-<p>+0 and positive numbers</p>
-<p>negative numbers</p>
-<p>complement 1</p>
+
+<p>Encode floating-point value to lexicographic sort key. </p>
+<p>This encoding preserves the relative order of values - if a &lt; b for floating-point values, then encode(a) &lt; encode(b) for the integer encoded values.</p>
+<p>The returned sort key can be converted back to the original value with <a class="el" href="namespaceunodb_1_1detail.html#a75f7fa26a657bd2a5640cf369c639d17" title="Convert lexicographic sort key to original floating-point value.">decode_floating_point()</a>.</p>
+<p>Special values like NaN and infinity are handled specially:</p><ul>
+<li>NaN is encoded as the maximum possible integer value</li>
+<li>Positive infinity is encoded as maximum possible integer value minus 1</li>
+<li>Negative infinity is encoded as 0</li>
+</ul>
+<dl class="tparams"><dt>Template Parameters</dt><dd>
+  <table class="tparams">
+    <tr><td class="paramname">U</td><td>The unsigned integer type to encode to </td></tr>
+    <tr><td class="paramname">F</td><td>The floating-point type to encode from </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">x</td><td>The floating-point value to encode </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>The lexicographic sort key </dd></dl>
 
 </div>
 </div>
@@ -1195,6 +1309,31 @@ template&lt;typename T &gt; </div>
 
 <p>Maximum number of threads that can participate in QSBR simultaneously. </p>
 <p>Set to 2^29-1, chosen to allow two thread count fields and an epoch counter to fit in a single machine word. It should be enough for everybody, and its overflow is not checked even in Release builds. </p>
+
+</div>
+</div>
+<a id="a04a041b47bebde8ed0f3bd97327e450c" name="a04a041b47bebde8ed0f3bd97327e450c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a04a041b47bebde8ed0f3bd97327e450c">&#9670;&#160;</a></span>thread_syncs</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::array&lt;<a class="el" href="classunodb_1_1detail_1_1thread__sync.html">thread_sync</a>, 6&gt; unodb::detail::thread_syncs</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Global array of thread synchronization objects. </p>
+<p>The array size is determined by test needs. </p>
 
 </div>
 </div>

@@ -1,6 +1,12 @@
 var namespaceunodb =
 [
+    [ "anonymous_namespace{qsbr.cpp}", "namespaceunodb_1_1anonymous__namespace_02qsbr_8cpp_03.html", [
+      [ "add_to_orphan_list", "namespaceunodb_1_1anonymous__namespace_02qsbr_8cpp_03.html#a8fecd78001e73483361e5f5220d10afb", null ],
+      [ "free_orphan_list", "namespaceunodb_1_1anonymous__namespace_02qsbr_8cpp_03.html#ae7d1d0020a8d2f5a2adee0519e9b8fec", null ],
+      [ "take_orphan_list", "namespaceunodb_1_1anonymous__namespace_02qsbr_8cpp_03.html#a3c7ef6c5109fa654488a32536f0b88a5", null ]
+    ] ],
     [ "detail", "namespaceunodb_1_1detail.html", "namespaceunodb_1_1detail" ],
+    [ "test", "namespaceunodb_1_1test.html", "namespaceunodb_1_1test" ],
     [ "db", "classunodb_1_1db.html", "classunodb_1_1db" ],
     [ "fake_lock", "classunodb_1_1fake__lock.html", "classunodb_1_1fake__lock" ],
     [ "fake_read_critical_section", "classunodb_1_1fake__read__critical__section.html", "classunodb_1_1fake__read__critical__section" ],
@@ -11,14 +17,13 @@ var namespaceunodb =
     [ "mutex_db", "classunodb_1_1mutex__db.html", "classunodb_1_1mutex__db" ],
     [ "olc_db", "classunodb_1_1olc__db.html", "classunodb_1_1olc__db" ],
     [ "optimistic_lock", "classunodb_1_1optimistic__lock.html", "classunodb_1_1optimistic__lock" ],
-    [ "qsbr", "classunodb_1_1qsbr.html", null ],
+    [ "qsbr", "classunodb_1_1qsbr.html", "classunodb_1_1qsbr" ],
     [ "qsbr_per_thread", "classunodb_1_1qsbr__per__thread.html", "classunodb_1_1qsbr__per__thread" ],
     [ "qsbr_ptr", "classunodb_1_1qsbr__ptr.html", "classunodb_1_1qsbr__ptr" ],
     [ "qsbr_ptr_span", "classunodb_1_1qsbr__ptr__span.html", "classunodb_1_1qsbr__ptr__span" ],
     [ "qsbr_state", "structunodb_1_1qsbr__state.html", "structunodb_1_1qsbr__state" ],
-    [ "qsbr_thread", "classunodb_1_1qsbr__thread.html", null ],
-    [ "quiescent_state_on_scope_exit", "structunodb_1_1quiescent__state__on__scope__exit.html", null ],
-    [ "remove_cvref", "structunodb_1_1remove__cvref.html", null ],
+    [ "qsbr_thread", "classunodb_1_1qsbr__thread.html", "classunodb_1_1qsbr__thread" ],
+    [ "quiescent_state_on_scope_exit", "structunodb_1_1quiescent__state__on__scope__exit.html", "structunodb_1_1quiescent__state__on__scope__exit" ],
     [ "visitor", "classunodb_1_1visitor.html", "classunodb_1_1visitor" ],
     [ "inode_type_counter_array", "namespaceunodb.html#a60a52550ffa9f2d0d9e1cd9ebc7cab28", null ],
     [ "key_size_type", "namespaceunodb.html#aa6744476ee7ac432b5377c804ddfca1c", null ],
@@ -36,6 +41,7 @@ var namespaceunodb =
     ] ],
     [ "qsbr_ptr_span", "namespaceunodb.html#a5710c60b3e8525518398d85e89a7a40d", null ],
     [ "spin_wait_loop_body", "namespaceunodb.html#adf5c8f3a365ce28271526c3ef0ca4237", null ],
+    [ "this_thread", "namespaceunodb.html#af67bb57e59d46aae6ffb5103dcb497a1", null ],
     [ "as_i", "namespaceunodb.html#af9b052db17b88851bb075efd8d84f8d1", null ],
     [ "internal_as_i", "namespaceunodb.html#a775cf37c7ccec6301c8512193550b424", null ]
 ];
