@@ -55,7 +55,7 @@ jobs:
             preset: "msvc-static-analysis-release"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: false
           persist-credentials: false

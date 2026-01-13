@@ -354,7 +354,7 @@ jobs:
             SANITIZE_UB: ON
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
           persist-credentials: false
