@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 # check.sh - Run checkov security checks on CI/CD configuration files
 
 set -euo pipefail
