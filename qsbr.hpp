@@ -1591,6 +1591,7 @@ class [[nodiscard]] qsbr_thread : public std::thread {
     return std::thread{
         [inner_new_qsbr_per_thread = std::move(new_qsbr_per_thread)](
             auto&& f2,
+            // cppcheck-suppress constStatement
             auto&&... a2) mutable noexcept(noexcept(f2(std::
                                                            forward<
                                                                decltype(a2)>(
