@@ -121,11 +121,14 @@ UnoDB contributors` as the first line.
   in which case a Doxygen comment with a `\def`, `\var`, or another suitable tag
   for the declaration should appear at the top of its section or source file,
   and it should also have a `\hideinitializer` tag.
+- Trailing Doxygen comments (`///<`, `/**<`) should be avoided; place
+  documentation before declarations instead.
 - Doxygen automatic brief description detection is enabled, thus explicit
   `\brief` tags are not required, rather the first sentence in the Doxygen
   comment block will be interpreted as the brief description. It should use a
   headline-like style without articles.
 - Markdown markup is preferred, i.e. `` `foo` `` instead of `\c foo`.
+- Private class members should be documented too.
 
 ## Linting and static analysis
 
