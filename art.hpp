@@ -410,38 +410,37 @@ class db final {
     /// to the current leaf.  An empty stack corresponds to a
     /// logically empty iterator and the iterator will report
     /// !valid().  The iterator for an empty tree is an empty stack.
-    //
+    ///
     /// The stack is made up of (node_ptr, key, child_index) entries.
-    //
+    ///
     /// The [node_ptr] is never [nullptr] and points to the internal
     /// node or leaf for that step in the path from the root to some
     /// leaf.  For the bottom of the stack, [node_ptr] is the root.
     /// For the top of the stack, [node_ptr] is the current leaf. In
     /// the degenerate case where the tree is a single root leaf, then
     /// the stack contains just that leaf.
-    //
+    ///
     /// The [key] is the [std::byte] along which the path descends
     /// from that [node_ptr].  The [key] has no meaning for a leaf.
     /// The key byte may be used to reconstruct the full key (along
     /// with any prefix bytes in the nodes along the path).  The key
     /// byte is tracked to avoid having to search the keys of some
-    /// node types (N48) when the [child_index] does not directly
+    /// node types (basic_inode_48) when the [child_index] does not directly
     /// imply the key byte.
-    //
-    /// The [child_index] is the [std::uint8_t] index position in the
-    /// parent at which the [child_ptr] was found.  The [child_index]
-    /// has no meaning for a leaf.  In the special case of N48, the
-    /// [child_index] is the index into the [child_indexes[]].  For
-    /// all other internal node types, the [child_index] is a direct
-    /// index into the [children[]].  When finding the successor (or
-    /// predecessor) the [child_index] needs to be interpreted
-    /// according to the node type.  For N4 and N16, you just look at
-    /// the next slot in the children[] to find the successor.  For
-    /// N256, you look at the next non-null slot in the children[].
-    /// N48 is the oddest of the node types.  For N48, you have to
-    /// look at the child_indexes[], find the next mapped key value
-    /// greater than the current one, and then look at its entry in
-    /// the children[].
+    ///
+    /// The [child_index] is the [std::uint8_t] index position in the parent at
+    /// which the [child_ptr] was found. The [child_index] has no meaning for a
+    /// leaf. In the special case of basic_inode_48, the [child_index] is the
+    /// index into the [child_indexes[]]. For all other internal node types, the
+    /// [child_index] is a direct index into the [children[]]. When finding the
+    /// successor (or predecessor) the [child_index] needs to be interpreted
+    /// according to the node type. For basic_inode_4 and basic_inode_16, you
+    /// just look at the next slot in the children[] to find the successor. For
+    /// basic_inode_256, you look at the next non-null slot in the children[].
+    /// basic_inode_48 is the oddest of the node types. For basic_inode_48, you
+    /// have to look at the child_indexes[], find the next mapped key value
+    /// greater than the current one, and then look at its entry in the
+    /// children[].
     std::stack<stack_entry> stack_{};
 
     /// A buffer into which visited encoded (binary comparable) keys
@@ -809,6 +808,9 @@ inline auto* unwrap_fake_critical_section(
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
+/// Return the correct child node for insertion operation (i.e. having the
+/// matching next key byte value). If there is no child node for the next key
+/// byte, create the leaf and insert it in the current node.
 template <typename Key, typename Value, class INode>
 detail::node_ptr* impl_helpers::add_or_choose_subtree(
     INode& inode, std::byte key_byte, basic_art_key<Key> k, value_view v,
