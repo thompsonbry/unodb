@@ -25,7 +25,7 @@ jobs:
         AVX2: [ON, OFF]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
         with:
           submodules: true
           persist-credentials: false

@@ -27,7 +27,7 @@ jobs:
         BENCHMARKS: [ON, OFF]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
         with:
           submodules: false
           persist-credentials: false

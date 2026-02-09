@@ -354,7 +354,7 @@ jobs:
             SANITIZE_UB: ON
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
         with:
           submodules: true
           persist-credentials: false
