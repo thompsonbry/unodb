@@ -1189,7 +1189,7 @@ db<Key, Value>::iterator::right_most_traversal(detail::node_ptr node) {
 // instead of returning the value for the key.  Life gets a lot more
 // complicated when the search_key is not in the data and we have to
 // consider the cases for both forward traversal and reverse traversal
-// from a key that is not in the data.  See method declartion for
+// from a key that is not in the data.  See method declaration for
 // details.
 template <typename Key, typename Value>
 typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
@@ -1250,7 +1250,7 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
       // reverse traversal
       if (cmp_ < 0) {
         // REV and the search key is ordered before this node.  We
-        // want the preceeding key.
+        // want the preceding key.
         return left_most_traversal(node).prior();
       }
       // REV and the search key is ordered after this node.
@@ -1304,7 +1304,7 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
       }
       // REV: Take the prior child_index that is mapped and then do
       // a right-most descent to land on the key that is the
-      // immediate precessor of the desired key in the data.
+      // immediate predecessor of the desired key in the data.
       auto nxt = inode->lte_key_byte(node_type, remaining_key[0]);
       if (!nxt) {
         // Pop off the current entry until we find one with a

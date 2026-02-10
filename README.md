@@ -133,7 +133,7 @@ unsigned types, floating point, types, and text. The `unodb::key_encoder` MUST
 be used for text data (including Unicode sort keys) and for compound keys (keys
 consisting of multiple components). The ART data structure has a restriction
 that no full length key may be a prefix of another key. This restriction is
-trivially satisified for any fixed width key. Also per the ART paper, the
+trivially satisfied for any fixed width key. Also per the ART paper, the
 `unodb::key_encoder` maintains this contract for text keys by truncating them to
 not more than `unodb::key_encoder::maxlen` bytes and then logically padding them
 out (with a run length counter) to `unodb::key_encoder::maxlen`. Unicode data
@@ -178,7 +178,7 @@ All ART classes share the same API:
 
 Three ART classes available:
 
-- `db`: unsychronized ART tree, for single-thread contexts or with
+- `db`: unsynchronized ART tree, for single-thread contexts or with
   external synchronization
 - `mutex_db`: ART tree with single global mutex synchronization
 - `olc_db`: a concurrent ART tree, implementing Optimistic Lock Coupling as

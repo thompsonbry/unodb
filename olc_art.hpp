@@ -2376,7 +2376,7 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
       // reverse traversal
       if (cmp_ < 0) {
         // REV and the search key is ordered before this node.  We
-        // want the preceeding key.
+        // want the preceding key.
         return unlock_and_return(
                    node_critical_section,
                    try_left_most_traversal(node, parent_critical_section)) &&
@@ -2461,7 +2461,7 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
       }
       // REV: Take the prior child_index that is mapped and then do
       // a right-most descent to land on the key that is the
-      // immediate precessor of the desired key in the data.
+      // immediate predecessor of the desired key in the data.
       auto nxt = inode->lte_key_byte(node_type, remaining_key[0]);
       if (!nxt) {
         // Pop off the current entry until we find one with a

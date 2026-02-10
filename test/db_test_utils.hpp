@@ -242,7 +242,7 @@ class [[nodiscard]] tree_verifier final {
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
 
   /// Return an unodb::key_view backed by a `std::array` in an internal
-  /// collection whose existance is scoped to the life cycle of the
+  /// collection whose existence is scoped to the life cycle of the
   /// tree_verifier.
   unodb::key_view make_key(std::uint64_t k) {
     constexpr auto sz{sizeof(k)};

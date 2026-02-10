@@ -294,7 +294,7 @@ if(SANITIZE_UB)
   list(APPEND SANITIZER_CXX_FLAGS "-fsanitize=undefined")
   if(is_any_clang)
     # It was interesting to try -fsanitize=implicit-conversion, but the expected
-    # conversions do not appear to be fully suppressable
+    # conversions do not appear to be fully suppressible
     list(APPEND SANITIZER_CXX_FLAGS "-fsanitize=local-bounds"
       "-fsanitize=nullability")
     if(is_clang AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.0)

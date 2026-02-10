@@ -654,7 +654,7 @@ UNODB_TEST(ARTKeyEncodeDecodeTest, AppendSpanConstByteC0001) {
 }
 
 //
-// Encoding of text fields (optionaly truncated to maxlen and padded
+// Encoding of text fields (optionally truncated to maxlen and padded
 // out to maxlen via run length encoding).
 //
 

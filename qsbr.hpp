@@ -928,7 +928,7 @@ namespace boost_acc = boost::accumulators;
 
 #endif  // UNODB_DETAIL_WITH_STATS
 
-// If C++ standartisation proposal by A. D. Robison "Policy-based design for
+// If C++ standardisation proposal by A. D. Robison "Policy-based design for
 // safe destruction in concurrent containers" ever gets anywhere, consider
 // changing to its interface, like Stamp-it paper does.
 
