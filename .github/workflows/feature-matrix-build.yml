@@ -35,7 +35,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Boost
-        run: sudo apt-get install -y libboost-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libboost-dev
 
       - name: Configure CMake
         # Use a bash shell so we can use the same syntax for environment
