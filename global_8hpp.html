@@ -150,8 +150,16 @@ Macros</h2></td></tr>
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>_GLIBCXX_SANITIZE_VECTOR</b></td></tr>
 <tr class="memdesc:gabc2e43b0a8c1601731456de674db0b28"><td class="mdescLeft">&#160;</td><td class="mdescRight">Annotates <code>std::vector</code> in libstdc++ for AddressSanitizer when compiling with AddressSanitizer. <br /></td></tr>
 <tr class="separator:gabc2e43b0a8c1601731456de674db0b28"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga4d55a10e88fa64d2ca4df2d089c2a020" id="r_ga4d55a10e88fa64d2ca4df2d089c2a020"><td class="memItemLeft" align="right" valign="top">
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>_MSVC_STL_HARDENING</b></td></tr>
+<tr class="memdesc:ga4d55a10e88fa64d2ca4df2d089c2a020"><td class="mdescLeft">&#160;</td><td class="mdescRight">Enables the MSVC STL debug checks (iterator debugging, bounds checking) when compiling in the standalone debug configuration. <br /></td></tr>
+<tr class="separator:ga4d55a10e88fa64d2ca4df2d089c2a020"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga517f85fbfd4cc21d2551f9c7ddacc281" id="r_ga517f85fbfd4cc21d2551f9c7ddacc281"><td class="memItemLeft" align="right" valign="top">
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>_MSVC_STL_DESTRUCTOR_TOMBSTONES</b></td></tr>
+<tr class="memdesc:ga517f85fbfd4cc21d2551f9c7ddacc281"><td class="mdescLeft">&#160;</td><td class="mdescRight">Enables the MSVC STL destructor tombstone feature to catch use-after- destruction bugs when compiling in the standalone debug configuration. <br /></td></tr>
+<tr class="separator:ga517f85fbfd4cc21d2551f9c7ddacc281"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Architecture macros</div></td></tr>
-<tr><td colspan="2"><div class="groupText"><p>Macros for the CPU architecture, instruction set level, endianness. </p>
+<tr><td colspan="2"><div class="groupText"><p>Macros for the CPU architecture and instruction set level. </p>
 </div></td></tr>
 <tr class="memitem:gacbc17a405e7adc3cedfa0de24ea26d6a" id="r_gacbc17a405e7adc3cedfa0de24ea26d6a"><td class="memItemLeft" align="right" valign="top">
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_MSVC_X86_64</b></td></tr>
@@ -165,10 +173,6 @@ Macros</h2></td></tr>
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_SSE4_2</b></td></tr>
 <tr class="memdesc:ga41954950ab79cb8b8c89dc99888c9842"><td class="mdescLeft">&#160;</td><td class="mdescRight">Defined when compiling with SSE4.2 and not AVX2 instructions on x86-64. <br /></td></tr>
 <tr class="separator:ga41954950ab79cb8b8c89dc99888c9842"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ga20640c91e5b5f07eea4a6d7a2e360d4e" id="r_ga20640c91e5b5f07eea4a6d7a2e360d4e"><td class="memItemLeft" align="right" valign="top">
-#define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_LITTLE_ENDIAN</b></td></tr>
-<tr class="memdesc:ga20640c91e5b5f07eea4a6d7a2e360d4e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Defined on little-endian architectures. <br /></td></tr>
-<tr class="separator:ga20640c91e5b5f07eea4a6d7a2e360d4e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Compiler macros</div></td></tr>
 <tr><td colspan="2"><div class="groupText"><p>Macros to hide compiler specifics </p>
 </div></td></tr>
@@ -243,6 +247,14 @@ Macros</h2></td></tr>
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_RESTORE_CLANG_WARNINGS</b>()&#160;&#160;&#160;<a class="el" href="group__internal.html#ga46b21584db1b08bc7ff98fd05d6c15e0">UNODB_DETAIL_RESTORE_WARNINGS</a>()</td></tr>
 <tr class="memdesc:ga0fd98e261e52f4d94aaa37c5a136b8c5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Re-enable the warning that was previously disabled with <a class="el" href="group__internal.html#gaa0a90689c5d97cbff1db22f127aa421d" title="Disable a clang warning x until UNODB_DETAIL_RESTORE_CLANG_WARNINGS()">UNODB_DETAIL_DISABLE_CLANG_WARNING()</a>. <br /></td></tr>
 <tr class="separator:ga0fd98e261e52f4d94aaa37c5a136b8c5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga07bcadd04eb228c245380387a9d8e065" id="r_ga07bcadd04eb228c245380387a9d8e065"><td class="memItemLeft" align="right" valign="top">
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_DISABLE_CLANG_21_WARNING</b>(x)</td></tr>
+<tr class="memdesc:ga07bcadd04eb228c245380387a9d8e065"><td class="mdescLeft">&#160;</td><td class="mdescRight">Disable a clang version 21 or later warning <em>x</em> until <a class="el" href="group__internal.html#ga32c5e5a25a3572a610ba6d59abfdb59b" title="Re-enable the warning that was previously disabled with UNODB_DETAIL_DISABLE_CLANG_21_WARNING().">UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()</a>. <br /></td></tr>
+<tr class="separator:ga07bcadd04eb228c245380387a9d8e065"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ga32c5e5a25a3572a610ba6d59abfdb59b" id="r_ga32c5e5a25a3572a610ba6d59abfdb59b"><td class="memItemLeft" align="right" valign="top">
+#define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS</b>()</td></tr>
+<tr class="memdesc:ga32c5e5a25a3572a610ba6d59abfdb59b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Re-enable the warning that was previously disabled with <a class="el" href="group__internal.html#ga07bcadd04eb228c245380387a9d8e065" title="Disable a clang version 21 or later warning x until UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS().">UNODB_DETAIL_DISABLE_CLANG_21_WARNING()</a>. <br /></td></tr>
+<tr class="separator:ga32c5e5a25a3572a610ba6d59abfdb59b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:gab0f6f8a89806458251a357958666ba20" id="r_gab0f6f8a89806458251a357958666ba20"><td class="memItemLeft" align="right" valign="top">
 #define&#160;</td><td class="memItemRight" valign="bottom"><b>UNODB_DETAIL_DISABLE_GCC_WARNING</b>(x)</td></tr>
 <tr class="memdesc:gab0f6f8a89806458251a357958666ba20"><td class="mdescLeft">&#160;</td><td class="mdescRight">Disable a GCC warning <em>x</em> until <a class="el" href="group__internal.html#ga65f7ea91faeb0e4cc6ff020017d0101d" title="Re-enable the warning that was previously disabled with UNODB_DETAIL_DISABLE_GCC_WARNING().">UNODB_DETAIL_RESTORE_GCC_WARNINGS()</a> <br /></td></tr>

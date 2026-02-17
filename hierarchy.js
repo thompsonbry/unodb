@@ -30,9 +30,6 @@ var hierarchy =
     [ "unodb::detail::fake_inode", "classunodb_1_1detail_1_1fake__inode.html", null ],
     [ "unodb::fake_lock", "classunodb_1_1fake__lock.html", null ],
     [ "unodb::fake_read_critical_section", "classunodb_1_1fake__read__critical__section.html", null ],
-    [ "std::false_type", null, [
-      [ "unodb::detail::dependent_false< T >", "structunodb_1_1detail_1_1dependent__false.html", null ]
-    ] ],
     [ "unodb::benchmark::growing_tree_node_stats< Db >", "classunodb_1_1benchmark_1_1growing__tree__node__stats.html", null ],
     [ "Header", null, [
       [ "unodb::detail::basic_leaf< Key, Header >", "classunodb_1_1detail_1_1basic__leaf.html", null ]
@@ -89,7 +86,7 @@ var hierarchy =
     [ "unodb::optimistic_lock", "classunodb_1_1optimistic__lock.html", null ],
     [ "unodb::test::pause_heap_faults", "structunodb_1_1test_1_1pause__heap__faults.html", null ],
     [ "unodb::qsbr", "classunodb_1_1qsbr.html", null ],
-    [ "unodb::detail::qsbr_epoch", "classunodb_1_1detail_1_1qsbr__epoch.html", null ],
+    [ "unodb::qsbr_epoch", "classunodb_1_1qsbr__epoch.html", null ],
     [ "unodb::qsbr_per_thread", "classunodb_1_1qsbr__per__thread.html", null ],
     [ "unodb::detail::qsbr_ptr_base", "classunodb_1_1detail_1_1qsbr__ptr__base.html", [
       [ "unodb::qsbr_ptr< T >", "classunodb_1_1qsbr__ptr.html", null ]

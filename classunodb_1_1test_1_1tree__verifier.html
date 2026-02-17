@@ -119,13 +119,13 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a78be91ab9d36939edc0429cfee3ea02f" id="r_a78be91ab9d36939edc0429cfee3ea02f"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
-<tr class="memitem:a78be91ab9d36939edc0429cfee3ea02f"><td class="memTemplItemLeft" align="right" valign="top">key_type&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classunodb_1_1test_1_1tree__verifier.html#a78be91ab9d36939edc0429cfee3ea02f">coerce_key</a> (T key) const</td></tr>
-<tr class="memdesc:a78be91ab9d36939edc0429cfee3ea02f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Coerce an external key into the Db::key_type.  <br /></td></tr>
-<tr class="separator:a78be91ab9d36939edc0429cfee3ea02f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7ae2a42a2b24def6dc7ad0b5ceec3e87" id="r_a7ae2a42a2b24def6dc7ad0b5ceec3e87"><td class="memTemplParams" colspan="2">template&lt;typename T &gt; </td></tr>
+<tr class="memitem:a7ae2a42a2b24def6dc7ad0b5ceec3e87"><td class="memTemplItemLeft" align="right" valign="top">key_type&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classunodb_1_1test_1_1tree__verifier.html#a7ae2a42a2b24def6dc7ad0b5ceec3e87">coerce_key</a> (T key) noexcept(!std::is_same_v&lt; key_type, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> &gt;||std::is_same_v&lt; T, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> &gt;)</td></tr>
+<tr class="memdesc:a7ae2a42a2b24def6dc7ad0b5ceec3e87"><td class="mdescLeft">&#160;</td><td class="mdescRight">Coerce an external key into the Db::key_type.  <br /></td></tr>
+<tr class="separator:a7ae2a42a2b24def6dc7ad0b5ceec3e87"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1acfd637e2cc166ced02aa28d5ff742a" id="r_a1acfd637e2cc166ced02aa28d5ff742a"><td class="memItemLeft" align="right" valign="top"><a id="a1acfd637e2cc166ced02aa28d5ff742a" name="a1acfd637e2cc166ced02aa28d5ff742a"></a>
 <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a>&#160;</td><td class="memItemRight" valign="bottom"><b>make_key</b> (std::uint64_t k)</td></tr>
-<tr class="memdesc:a1acfd637e2cc166ced02aa28d5ff742a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return an <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">unodb::key_view</a> backed by a <code>std::array</code> in an internal collection whose existance is scoped to the life cycle of the <a class="el" href="classunodb_1_1test_1_1tree__verifier.html" title="Utility class supporting verification of the system under test.">tree_verifier</a>. <br /></td></tr>
+<tr class="memdesc:a1acfd637e2cc166ced02aa28d5ff742a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return an <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">unodb::key_view</a> backed by a <code>std::array</code> in an internal collection whose existence is scoped to the life cycle of the <a class="el" href="classunodb_1_1test_1_1tree__verifier.html" title="Utility class supporting verification of the system under test.">tree_verifier</a>. <br /></td></tr>
 <tr class="separator:a1acfd637e2cc166ced02aa28d5ff742a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac571ee7f8f5ec933a5a8eff00d8510b1" id="r_ac571ee7f8f5ec933a5a8eff00d8510b1"><td class="memItemLeft" align="right" valign="top"><a id="ac571ee7f8f5ec933a5a8eff00d8510b1" name="ac571ee7f8f5ec933a5a8eff00d8510b1"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>tree_verifier</b> (bool parallel_test_=false)</td></tr>
@@ -170,21 +170,21 @@ template&lt;class Db2  = Db, typename T &gt; </td></tr>
 template&lt;typename T &gt; </td></tr>
 <tr class="memitem:ae3da20911f67d315c5db288a4be7d895"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><b>attempt_remove_missing_keys</b> (std::initializer_list&lt; T &gt; absent_keys)</td></tr>
 <tr class="separator:ae3da20911f67d315c5db288a4be7d895"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a604c42598987981d9958b79b568041e1" id="r_a604c42598987981d9958b79b568041e1"><td class="memTemplParams" colspan="2"><a id="a604c42598987981d9958b79b568041e1" name="a604c42598987981d9958b79b568041e1"></a>
+<tr class="memitem:a388389b919c21744314595d330594740" id="r_a388389b919c21744314595d330594740"><td class="memTemplParams" colspan="2"><a id="a388389b919c21744314595d330594740" name="a388389b919c21744314595d330594740"></a>
 template&lt;class Db2  = Db, typename T &gt; </td></tr>
-<tr class="memitem:a604c42598987981d9958b79b568041e1"><td class="memTemplItemLeft" align="right" valign="top">std::enable_if_t&lt;!is_olc_db&lt; Db2 &gt;, void &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><b>try_get</b> (T k) const</td></tr>
-<tr class="separator:a604c42598987981d9958b79b568041e1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6284fbf44a1414f1f8b6e0e821cd7901" id="r_a6284fbf44a1414f1f8b6e0e821cd7901"><td class="memTemplParams" colspan="2"><a id="a6284fbf44a1414f1f8b6e0e821cd7901" name="a6284fbf44a1414f1f8b6e0e821cd7901"></a>
+<tr class="memitem:a388389b919c21744314595d330594740"><td class="memTemplItemLeft" align="right" valign="top">std::enable_if_t&lt;!is_olc_db&lt; Db2 &gt;, void &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><b>try_get</b> (T k) noexcept(noexcept(<a class="el" href="classunodb_1_1test_1_1tree__verifier.html#a7ae2a42a2b24def6dc7ad0b5ceec3e87">coerce_key</a>(k)) &amp;&amp;noexcept(this-&gt;test_db.get(<a class="el" href="classunodb_1_1test_1_1tree__verifier.html#a7ae2a42a2b24def6dc7ad0b5ceec3e87">coerce_key</a>(k))))</td></tr>
+<tr class="separator:a388389b919c21744314595d330594740"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae977f79073782cc40f84820a034be07d" id="r_ae977f79073782cc40f84820a034be07d"><td class="memTemplParams" colspan="2"><a id="ae977f79073782cc40f84820a034be07d" name="ae977f79073782cc40f84820a034be07d"></a>
 template&lt;class Db2  = Db, typename T &gt; </td></tr>
-<tr class="memitem:a6284fbf44a1414f1f8b6e0e821cd7901"><td class="memTemplItemLeft" align="right" valign="top">std::enable_if_t&lt; is_olc_db&lt; Db2 &gt;, void &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><b>try_get</b> (T k) const</td></tr>
-<tr class="separator:a6284fbf44a1414f1f8b6e0e821cd7901"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae977f79073782cc40f84820a034be07d"><td class="memTemplItemLeft" align="right" valign="top">std::enable_if_t&lt; is_olc_db&lt; Db2 &gt;, void &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><b>try_get</b> (T k)</td></tr>
+<tr class="separator:ae977f79073782cc40f84820a034be07d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa5272379cd23253f105135a5a448d2f2" id="r_aa5272379cd23253f105135a5a448d2f2"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classunodb_1_1test_1_1tree__verifier.html#aa5272379cd23253f105135a5a448d2f2">check_present_values</a> () const</td></tr>
 <tr class="memdesc:aa5272379cd23253f105135a5a448d2f2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Verify that each key and value in the internal ground truth collection can be found in the test db.  <br /></td></tr>
 <tr class="separator:aa5272379cd23253f105135a5a448d2f2"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a37c080a62217915417ba99cbc7b7359e" id="r_a37c080a62217915417ba99cbc7b7359e"><td class="memTemplParams" colspan="2"><a id="a37c080a62217915417ba99cbc7b7359e" name="a37c080a62217915417ba99cbc7b7359e"></a>
+<tr class="memitem:ae8d2c8408c5777fb6b8d59d6aa7fd4ae" id="r_ae8d2c8408c5777fb6b8d59d6aa7fd4ae"><td class="memTemplParams" colspan="2"><a id="ae8d2c8408c5777fb6b8d59d6aa7fd4ae" name="ae8d2c8408c5777fb6b8d59d6aa7fd4ae"></a>
 template&lt;typename T &gt; </td></tr>
-<tr class="memitem:a37c080a62217915417ba99cbc7b7359e"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><b>check_absent_keys</b> (std::initializer_list&lt; T &gt; absent_keys) const</td></tr>
-<tr class="separator:a37c080a62217915417ba99cbc7b7359e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae8d2c8408c5777fb6b8d59d6aa7fd4ae"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><b>check_absent_keys</b> (std::initializer_list&lt; T &gt; absent_keys) noexcept(noexcept(this-&gt;try_get(<a class="el" href="classunodb_1_1test_1_1tree__verifier.html#a7ae2a42a2b24def6dc7ad0b5ceec3e87">coerce_key</a>(*absent_keys.begin()))))</td></tr>
+<tr class="separator:ae8d2c8408c5777fb6b8d59d6aa7fd4ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2b46c0a2e9ae7657f6445df1b9fb7943" id="r_a2b46c0a2e9ae7657f6445df1b9fb7943"><td class="memTemplParams" colspan="2"><a id="a2b46c0a2e9ae7657f6445df1b9fb7943" name="a2b46c0a2e9ae7657f6445df1b9fb7943"></a>
 template&lt;typename FN , typename T &gt; </td></tr>
 <tr class="memitem:a2b46c0a2e9ae7657f6445df1b9fb7943"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><b>scan</b> (FN fn, bool fwd=true)</td></tr>
@@ -233,14 +233,14 @@ using&#160;</td><td class="memItemRight" valign="bottom"><b>value_type</b> = typ
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pri-methods" name="pri-methods"></a>
 Private Member Functions</h2></td></tr>
-<tr class="memitem:a8028a57212beff66c747ff03b338d199" id="r_a8028a57212beff66c747ff03b338d199"><td class="memItemLeft" align="right" valign="top"><a id="a8028a57212beff66c747ff03b338d199" name="a8028a57212beff66c747ff03b338d199"></a>
-<a class="el" href="classunodb_1_1test_1_1tree__verifier.html#afa56f531a5ce52d2b664ce1f2abdf993">ikey_type</a>&lt; Db &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>to_ikey</b> (typename Db::key_type key) const</td></tr>
-<tr class="memdesc:a8028a57212beff66c747ff03b338d199"><td class="mdescLeft">&#160;</td><td class="mdescRight">Convert an external key (Db::key_type) to an internal key (one the <a class="el" href="classunodb_1_1test_1_1tree__verifier.html" title="Utility class supporting verification of the system under test.">unodb::test::tree_verifier</a> stores in its ground truth key/value collection). <br /></td></tr>
-<tr class="separator:a8028a57212beff66c747ff03b338d199"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a39d553729e4f13de416b382e301cad29" id="r_a39d553729e4f13de416b382e301cad29"><td class="memTemplParams" colspan="2"><a id="a39d553729e4f13de416b382e301cad29" name="a39d553729e4f13de416b382e301cad29"></a>
+<tr class="memitem:a7e9a412096c266f9e9ade5c5d5d403f1" id="r_a7e9a412096c266f9e9ade5c5d5d403f1"><td class="memItemLeft" align="right" valign="top"><a id="a7e9a412096c266f9e9ade5c5d5d403f1" name="a7e9a412096c266f9e9ade5c5d5d403f1"></a>
+<a class="el" href="classunodb_1_1test_1_1tree__verifier.html#afa56f531a5ce52d2b664ce1f2abdf993">ikey_type</a>&lt; Db &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>to_ikey</b> (typename Db::key_type key) const noexcept(!std::is_same_v&lt; key_type, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> &gt;)</td></tr>
+<tr class="memdesc:a7e9a412096c266f9e9ade5c5d5d403f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Convert an external key (Db::key_type) to an internal key (one the <a class="el" href="classunodb_1_1test_1_1tree__verifier.html" title="Utility class supporting verification of the system under test.">unodb::test::tree_verifier</a> stores in its ground truth key/value collection). <br /></td></tr>
+<tr class="separator:a7e9a412096c266f9e9ade5c5d5d403f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa21f5354ce46aa6f1916cddc9775d2d5" id="r_aa21f5354ce46aa6f1916cddc9775d2d5"><td class="memTemplParams" colspan="2"><a id="aa21f5354ce46aa6f1916cddc9775d2d5" name="aa21f5354ce46aa6f1916cddc9775d2d5"></a>
 template&lt;typename T &gt; </td></tr>
-<tr class="memitem:a39d553729e4f13de416b382e301cad29"><td class="memTemplItemLeft" align="right" valign="top">key_type&#160;</td><td class="memTemplItemRight" valign="bottom"><b>coerce_key_internal</b> (T key)</td></tr>
-<tr class="separator:a39d553729e4f13de416b382e301cad29"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa21f5354ce46aa6f1916cddc9775d2d5"><td class="memTemplItemLeft" align="right" valign="top">key_type&#160;</td><td class="memTemplItemRight" valign="bottom"><b>coerce_key_internal</b> (T key) noexcept(!std::is_same_v&lt; key_type, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> &gt;||std::is_same_v&lt; T, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90">unodb::key_view</a> &gt;)</td></tr>
+<tr class="separator:aa21f5354ce46aa6f1916cddc9775d2d5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a840f1469c0c9069b37333f430f91a7c6" id="r_a840f1469c0c9069b37333f430f91a7c6"><td class="memTemplParams" colspan="2"><a id="a840f1469c0c9069b37333f430f91a7c6" name="a840f1469c0c9069b37333f430f91a7c6"></a>
 template&lt;class Db2  = Db&gt; </td></tr>
 <tr class="memitem:a840f1469c0c9069b37333f430f91a7c6"><td class="memTemplItemLeft" align="right" valign="top">std::enable_if_t&lt;!is_olc_db&lt; Db2 &gt;, void &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><b>do_insert</b> (key_type k, <a class="el" href="namespaceunodb.html#ae25127f715f2aac269da8a3616284c0b">unodb::value_view</a> v)</td></tr>
@@ -284,13 +284,13 @@ const bool&#160;</td><td class="memItemRight" valign="bottom"><b>parallel_test</
 <tr class="separator:a09cc1f40a0556020effeb2b56c7bbe48"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a07dc0a701d01365171de4ab6365eedde" id="r_a07dc0a701d01365171de4ab6365eedde"><td class="memItemLeft" align="right" valign="top"><a id="a07dc0a701d01365171de4ab6365eedde" name="a07dc0a701d01365171de4ab6365eedde"></a>
 std::vector&lt; std::array&lt; std::byte, sizeof(std::uint64_t)&gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>key_views</b> {}</td></tr>
-<tr class="memdesc:a07dc0a701d01365171de4ab6365eedde"><td class="mdescLeft">&#160;</td><td class="mdescRight">Arrays backing <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">unodb::key_view</a> objects. <br /></td></tr>
+<tr class="memdesc:a07dc0a701d01365171de4ab6365eedde"><td class="mdescLeft">&#160;</td><td class="mdescRight">Arrays backing <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">unodb::key_view</a> objects. <br /></td></tr>
 <tr class="separator:a07dc0a701d01365171de4ab6365eedde"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><div class="compoundTemplParams">template&lt;class Db&gt;<br />
 class unodb::test::tree_verifier&lt; Db &gt;</div><p>Utility class supporting verification of the system under test. </p>
-<dl class="section note"><dt>Note</dt><dd>For the <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">key_view</a> cases, the verifier assumes that we are storing u64 keys encoded into a <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">key_view</a>. The caller's <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">key_view</a> is decoded to obtain the u64 key. We then encode each u64 value in the specified range into a <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">key_view</a>. </dd></dl>
+<dl class="section note"><dt>Note</dt><dd>For the <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">key_view</a> cases, the verifier assumes that we are storing u64 keys encoded into a <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">key_view</a>. The caller's <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">key_view</a> is decoded to obtain the u64 key. We then encode each u64 value in the specified range into a <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">key_view</a>. </dd></dl>
 </div><h2 class="groupheader">Member Typedef Documentation</h2>
 <a id="afa56f531a5ce52d2b664ce1f2abdf993" name="afa56f531a5ce52d2b664ce1f2abdf993"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#afa56f531a5ce52d2b664ce1f2abdf993">&#9670;&#160;</a></span>ikey_type</h2>
@@ -317,7 +317,7 @@ template&lt;typename Db2  = Db&gt; </div>
 </div><div class="memdoc">
 
 <p>Declares the type for the keys of the tree_verifier::map. </p>
-<p>Since <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">key_view</a> is a non-owned type, we need to copy the data into an owned type that can be used with the map. </p>
+<p>Since <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">key_view</a> is a non-owned type, we need to copy the data into an owned type that can be used with the map. </p>
 
 </div>
 </div>
@@ -344,7 +344,7 @@ template&lt;class Db &gt; </div>
 </div><div class="memdoc">
 
 <p>Used to wrap the non-owned keys with an owned, comparable, etc. </p>
-<p>type iff the the keys of the Db are <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">unodb::key_view</a>. </p>
+<p>type iff the the keys of the Db are <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">unodb::key_view</a>. </p>
 
 </div>
 </div>
@@ -404,8 +404,8 @@ template&lt;class Db &gt; </div>
 
 </div>
 </div>
-<a id="a78be91ab9d36939edc0429cfee3ea02f" name="a78be91ab9d36939edc0429cfee3ea02f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a78be91ab9d36939edc0429cfee3ea02f">&#9670;&#160;</a></span>coerce_key()</h2>
+<a id="a7ae2a42a2b24def6dc7ad0b5ceec3e87" name="a7ae2a42a2b24def6dc7ad0b5ceec3e87"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7ae2a42a2b24def6dc7ad0b5ceec3e87">&#9670;&#160;</a></span>coerce_key()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -422,18 +422,18 @@ template&lt;typename T &gt; </div>
           <td>(</td>
           <td class="paramtype">T&#160;</td>
           <td class="paramname"><em>key</em></td><td>)</td>
-          <td> const</td>
+          <td></td>
         </tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">noexcept</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
 
 <p>Coerce an external key into the Db::key_type. </p>
-<dl class="section note"><dt>Note</dt><dd>Historically, the unit tests were written to some mixture of <code>int</code>, <code>unsigned</code>, and <code>std::uint64_t</code> keys and relied on implicit type promotion. This method takes the place of that implicit type promotion and also handles conversion from such simple keys to <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">unodb::key_view</a>.</dd>
+<dl class="section note"><dt>Note</dt><dd>Historically, the unit tests were written to some mixture of <code>int</code>, <code>unsigned</code>, and <code>std::uint64_t</code> keys and relied on implicit type promotion. This method takes the place of that implicit type promotion and also handles conversion from such simple keys to <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">unodb::key_view</a>.</dd>
 <dd>
 Type promotion is explicitly to std::uint64_t since that is the historical external type against which the unit tests were written.</dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
@@ -470,7 +470,7 @@ template&lt;class Db &gt; </div>
 </div><div class="memdoc">
 
 <p>Ground truth (key,val) pairs. </p>
-<dl class="section note"><dt>Note</dt><dd>The <code>std::map</code> and <code>std::unordered_map</code> do not support non-owned <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">unodb::key_view</a> objects as keys. To handle this, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Keys are passed as non-owning pointers to memory with associated length using a std::span.">unodb::key_view</a> keys are wrapped as an owning type. </dd></dl>
+<dl class="section note"><dt>Note</dt><dd>The <code>std::map</code> and <code>std::unordered_map</code> do not support non-owned <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">unodb::key_view</a> objects as keys. To handle this, <a class="el" href="namespaceunodb.html#a37e43379ef5bf4922acff8db9a432a90" title="Non-owning view of key bytes, copied into index upon insertion.">unodb::key_view</a> keys are wrapped as an owning type. </dd></dl>
 
 </div>
 </div>

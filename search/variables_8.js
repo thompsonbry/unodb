@@ -1,9 +1,10 @@
 var searchData=
 [
-  ['key_0',['key',['../structunodb_1_1detail_1_1basic__art__key.html#abc8d474caa99eac94a1b49eee7a9df07',1,'unodb::detail::basic_art_key']]],
-  ['key_5fbyte_1',['key_byte',['../structunodb_1_1detail_1_1iter__result.html#af629f13328e6b7ebd271a9939d7559a8',1,'unodb::detail::iter_result']]],
-  ['key_5fbytes_2',['key_bytes',['../structunodb_1_1detail_1_1basic__art__key.html#aa1c673bbd12a302556a7880df52aa9b8',1,'unodb::detail::basic_art_key']]],
-  ['key_5fsize_3',['key_size',['../classunodb_1_1detail_1_1basic__leaf.html#a891b5c7b76c488e453319377a83e4ae3',1,'unodb::detail::basic_leaf']]],
-  ['key_5fviews_4',['key_views',['../classunodb_1_1test_1_1tree__verifier.html#a07dc0a701d01365171de4ab6365eedde',1,'unodb::test::tree_verifier::key_views'],['../classanonymous__namespace_02test__key__encode__decode_8cpp_03_1_1key__factory.html#a4f6d41dbc6f7ee06559435c0165255d6',1,'anonymous_namespace{test_key_encode_decode.cpp}::key_factory::key_views']]],
-  ['keybuf_5f_5',['keybuf_',['../classunodb_1_1db_1_1iterator.html#a6396d761c7e6abb971fe1508bb4e3e38',1,'unodb::db::iterator::keybuf_'],['../classunodb_1_1olc__db_1_1iterator.html#a66fc3fbe506575866d55b8099edfbebe',1,'unodb::olc_db::iterator::keybuf_']]]
+  ['ibuf_0',['ibuf',['../classunodb_1_1key__encoder.html#a0ce9f63be6a58b88b97202ca0a8705f1',1,'unodb::key_encoder::ibuf'],['../classunodb_1_1detail_1_1key__buffer.html#adaa1a712e1aa973b82d583bb49e10fac',1,'unodb::detail::key_buffer::ibuf']]],
+  ['initial_5fbuffer_5fcapacity_1',['INITIAL_BUFFER_CAPACITY',['../namespaceunodb_1_1detail.html#aba258d6d1df5e71714ec57d8b041b129',1,'unodb::detail']]],
+  ['inode_5ftype_5fcount_2',['inode_type_count',['../namespaceunodb_1_1detail.html#aa11fc0dc02ee0b061504cd50856ea7dd',1,'unodb::detail']]],
+  ['instance_5fcount_3',['instance_count',['../classunodb_1_1detail_1_1deallocation__request.html#a5d3dc2f1ebf5074553b71ea4d161fa9a',1,'unodb::detail::deallocation_request']]],
+  ['integer_4',['integer',['../unionunodb_1_1detail_1_1basic__inode__4_1_1key__union.html#a36ba197b6285168aa92c1b052f273836',1,'unodb::detail::basic_inode_4::key_union']]],
+  ['internal_5fas_5fi_5',['internal_as_i',['../namespaceunodb.html#a775cf37c7ccec6301c8512193550b424',1,'unodb']]],
+  ['it_6',['it',['../classunodb_1_1visitor.html#a88f5de7adfbc8eae86d11b8242dc9df6',1,'unodb::visitor']]]
 ];

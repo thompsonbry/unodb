@@ -29,7 +29,7 @@ var NAVTREE =
       [ "Introduction", "index.html#autotoc_md24", null ],
       [ "Requirements", "index.html#autotoc_md25", [
         [ "Build dependencies", "index.html#autotoc_md26", null ],
-        [ "Optional vendored dependencies, bundled as git submodules", "index.html#autotoc_md27", null ]
+        [ "Optional vendored dependencies, bundled as Git submodules", "index.html#autotoc_md27", null ]
       ] ],
       [ "Building", "index.html#autotoc_md28", null ],
       [ "Platform-Specific Notes", "index.html#autotoc_md29", [
@@ -92,6 +92,7 @@ var NAVTREE =
       [ "File Members", "globals.html", [
         [ "All", "globals.html", null ],
         [ "Functions", "globals_func.html", null ],
+        [ "Variables", "globals_vars.html", null ],
         [ "Macros", "globals_defs.html", null ]
       ] ]
     ] ]
@@ -101,12 +102,15 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"classunodb_1_1detail_1_1inode__256.html",
-"classunodb_1_1key__encoder.html#ade062bb3c2a32b3b22490ac2f9084136",
-"classunodb_1_1qsbr.html#a2213cdf7aa229e831f20e93418e194d8",
-"classunodb_1_1test_1_1allocation__failure__injector.html#a1504ebd7361714e5c1a1ad88566049ac",
-"namespaceanonymous__namespace_02test__key__encode__decode_8cpp_03.html#aad7a5ffd7192458300bb032496ee3816",
-"structunodb_1_1qsbr__state.html#a9945790ec8f3aab1cd31b85b6a99ac9f"
+"classunodb_1_1db_1_1iterator.html#ab321c79625f90d6363aaaa752bf92add",
+"classunodb_1_1detail_1_1basic__inode__4.html#ad86305f68f4d5ee1c7c060f3b997ee99",
+"classunodb_1_1detail_1_1deallocation__request.html#a005b7873662cb6c0e8e2519c0a7efa16",
+"classunodb_1_1in__fake__critical__section.html#ad8d21282ff62f3407aef61859735f7a1",
+"classunodb_1_1optimistic__lock.html#a462a9f65f786f790dbbc1b8af92a9e37",
+"classunodb_1_1qsbr__per__thread.html#a61d5ff32388c657046c71bb03308c286",
+"functions_type.html",
+"namespaceunodb_1_1detail.html#a7a9ec247e08423b7456c02d0234e41ab",
+"structunodb_1_1detail_1_1iter__result.html#ab22270fae893b795cee9f4d663950f41"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';
