@@ -1678,6 +1678,21 @@ class [[nodiscard]] basic_inode : public basic_inode_impl<ArtPolicy> {
     // node optimistically in the case of OLC.
     UNODB_DETAIL_ASSERT(is_full_for_add());
   }
+
+  /// Construct single-child node with prefix from two identical keys.
+  ///
+  /// Used to create chain nodes when keys share more than
+  /// key_prefix_capacity bytes. The prefix is computed from the keys
+  /// at the given depth, and children_count is set to 1.
+  ///
+  /// \param k1 First key for prefix computation
+  /// \param shifted_k2 Second key shifted to current depth
+  /// \param depth Current tree depth
+  /// \param single_child Tag to disambiguate from the two-child constructor
+  constexpr basic_inode(unodb::key_view k1, art_key_type shifted_k2,
+                        tree_depth<art_key_type> depth,
+                        std::uint8_t children_count_) noexcept
+      : parent{children_count_, k1, shifted_k2, depth} {}
 };
 
 /// Type alias for basic_inode_4 parent class.
@@ -1787,6 +1802,26 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     init(db_instance, source_node, child_to_delete);
   }
 
+  /// Construct single-child chain node for long shared prefixes.
+  ///
+  /// Creates an inode_4 with one child, used when two keys share more
+  /// than key_prefix_capacity bytes. The prefix is the first 7 bytes
+  /// of the key at \a depth, and the single child is placed under
+  /// \a key_byte.
+  ///
+  /// \param k1 Key for prefix computation
+  /// \param remaining_key Same key shifted to current depth
+  /// \param depth Current tree depth
+  /// \param key_byte Dispatch byte for the single child
+  /// \param child The single child node
+  constexpr basic_inode_4(db_type&, key_view k1, art_key_type remaining_key,
+                          // cppcheck-suppress passedByValue
+                          tree_depth_type depth, std::byte key_byte,
+                          node_ptr child) noexcept
+      : parent_class{k1, remaining_key, depth, 1} {
+    init(key_byte, child);
+  }
+
   /// \}
 
   /// \name Initialization methods
@@ -1870,6 +1905,22 @@ class basic_inode_4 : public basic_inode_4_parent<ArtPolicy> {
     const auto k1_next_byte_depth = k2_next_byte_depth + depth;
     add_two_to_empty(k1[k1_next_byte_depth], node_ptr{child1, node_type::LEAF},
                      shifted_k2[k2_next_byte_depth], std::move(child2));
+  }
+
+  /// Initialize single-child node.
+  ///
+  /// \param key_byte Dispatch byte for the child
+  /// \param child The single child node
+  constexpr void init(std::byte key_byte, node_ptr child) noexcept {
+    UNODB_DETAIL_ASSERT(this->children_count == 1);
+
+    keys.byte_array[0] = key_byte;
+    children[0] = child;
+#ifndef UNODB_DETAIL_X86_64
+    keys.byte_array[1] = unused_key_byte;
+    keys.byte_array[2] = unused_key_byte;
+    keys.byte_array[3] = unused_key_byte;
+#endif
   }
 
   /// \}
