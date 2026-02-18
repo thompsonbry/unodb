@@ -104,8 +104,9 @@ inline unodb::key_view make_key(unodb::key_encoder& enc, std::uint8_t tag,
 }
 
 // Helper: encode a 10-byte key (uint8 + uint64 + uint8).
-// Shares first 9 bytes with make_key when tag and v match; the extra
-// trailing byte makes it a different length for mixed-length tests.
+// When used with the same tag and v as make_key, the 9-byte key is a
+// prefix of this 10-byte key — which ART does not support.  Use
+// different v values to avoid prefix relationships.
 // Both lengths (9 and 10) exceed key_prefix_capacity + 1 = 8.
 inline unodb::key_view make_long_key(unodb::key_encoder& enc,
                                      std::uint8_t tag, std::uint64_t v,
@@ -204,6 +205,50 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.insert(make_key(enc, 0x42, 3), val);
   verifier.insert(make_key(enc, 0x42, 4), val);
+  verifier.check_present_values();
+}
+
+/// Two 17-byte keys sharing 16 bytes — forces two consecutive chain
+/// nodes (depth 0→8 and depth 8→16) before the normal 2-child split.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MultiLevelChain) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  // 17 bytes: 0xAA × 16, then 0x01 vs 0x02.
+  auto make17 = [&](std::uint8_t last) {
+    enc.reset();
+    for (unsigned i = 0; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
+    enc.encode(last);
+    return enc.get_key_view();
+  };
+  verifier.insert(make17(0x01), val);
+  verifier.insert(make17(0x02), val);
+  verifier.check_present_values();
+}
+
+/// Three 17-byte keys: A and B share 16 bytes, C diverges at byte 10.
+/// After inserting A and B (two chain levels), inserting C splits the
+/// second chain node mid-prefix.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
+                 InsertDivergingAtIntermediateChainDepth) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  auto make17 = [&](std::uint8_t byte10, std::uint8_t last) {
+    enc.reset();
+    for (unsigned i = 0; i < 10; ++i) enc.encode(std::uint8_t{0xAA});
+    enc.encode(byte10);
+    for (unsigned i = 11; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
+    enc.encode(last);
+    return enc.get_key_view();
+  };
+  // A and B share 16 bytes (byte10=0xAA), differ at byte 16.
+  verifier.insert(make17(0xAA, 0x01), val);
+  verifier.insert(make17(0xAA, 0x02), val);
+  // C diverges at byte 10 — splits the second chain node.
+  verifier.insert(make17(0xBB, 0x03), val);
   verifier.check_present_values();
 }
 
@@ -408,18 +453,23 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkToEmptyFromInode16InChain) {
 
 // Group 3c: Mixed-depth removal
 
-/// Insert a 10-byte and 9-byte key sharing 9 bytes.  Remove the
-/// 10-byte key, verify 9-byte key.  Then remove it too, assert empty.
+/// Insert a 10-byte and 9-byte key sharing 8 bytes (same tag, different
+/// uint64 values).  Remove the 10-byte key, verify 9-byte key.  Then
+/// remove it too, assert empty.
+///
+/// Note: the two keys must NOT be in a prefix relationship — ART does
+/// not support one key being a prefix of another.  Using different
+/// uint64 values ensures they diverge within the shared bytes.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveMixedLengthFromChain) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
   verifier.insert(make_long_key(enc, 0x42, 1, 0xFF), val);
-  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.remove(make_long_key(enc, 0x42, 1, 0xFF));
   verifier.check_present_values();
-  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 2));
   verifier.assert_empty();
 }
 
@@ -499,14 +549,15 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, StressInsertRemoveAtEveryPosition) {
 // Group 4: Mixed key lengths
 // -------------------------------------------------------------------
 
-/// A 10-byte key and a 9-byte key sharing 9 bytes.
+/// A 10-byte key and a 9-byte key sharing 8 bytes (same tag, different
+/// uint64 values).  The keys must not be in a prefix relationship.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MixedLengthKeysLongPrefix) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
   verifier.insert(make_long_key(enc, 0x42, 1, 0xFF), val);
-  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.check_present_values();
 }
 

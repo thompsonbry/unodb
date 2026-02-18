@@ -1269,6 +1269,34 @@ bool db<Key, Value>::insert_internal(art_key_type insert_key, value_type v) {
       if (UNODB_DETAIL_UNLIKELY(cmp == 0)) {
         return false;  // exists
       }
+      // When the keys share more than key_prefix_capacity bytes at
+      // this depth, the dispatch bytes collide and we cannot create a
+      // two-child inode_4 directly.  Instead, create a single-child
+      // chain inode_4 that consumes key_prefix_capacity prefix bytes
+      // plus one dispatch byte, then continue the loop at the deeper
+      // depth.  The next iteration will find the same leaf and repeat
+      // until the keys diverge.
+      constexpr auto cap = detail::key_prefix_capacity;
+      const auto remaining_existing = existing_key.subspan(depth);
+      const auto shared = detail::key_prefix_snapshot::shared_len(
+          detail::get_u64(remaining_existing), remaining_key.get_u64(), cap);
+      if (shared >= cap &&
+          remaining_existing.size() > cap &&
+          remaining_key.size() > cap &&
+          remaining_existing[cap] == remaining_key[cap]) {
+        const auto dispatch = remaining_existing[cap];
+        auto chain{inode_4::create(*this, existing_key, remaining_key, depth,
+                                   dispatch, *node)};
+        *node = detail::node_ptr{chain.release(), node_type::I4};
+#ifdef UNODB_DETAIL_WITH_STATS
+        account_growing_inode<node_type::I4>();
+#endif  // UNODB_DETAIL_WITH_STATS
+        // Do not advance depth/remaining_key. The next iteration
+        // processes the chain inode normally: matches its prefix,
+        // advances depth, then descends via the dispatch byte to
+        // reach the leaf again at a deeper depth.
+        continue;
+      }
       // Replace the existing leaf with a new N4 and put the existing
       // leaf and the leaf for the caller's key and value under the
       // new inode as its direct children.

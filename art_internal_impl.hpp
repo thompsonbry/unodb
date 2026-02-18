@@ -830,8 +830,12 @@ union [[nodiscard]] key_prefix_snapshot {
     return f.key_prefix[i];
   }
 
- private:
-  /// Compute shared prefix length between two 64-bit values.
+  /// Compute shared prefix length between two 64-bit key values.
+  ///
+  /// \param k1 First key as u64 (from get_u64)
+  /// \param k2 Second key as u64 (from get_u64)
+  /// \param clamp_byte_pos Maximum prefix length to consider
+  /// \return Number of leading bytes in common (at most \a clamp_byte_pos)
   [[nodiscard, gnu::const]] static constexpr unsigned shared_len(
       std::uint64_t k1, std::uint64_t k2, unsigned clamp_byte_pos) noexcept {
     UNODB_DETAIL_ASSERT(clamp_byte_pos < 8);
