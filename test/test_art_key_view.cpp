@@ -74,7 +74,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
 }
 
 // ===================================================================
-// Compound key_view tests for the dispatch byte collision bug.
+// key_view tests for the dispatch byte collision bug.
 //
 // key_prefix_capacity is 7 bytes.  When two key_view keys share more
 // than 7 bytes of common prefix, the leaf-to-inode4 split must create
@@ -82,7 +82,13 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
 // dispatch byte (the byte immediately after the stored prefix) is the
 // same for both keys.
 //
+// Keys are 9 bytes: (uint8_t tag, uint64_t value).  Same tag + small
+// values → 8 shared bytes, triggering the bug.  10-byte keys
+// (uint8_t tag, uint64_t value, uint8_t suffix) are used for
+// mixed-length tests.  Both lengths exceed key_prefix_capacity + 1.
+//
 // Test plan groups:
+//   0. Bug reproduction — minimal cases
 //   1. Prefix boundary cases — validate various shared-prefix lengths
 //   2. Node growth — inode4 -> inode16 -> inode48 -> inode256
 //   3. Removal & shrinkage — chained inodes collapse correctly
@@ -90,42 +96,47 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
 //   5. Duplicate & edge cases — duplicate insert, get-missing
 // ===================================================================
 
-// Helper: encode a compound key (uint32, uint8, uint64) = 13 bytes.
-inline unodb::key_view make_key13(unodb::key_encoder& enc, std::uint32_t a,
-                                  std::uint8_t b, std::uint64_t c) {
-  return enc.reset().encode(a).encode(b).encode(c).get_key_view();
+// Helper: encode a 9-byte key (uint8 + uint64).
+// Same tag byte → 8 shared bytes when uint64 values are small.
+inline unodb::key_view make_key(unodb::key_encoder& enc, std::uint8_t tag,
+                                std::uint64_t v) {
+  return enc.reset().encode(tag).encode(v).get_key_view();
 }
 
-// Helper: encode a compound key (uint32, uint8, uint32) = 9 bytes.
-inline unodb::key_view make_key9(unodb::key_encoder& enc, std::uint32_t a,
-                                 std::uint8_t b, std::uint32_t c) {
-  return enc.reset().encode(a).encode(b).encode(c).get_key_view();
+// Helper: encode a 10-byte key (uint8 + uint64 + uint8).
+// Shares first 9 bytes with make_key when tag and v match; the extra
+// trailing byte makes it a different length for mixed-length tests.
+// Both lengths (9 and 10) exceed key_prefix_capacity + 1 = 8.
+inline unodb::key_view make_long_key(unodb::key_encoder& enc,
+                                     std::uint8_t tag, std::uint64_t v,
+                                     std::uint8_t suffix) {
+  return enc.reset().encode(tag).encode(v).encode(suffix).get_key_view();
 }
 
 // -------------------------------------------------------------------
 // Group 0: Original bug reproduction tests
 // -------------------------------------------------------------------
 
-/// Two 13-byte keys sharing 12 bytes — dispatch byte collision.
+/// Two 9-byte keys sharing 8 bytes — dispatch byte collision.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysLongSharedPrefix) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.check_present_values();
 }
 
-/// Three compound keys with the same uint32+uint8 prefix.
+/// Three keys with the same tag byte and small uint64 values.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ThreeCompoundKeysLongSharedPrefix) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 3), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 3), val);
   verifier.check_present_values();
 }
 
@@ -135,8 +146,8 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, NineByteCompoundKeysLongPrefix) {
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key9(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key9(enc, 100, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.check_present_values();
 }
 
@@ -146,8 +157,8 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysDifferentPrefixes) {
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 50, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 200, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x01, 1), val);
+  verifier.insert(make_key(enc, 0x02, 2), val);
   verifier.check_present_values();
 }
 
@@ -155,54 +166,44 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysDifferentPrefixes) {
 // Group 1: Prefix boundary cases
 // -------------------------------------------------------------------
 
-/// Keys diverge at byte 8 (prefix fills capacity, dispatch byte differs).
-/// Encodes (uint32=100, uint8=0x42, uint64) where the uint64 values
-/// have different high bytes: 0x0100... vs 0x0200...
+/// Keys diverge at byte 1 (prefix fills capacity, dispatch byte differs).
+/// uint64 values with different high bytes produce different byte[1].
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysDivergeAtByte8) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  // byte layout: [4 bytes uint32][1 byte uint8][8 bytes uint64]
-  // bytes 0-4 identical, bytes 5-7 = prefix, byte 5 = dispatch byte for
-  // uint64 high byte.  These values have different byte[5]:
-  verifier.insert(make_key13(enc, 100, 0x42, 0x0100000000000000ULL), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 0x0200000000000000ULL), val);
+  verifier.insert(make_key(enc, 0x42, 0x0100000000000000ULL), val);
+  verifier.insert(make_key(enc, 0x42, 0x0200000000000000ULL), val);
   verifier.check_present_values();
 }
 
-/// Keys share 9 bytes — requires two levels of chaining beyond prefix.
+/// Keys share 5 bytes (tag + 4 zero bytes of uint64), differ at byte 5.
+/// Requires two levels of chaining beyond the prefix.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysMaxPrefixPlusTwo) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  // 13-byte keys sharing bytes 0..8 (9 bytes), differing at byte 9.
-  // uint32=100, uint8=0x42 gives 5 shared bytes.  uint64 values
-  // 0x0000010000000001 vs 0x0000020000000001 differ at byte 7 of the
-  // uint64 (= byte 12 overall... let's be precise).
-  // We want 9 shared bytes total = bytes 0..8.  That's the 5-byte
-  // (uint32+uint8) prefix plus 4 more zero bytes from uint64.
-  // uint64 values: 0x0000000001000000 vs 0x0000000002000000
-  // encoded big-endian: 00 00 00 00 01 00 00 00 vs 00 00 00 00 02 00 00 00
-  // shared through byte 8 (= prefix byte 4 of uint64), differ at byte 9.
-  verifier.insert(make_key13(enc, 100, 0x42, 0x0000000100000000ULL), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 0x0000000200000000ULL), val);
+  // 9-byte keys: tag=0x42, uint64 values differ at their 4th byte
+  // (= byte 5 overall).  Shared: bytes 0..4.
+  verifier.insert(make_key(enc, 0x42, 0x0000000100000000ULL), val);
+  verifier.insert(make_key(enc, 0x42, 0x0000000200000000ULL), val);
   verifier.check_present_values();
 }
 
-/// Keys identical except last byte — maximum chaining depth.
-/// 13-byte keys sharing 12 bytes, differing only at byte 12.
+/// Keys identical except last byte — maximum chaining depth for 9-byte keys.
+/// 9-byte keys sharing 8 bytes, differing only at byte 8.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
                  CompoundKeysIdenticalExceptLastByte) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 3), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 4), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 3), val);
+  verifier.insert(make_key(enc, 0x42, 4), val);
   verifier.check_present_values();
 }
 
@@ -256,14 +257,14 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, StressDivergeAtEveryPosition) {
 // Group 2: Node growth (inode4 -> inode16 -> inode48 -> inode256)
 // -------------------------------------------------------------------
 
-/// 5 keys with same 12-byte prefix — forces inode4 -> inode16 growth.
+/// 5 keys with same 8-byte prefix — forces inode4 -> inode16 growth.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysFiveChildren) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
   for (std::uint64_t i = 1; i <= 5; ++i) {
-    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+    verifier.insert(make_key(enc, 0x42, i), val);
   }
   verifier.check_present_values();
 }
@@ -275,7 +276,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysSeventeenChildren) {
   const auto val = unodb::test::test_values[0];
 
   for (std::uint64_t i = 1; i <= 17; ++i) {
-    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+    verifier.insert(make_key(enc, 0x42, i), val);
   }
   verifier.check_present_values();
 }
@@ -287,7 +288,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysFiftyChildren) {
   const auto val = unodb::test::test_values[0];
 
   for (std::uint64_t i = 1; i <= 50; ++i) {
-    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+    verifier.insert(make_key(enc, 0x42, i), val);
   }
   verifier.check_present_values();
 }
@@ -305,26 +306,26 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertThenRemove) {
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
-  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.remove(make_key(enc, 0x42, 1));
   verifier.check_present_values();
 }
 
-/// Insert 3 keys: two sharing 12 bytes, one sharing 9 bytes with them.
-/// Remove one of the 12-byte-shared pair.  The surviving structure
+/// Insert 3 keys: two sharing 8 bytes, one diverging earlier.
+/// Remove one of the 8-byte-shared pair.  The surviving structure
 /// should be an inode with 2 children (the remaining keys).
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveFromChainLeavesInode) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  // Keys 1 and 2 share 12 bytes; key 3 shares 9 bytes with them.
-  // key3 uint64 = 0x0000000100000000 differs at byte 9 (overall).
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 0x0000000100000000ULL), val);
-  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  // Keys 1 and 2 share 8 bytes; key 3 diverges at byte 5.
+  // key3 uint64 = 0x0000000100000000 differs at byte 5 (overall).
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 0x0000000100000000ULL), val);
+  verifier.remove(make_key(enc, 0x42, 1));
   verifier.check_present_values();
 }
 
@@ -334,12 +335,12 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveAllFromChainReverseOrder) {
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 3), val);
-  verifier.remove(make_key13(enc, 100, 0x42, 3));
-  verifier.remove(make_key13(enc, 100, 0x42, 2));
-  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 3), val);
+  verifier.remove(make_key(enc, 0x42, 3));
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.remove(make_key(enc, 0x42, 1));
   verifier.assert_empty();
 }
 
@@ -349,12 +350,12 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveAllFromChainForwardOrder) {
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 3), val);
-  verifier.remove(make_key13(enc, 100, 0x42, 1));
-  verifier.remove(make_key13(enc, 100, 0x42, 2));
-  verifier.remove(make_key13(enc, 100, 0x42, 3));
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.insert(make_key(enc, 0x42, 3), val);
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.remove(make_key(enc, 0x42, 3));
   verifier.assert_empty();
 }
 
@@ -367,11 +368,11 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkInode16InChain) {
   const auto val = unodb::test::test_values[0];
 
   for (std::uint64_t i = 1; i <= 5; ++i) {
-    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+    verifier.insert(make_key(enc, 0x42, i), val);
   }
-  verifier.remove(make_key13(enc, 100, 0x42, 1));
-  verifier.remove(make_key13(enc, 100, 0x42, 2));
-  verifier.remove(make_key13(enc, 100, 0x42, 3));
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.remove(make_key(enc, 0x42, 3));
   verifier.check_present_values();
 }
 
@@ -382,10 +383,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkInode48InChain) {
   const auto val = unodb::test::test_values[0];
 
   for (std::uint64_t i = 1; i <= 17; ++i) {
-    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+    verifier.insert(make_key(enc, 0x42, i), val);
   }
   for (std::uint64_t i = 1; i <= 13; ++i) {
-    verifier.remove(make_key13(enc, 100, 0x42, i));
+    verifier.remove(make_key(enc, 0x42, i));
   }
   verifier.check_present_values();
 }
@@ -397,28 +398,28 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkToEmptyFromInode16InChain) {
   const auto val = unodb::test::test_values[0];
 
   for (std::uint64_t i = 1; i <= 5; ++i) {
-    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+    verifier.insert(make_key(enc, 0x42, i), val);
   }
   for (std::uint64_t i = 1; i <= 5; ++i) {
-    verifier.remove(make_key13(enc, 100, 0x42, i));
+    verifier.remove(make_key(enc, 0x42, i));
   }
   verifier.assert_empty();
 }
 
 // Group 3c: Mixed-depth removal
 
-/// Insert a 9-byte and 13-byte key sharing 8 bytes.  Remove the
-/// 9-byte key, verify 13-byte key.  Then remove it too, assert empty.
+/// Insert a 10-byte and 9-byte key sharing 9 bytes.  Remove the
+/// 10-byte key, verify 9-byte key.  Then remove it too, assert empty.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveMixedLengthFromChain) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key9(enc, 100, 0x42, 1), val);
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  verifier.remove(make_key9(enc, 100, 0x42, 1));
+  verifier.insert(make_long_key(enc, 0x42, 1, 0xFF), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.remove(make_long_key(enc, 0x42, 1, 0xFF));
   verifier.check_present_values();
-  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 1));
   verifier.assert_empty();
 }
 
@@ -498,16 +499,14 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, StressInsertRemoveAtEveryPosition) {
 // Group 4: Mixed key lengths
 // -------------------------------------------------------------------
 
-/// A 9-byte key and a 13-byte key sharing the first 8 bytes.
+/// A 10-byte key and a 9-byte key sharing 9 bytes.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MixedLengthKeysLongPrefix) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  // 9-byte key: (uint32=100, uint8=0x42, uint32=1)
-  verifier.insert(make_key9(enc, 100, 0x42, 1), val);
-  // 13-byte key: (uint32=100, uint8=0x42, uint64=1)
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
+  verifier.insert(make_long_key(enc, 0x42, 1, 0xFF), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
   verifier.check_present_values();
 }
 
@@ -515,28 +514,28 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MixedLengthKeysLongPrefix) {
 // Group 5: Duplicate & edge cases
 // -------------------------------------------------------------------
 
-/// Inserting the same 13-byte key twice returns false on the second insert.
+/// Inserting the same 9-byte key twice returns false on the second insert.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeyDuplicateInsert) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 1), val);
   // Second insert of same key should fail.
-  UNODB_ASSERT_FALSE(verifier.get_db().insert(make_key13(enc, 100, 0x42, 1),
+  UNODB_ASSERT_FALSE(verifier.get_db().insert(make_key(enc, 0x42, 1),
                                               val));
   verifier.check_present_values();
 }
 
-/// Get with a key sharing 12 bytes but differing at the last byte
+/// Get with a key sharing 8 bytes but differing at the last byte
 /// should return empty when only one key is present.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeyGetMissing) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
 
-  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
-  const auto result = verifier.get_db().get(make_key13(enc, 100, 0x42, 2));
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  const auto result = verifier.get_db().get(make_key(enc, 0x42, 2));
   UNODB_ASSERT_FALSE(TypeParam::key_found(result));
   verifier.check_present_values();
 }
