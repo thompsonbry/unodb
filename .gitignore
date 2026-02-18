@@ -53,3 +53,4 @@ examples/compile_commands.json
 **/*#*
 
 /docs/
+session-key-view-bug.json
