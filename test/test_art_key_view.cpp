@@ -206,6 +206,52 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
   verifier.check_present_values();
 }
 
+/// Stress test: for a 20-byte key, insert pairs that diverge at each
+/// possible dispatch-byte position after the 7-byte prefix.  For
+/// divergence position d (7 <= d <= 18), the two keys share bytes
+/// 0..d-1 and differ at byte d.  All pairs coexist in the same tree
+/// but use distinct byte[0] values so each pair occupies an independent
+/// subtree and the second insert always hits the leaf-split path.
+///
+/// This exercises inode chains of every depth from 1 (d=7, dispatch
+/// byte immediately after prefix) to 12 (d=18, second-to-last byte).
+///
+/// Key construction: 20 bytes built from encode(uint8_t) calls.
+/// Byte 0 encodes the divergence position d (making subtrees disjoint).
+/// Bytes 1..6 are 0xAA (filling the 7-byte prefix with bytes 0..6).
+/// Bytes 7..d-1 are 0x00 (shared chain bytes beyond the prefix).
+/// Byte d is 0x01 vs 0x02 (the divergence point).
+/// Bytes d+1..19 are 0x00 (padding).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, StressDivergeAtEveryPosition) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  constexpr unsigned key_len = 20;
+  constexpr unsigned prefix_cap = 7;
+
+  for (unsigned d = prefix_cap; d < key_len - 1; ++d) {
+    for (unsigned variant = 1; variant <= 2; ++variant) {
+      enc.reset();
+      enc.encode(static_cast<std::uint8_t>(d));  // byte 0: unique per d
+      for (unsigned i = 1; i < key_len; ++i) {
+        if (i < prefix_cap) {
+          enc.encode(std::uint8_t{0xAA});         // bytes 1..6: shared prefix
+        } else if (i < d) {
+          enc.encode(std::uint8_t{0x00});          // bytes 7..d-1: shared chain
+        } else if (i == d) {
+          enc.encode(static_cast<std::uint8_t>(variant));  // divergence point
+        } else {
+          enc.encode(std::uint8_t{0x00});          // padding
+        }
+      }
+      verifier.insert(enc.get_key_view(), val);
+    }
+  }
+  // 12 divergence positions × 2 keys each = 24 keys total.
+  verifier.check_present_values();
+}
+
 // -------------------------------------------------------------------
 // Group 2: Node growth (inode4 -> inode16 -> inode48 -> inode256)
 // -------------------------------------------------------------------
