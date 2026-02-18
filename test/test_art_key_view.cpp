@@ -296,7 +296,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysFiftyChildren) {
 // Group 3: Removal & shrinkage
 // -------------------------------------------------------------------
 
+// Group 3a: Chain collapse scenarios
+
 /// Insert 2 colliding keys, remove one, verify the other is still found.
+/// The chain of inode_4s should collapse to a single leaf.
 UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertThenRemove) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
@@ -308,8 +311,40 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertThenRemove) {
   verifier.check_present_values();
 }
 
-/// Insert 3 colliding keys, remove all, verify tree is empty.
-UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertRemoveAll) {
+/// Insert 3 keys: two sharing 12 bytes, one sharing 9 bytes with them.
+/// Remove one of the 12-byte-shared pair.  The surviving structure
+/// should be an inode with 2 children (the remaining keys).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveFromChainLeavesInode) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  // Keys 1 and 2 share 12 bytes; key 3 shares 9 bytes with them.
+  // key3 uint64 = 0x0000000100000000 differs at byte 9 (overall).
+  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
+  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
+  verifier.insert(make_key13(enc, 100, 0x42, 0x0000000100000000ULL), val);
+  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  verifier.check_present_values();
+}
+
+/// Insert 3 colliding keys, remove in reverse order, assert empty.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveAllFromChainReverseOrder) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
+  verifier.insert(make_key13(enc, 100, 0x42, 2), val);
+  verifier.insert(make_key13(enc, 100, 0x42, 3), val);
+  verifier.remove(make_key13(enc, 100, 0x42, 3));
+  verifier.remove(make_key13(enc, 100, 0x42, 2));
+  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  verifier.assert_empty();
+}
+
+/// Insert 3 colliding keys, remove in forward order, assert empty.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveAllFromChainForwardOrder) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
@@ -323,8 +358,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertRemoveAll) {
   verifier.assert_empty();
 }
 
-/// Insert 5 colliding keys (-> inode16), remove 2 (-> inode4 shrink).
-UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysShrinkInode16) {
+// Group 3b: Shrinkage at chain terminal
+
+/// Insert 5 keys (-> inode16 at chain terminal), remove 3 (-> inode4).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkInode16InChain) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   const auto val = unodb::test::test_values[0];
@@ -334,7 +371,127 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysShrinkInode16) {
   }
   verifier.remove(make_key13(enc, 100, 0x42, 1));
   verifier.remove(make_key13(enc, 100, 0x42, 2));
+  verifier.remove(make_key13(enc, 100, 0x42, 3));
   verifier.check_present_values();
+}
+
+/// Insert 17 keys (-> inode48), remove 13 (-> shrink to inode4).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkInode48InChain) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 17; ++i) {
+    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+  }
+  for (std::uint64_t i = 1; i <= 13; ++i) {
+    verifier.remove(make_key13(enc, 100, 0x42, i));
+  }
+  verifier.check_present_values();
+}
+
+/// Insert 5 keys (-> inode16), remove all 5, assert empty.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkToEmptyFromInode16InChain) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 5; ++i) {
+    verifier.insert(make_key13(enc, 100, 0x42, i), val);
+  }
+  for (std::uint64_t i = 1; i <= 5; ++i) {
+    verifier.remove(make_key13(enc, 100, 0x42, i));
+  }
+  verifier.assert_empty();
+}
+
+// Group 3c: Mixed-depth removal
+
+/// Insert a 9-byte and 13-byte key sharing 8 bytes.  Remove the
+/// 9-byte key, verify 13-byte key.  Then remove it too, assert empty.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveMixedLengthFromChain) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  verifier.insert(make_key9(enc, 100, 0x42, 1), val);
+  verifier.insert(make_key13(enc, 100, 0x42, 1), val);
+  verifier.remove(make_key9(enc, 100, 0x42, 1));
+  verifier.check_present_values();
+  verifier.remove(make_key13(enc, 100, 0x42, 1));
+  verifier.assert_empty();
+}
+
+// Group 3d: Stress removal
+
+/// Insert 24 keys (divergence at positions 7..18), remove every other
+/// key, verify remaining.  Then remove all, assert empty.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, StressInsertRemoveAtEveryPosition) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  constexpr unsigned key_len = 20;
+  constexpr unsigned prefix_cap = 7;
+
+  // Insert all 24 keys (same structure as StressDivergeAtEveryPosition).
+  for (unsigned d = prefix_cap; d < key_len - 1; ++d) {
+    for (unsigned variant = 1; variant <= 2; ++variant) {
+      enc.reset();
+      enc.encode(static_cast<std::uint8_t>(d));
+      for (unsigned i = 1; i < key_len; ++i) {
+        if (i < prefix_cap) {
+          enc.encode(std::uint8_t{0xAA});
+        } else if (i < d) {
+          enc.encode(std::uint8_t{0x00});
+        } else if (i == d) {
+          enc.encode(static_cast<std::uint8_t>(variant));
+        } else {
+          enc.encode(std::uint8_t{0x00});
+        }
+      }
+      verifier.insert(enc.get_key_view(), val);
+    }
+  }
+  verifier.check_present_values();
+
+  // Remove variant=1 keys (one from each pair).
+  for (unsigned d = prefix_cap; d < key_len - 1; ++d) {
+    enc.reset();
+    enc.encode(static_cast<std::uint8_t>(d));
+    for (unsigned i = 1; i < key_len; ++i) {
+      if (i < prefix_cap) {
+        enc.encode(std::uint8_t{0xAA});
+      } else if (i < d) {
+        enc.encode(std::uint8_t{0x00});
+      } else if (i == d) {
+        enc.encode(std::uint8_t{1});
+      } else {
+        enc.encode(std::uint8_t{0x00});
+      }
+    }
+    verifier.remove(enc.get_key_view());
+  }
+  verifier.check_present_values();
+
+  // Remove remaining variant=2 keys.
+  for (unsigned d = prefix_cap; d < key_len - 1; ++d) {
+    enc.reset();
+    enc.encode(static_cast<std::uint8_t>(d));
+    for (unsigned i = 1; i < key_len; ++i) {
+      if (i < prefix_cap) {
+        enc.encode(std::uint8_t{0xAA});
+      } else if (i < d) {
+        enc.encode(std::uint8_t{0x00});
+      } else if (i == d) {
+        enc.encode(std::uint8_t{2});
+      } else {
+        enc.encode(std::uint8_t{0x00});
+      }
+    }
+    verifier.remove(enc.get_key_view());
+  }
+  verifier.assert_empty();
 }
 
 // -------------------------------------------------------------------
