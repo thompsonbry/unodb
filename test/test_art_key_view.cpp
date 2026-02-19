@@ -94,6 +94,15 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
 //   3. Removal & shrinkage — chained inodes collapse correctly
 //   4. Mixed key lengths — different-length keys with long shared prefix
 //   5. Duplicate & edge cases — duplicate insert, get-missing
+//   6. Stats verification — node counts at intermediate states
+//     6a. Insert stats — verify chain structure after insert
+//     6b. Partial remove — bottom inode shrinks, chain preserved
+//         I16→I4, I48→I16, I256→I48
+//     6c. Full remove — remove all keys through each bottom inode size
+//         I4, I16, I48, I256
+//     6d. Cascade — chain under parent at min_size, removing chain
+//         triggers parent shrinkage: I4→leaf, I16→I4, I48→I16, I256→I48
+//     6e. Multi-level chain — 17-byte keys, 2 chain levels
 // ===================================================================
 
 // Helper: encode a 9-byte key (uint8 + uint64).
@@ -101,6 +110,15 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, EncodedTextKeys) {
 inline unodb::key_view make_key(unodb::key_encoder& enc, std::uint8_t tag,
                                 std::uint64_t v) {
   return enc.reset().encode(tag).encode(v).get_key_view();
+}
+
+// Helper: encode a 1-byte key (uint8 only).
+// Diverges at byte 0 from any key with a different first byte.
+// Used in cascade tests where we need direct-leaf children of the root
+// alongside a chain subtree.
+inline unodb::key_view make_short_key(unodb::key_encoder& enc,
+                                      std::uint8_t tag) {
+  return enc.reset().encode(tag).get_key_view();
 }
 
 // Helper: encode a 10-byte key (uint8 + uint64 + uint8).
@@ -127,6 +145,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysLongSharedPrefix) {
   verifier.insert(make_key(enc, 0x42, 1), val);
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 (prefix=7, 1 child) + bottom I4 (2 children) + 2 leaves
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Three keys with the same tag byte and small uint64 values.
@@ -139,6 +161,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ThreeCompoundKeysLongSharedPrefix) {
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.insert(make_key(enc, 0x42, 3), val);
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 + bottom I4 (3 children) + 3 leaves
+  verifier.assert_node_counts({3, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// 9-byte keys sharing 8 bytes — minimal collision case.
@@ -150,6 +176,9 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, NineByteCompoundKeysLongPrefix) {
   verifier.insert(make_key(enc, 0x42, 1), val);
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Control: keys diverge within the first 8 bytes — works today.
@@ -206,6 +235,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
   verifier.insert(make_key(enc, 0x42, 3), val);
   verifier.insert(make_key(enc, 0x42, 4), val);
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 + bottom I4 (4 children, at capacity) + 4 leaves
+  verifier.assert_node_counts({4, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Two 17-byte keys sharing 16 bytes — forces two consecutive chain
@@ -225,6 +258,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MultiLevelChain) {
   verifier.insert(make17(0x01), val);
   verifier.insert(make17(0x02), val);
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // 2 chain I4s (depth 0→8, 8→16) + bottom I4 (2 children) + 2 leaves
+  verifier.assert_node_counts({2, 3, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Three 17-byte keys: A and B share 16 bytes, C diverges at byte 10.
@@ -312,6 +349,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysFiveChildren) {
     verifier.insert(make_key(enc, 0x42, i), val);
   }
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 + I16 (5 children) + 5 leaves
+  verifier.assert_node_counts({5, 1, 1, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// 17 keys — forces inode16 -> inode48 growth.
@@ -324,6 +365,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysSeventeenChildren) {
     verifier.insert(make_key(enc, 0x42, i), val);
   }
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 + I48 (17 children) + 17 leaves
+  verifier.assert_node_counts({17, 1, 0, 1, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// 50 keys — forces inode48 -> inode256 growth.
@@ -336,6 +381,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysFiftyChildren) {
     verifier.insert(make_key(enc, 0x42, i), val);
   }
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 + I256 (50 children) + 50 leaves
+  verifier.assert_node_counts({50, 1, 0, 0, 1});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 // -------------------------------------------------------------------
@@ -355,6 +404,11 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertThenRemove) {
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.remove(make_key(enc, 0x42, 1));
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // Bottom I4 collapsed via leave_last_child.  Chain I4 remains with
+  // 1 child (the surviving leaf).
+  verifier.assert_node_counts({1, 1, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Insert 3 keys: two sharing 8 bytes, one diverging earlier.
@@ -419,6 +473,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkInode16InChain) {
   verifier.remove(make_key(enc, 0x42, 2));
   verifier.remove(make_key(enc, 0x42, 3));
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // I16(5) shrinks to I4(4) on first remove, then 2 more removes → I4(2).
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Insert 17 keys (-> inode48), remove 13 (-> shrink to inode4).
@@ -434,6 +492,11 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ShrinkInode48InChain) {
     verifier.remove(make_key(enc, 0x42, i));
   }
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // I48(17) shrinks to I16(16) on first remove, then I16(5) shrinks
+  // to I4(4) on 13th remove.
+  verifier.assert_node_counts({4, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 /// Insert 5 keys (-> inode16), remove all 5, assert empty.
@@ -559,6 +622,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MixedLengthKeysLongPrefix) {
   verifier.insert(make_long_key(enc, 0x42, 1, 0xFF), val);
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.check_present_values();
+#ifdef UNODB_DETAIL_WITH_STATS
+  // chain I4 + bottom I4 (2 children) + 2 leaves
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+#endif  // UNODB_DETAIL_WITH_STATS
 }
 
 // -------------------------------------------------------------------
@@ -590,5 +657,306 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeyGetMissing) {
   UNODB_ASSERT_FALSE(TypeParam::key_found(result));
   verifier.check_present_values();
 }
+
+#ifdef UNODB_DETAIL_WITH_STATS
+
+// ===================================================================
+// Group 6: Stats verification — node counts at intermediate states
+//
+// These tests verify that the tree's internal bookkeeping (node counts,
+// memory use) is correct after insert and remove operations involving
+// single-child chain I4 nodes.
+//
+// Inode size thresholds:
+//   I4:   min=2, capacity=4   (shrinks via leave_last_child)
+//   I16:  min=5, capacity=16  (shrinks to I4)
+//   I48:  min=17, capacity=48 (shrinks to I16)
+//   I256: min=49, capacity=256 (shrinks to I48)
+//
+// For keys make_key(enc, 0x42, v) with small v:
+//   9 bytes: [0x42, 0,0,0,0,0,0, 0, v]
+//   All share 8 bytes, differ only at byte 8.
+//   Tree: chain I4 (prefix=7, dispatch=0x00) → bottom inode (children
+//   keyed by v).
+// ===================================================================
+
+// -------------------------------------------------------------------
+// Group 6a: Insert stats — verify chain structure
+// -------------------------------------------------------------------
+
+/// Verify node counts after inserting 2 chain-creating keys.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainNodeCountsAfterInsert) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  // Single leaf — no inodes yet.
+  verifier.assert_node_counts({1, 0, 0, 0, 0});
+
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  // chain I4 + bottom I4 + 2 leaves
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+  verifier.check_present_values();
+}
+
+// -------------------------------------------------------------------
+// Group 6b: Partial remove — bottom inode shrinks, chain preserved
+// -------------------------------------------------------------------
+
+/// Insert 3 keys, remove 1.  Chain I4 + bottom I4 (2 children).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainPartialRemoveI4) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 3; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  verifier.assert_node_counts({3, 2, 0, 0, 0});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.check_present_values();
+  // I4(3) → remove → I4(2).  Chain I4 unchanged.
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+}
+
+/// Insert 5 keys (→I16), remove 1 (I16 at min_size → shrink to I4).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainShrinkI16ToI4) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 5; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  verifier.assert_node_counts({5, 1, 1, 0, 0});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.check_present_values();
+  // I16(5) at min_size → shrink to I4(4).  Chain I4 + bottom I4.
+  verifier.assert_node_counts({4, 2, 0, 0, 0});
+  verifier.assert_shrinking_inodes({0, 1, 0, 0});
+}
+
+/// Insert 17 keys (→I48), remove 1 (I48 at min_size → shrink to I16).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainShrinkI48ToI16) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 17; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  verifier.assert_node_counts({17, 1, 0, 1, 0});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.check_present_values();
+  // I48(17) at min_size → shrink to I16(16).  Chain I4 + I16.
+  verifier.assert_node_counts({16, 1, 1, 0, 0});
+  verifier.assert_shrinking_inodes({0, 0, 1, 0});
+}
+
+/// Insert 49 keys (→I256), remove 1 (I256 at min_size → shrink to I48).
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainShrinkI256ToI48) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 49; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  verifier.assert_node_counts({49, 1, 0, 0, 1});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.check_present_values();
+  // I256(49) at min_size → shrink to I48(48).  Chain I4 + I48.
+  verifier.assert_node_counts({48, 1, 0, 1, 0});
+  verifier.assert_shrinking_inodes({0, 0, 0, 1});
+}
+
+// -------------------------------------------------------------------
+// Group 6c: Full remove — all keys removed through each bottom inode
+// -------------------------------------------------------------------
+
+/// Insert 3 keys into chain (bottom I4), remove all.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainRemoveAllFromI4) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 3; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  for (std::uint64_t i = 1; i <= 3; ++i)
+    verifier.remove(make_key(enc, 0x42, i));
+  verifier.assert_empty();
+}
+
+/// Insert 5 keys into chain (bottom I16), remove all.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainRemoveAllFromI16) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 5; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  for (std::uint64_t i = 1; i <= 5; ++i)
+    verifier.remove(make_key(enc, 0x42, i));
+  verifier.assert_empty();
+}
+
+/// Insert 17 keys into chain (bottom I48), remove all.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainRemoveAllFromI48) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 17; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  for (std::uint64_t i = 1; i <= 17; ++i)
+    verifier.remove(make_key(enc, 0x42, i));
+  verifier.assert_empty();
+}
+
+/// Insert 49 keys into chain (bottom I256), remove all.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainRemoveAllFromI256) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  for (std::uint64_t i = 1; i <= 49; ++i)
+    verifier.insert(make_key(enc, 0x42, i), val);
+  for (std::uint64_t i = 1; i <= 49; ++i)
+    verifier.remove(make_key(enc, 0x42, i));
+  verifier.assert_empty();
+}
+
+// -------------------------------------------------------------------
+// Group 6d: Cascade — chain under parent at min_size, removing chain
+// triggers parent shrinkage
+//
+// Each test creates a parent inode at its min_size, where one child
+// slot points to a chain (2 keys with tag=0x42 sharing 8 bytes) and
+// the remaining slots are direct leaves (distinct tag bytes).
+// Removing both chain keys should: reclaim the chain, then shrink
+// the parent through the normal shrinkage path.
+// -------------------------------------------------------------------
+
+/// Chain under I4(2 children).  Remove chain → I4 collapses via
+/// leave_last_child → root becomes the surviving leaf.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI4) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  // Insert chain keys first so the chain forms at root level, then
+  // insert a short key that splits the root prefix → parent I4.
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.insert(make_short_key(enc, 0x01), val);
+  // root I4(2: 0x42→chain, 0x01→leaf) + chain I4 + bottom I4 + 3 leaves
+  verifier.assert_node_counts({3, 3, 0, 0, 0});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  // Bottom I4 collapsed via leave_last_child.  Chain I4 has 1 child (leaf).
+  // Root I4 still has 2 children.
+  verifier.assert_node_counts({2, 2, 0, 0, 0});
+
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.check_present_values();
+  // Chain fully reclaimed.  Root I4 at min_size(2) loses a child →
+  // leave_last_child → root becomes the surviving leaf.
+  verifier.assert_node_counts({1, 0, 0, 0, 0});
+}
+
+/// Chain under I16(5 children).  Remove chain → I16 shrinks to I4.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI16) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  // Chain keys first, then 4 short keys → root I16(5 children).
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  for (std::uint8_t t = 0x01; t <= 0x04; ++t)
+    verifier.insert(make_short_key(enc, t), val);
+  // root I16(5) + chain I4 + bottom I4 + 6 leaves
+  verifier.assert_node_counts({6, 2, 1, 0, 0});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.check_present_values();
+  // Chain reclaimed.  I16(5) → remove chain slot → is_min_size →
+  // shrink to I4(4).
+  verifier.assert_node_counts({4, 1, 0, 0, 0});
+}
+
+/// Chain under I48(17 children).  Remove chain → I48 shrinks to I16.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI48) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  // Chain keys first, then 16 short keys → root I48(17 children).
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  for (std::uint8_t t = 0x01; t <= 0x10; ++t)
+    verifier.insert(make_short_key(enc, t), val);
+  // root I48(17) + chain I4 + bottom I4 + 18 leaves
+  verifier.assert_node_counts({18, 2, 0, 1, 0});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.check_present_values();
+  // Chain reclaimed.  I48(17) → remove chain slot → shrink to I16(16).
+  verifier.assert_node_counts({16, 0, 1, 0, 0});
+}
+
+/// Chain under I256(49 children).  Remove chain → I256 shrinks to I48.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI256) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  // Chain keys first, then 48 short keys → root I256(49 children).
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  for (std::uint8_t t = 0x01; t <= 0x30; ++t)
+    verifier.insert(make_short_key(enc, t), val);
+  // root I256(49) + chain I4 + bottom I4 + 50 leaves
+  verifier.assert_node_counts({50, 2, 0, 0, 1});
+
+  verifier.remove(make_key(enc, 0x42, 1));
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.check_present_values();
+  // Chain reclaimed.  I256(49) → remove chain slot → shrink to I48(48).
+  verifier.assert_node_counts({48, 0, 0, 1, 0});
+}
+
+// -------------------------------------------------------------------
+// Group 6e: Multi-level chain removal
+// -------------------------------------------------------------------
+
+/// Two 17-byte keys (2 chain I4s + bottom I4), remove both.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MultiLevelChainRemoveAll) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  const auto val = unodb::test::test_values[0];
+
+  auto make17 = [&](std::uint8_t last) {
+    enc.reset();
+    for (unsigned i = 0; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
+    enc.encode(last);
+    return enc.get_key_view();
+  };
+  verifier.insert(make17(0x01), val);
+  verifier.insert(make17(0x02), val);
+  verifier.assert_node_counts({2, 3, 0, 0, 0});
+
+  verifier.remove(make17(0x01));
+  // Bottom I4 collapsed.  Two chain I4s remain, last one has 1 child (leaf).
+  verifier.assert_node_counts({1, 2, 0, 0, 0});
+
+  verifier.remove(make17(0x02));
+  verifier.assert_empty();
+}
+
+#endif  // UNODB_DETAIL_WITH_STATS
 
 }  // namespace
