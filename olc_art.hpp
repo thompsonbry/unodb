@@ -1837,6 +1837,40 @@ olc_db<Key, Value>::try_insert(art_key_type k, value_type v,
         return false;  // exists
       }
 
+      // When the keys share more than key_prefix_capacity bytes at
+      // this depth, the dispatch bytes collide and we cannot create a
+      // two-child inode_4 directly.  Instead, create a single-child
+      // chain inode_4 and restart — the next attempt will descend
+      // through the chain and repeat until the keys diverge.
+      constexpr auto cap = detail::key_prefix_capacity;
+      const auto remaining_existing = existing_key.subspan(depth);
+      const auto shared = detail::key_prefix_snapshot::shared_len(
+          detail::get_u64(remaining_existing), remaining_key.get_u64(), cap);
+      if (shared >= cap &&
+          remaining_existing.size() > cap &&
+          remaining_key.size() > cap &&
+          remaining_existing[cap] == remaining_key[cap]) {
+        const auto dispatch = remaining_existing[cap];
+        auto chain{inode_4::create(*this, existing_key, remaining_key, depth,
+                                   dispatch, node)};
+        {
+          const optimistic_lock::write_guard parent_guard{
+              std::move(parent_critical_section)};
+          if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) return {};
+
+          const optimistic_lock::write_guard node_guard{
+              std::move(node_critical_section)};
+          if (UNODB_DETAIL_UNLIKELY(node_guard.must_restart())) return {};
+
+          *node_in_parent =
+              detail::olc_node_ptr{chain.release(), node_type::I4};
+        }
+#ifdef UNODB_DETAIL_WITH_STATS
+        account_growing_inode<node_type::I4>();
+#endif  // UNODB_DETAIL_WITH_STATS
+        return {};  // restart to descend through the new chain node
+      }
+
       create_leaf_if_needed(cached_leaf, k, v, *this);
       auto new_node{inode_4::create(*this, existing_key, remaining_key, depth)};
 
