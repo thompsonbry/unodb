@@ -1365,35 +1365,185 @@ bool db<Key, Value>::remove_internal(art_key_type remove_key) {
     return false;
   }
 
-  auto* node = &root;
-  tree_depth_type depth{};
+  struct stack_entry {
+    detail::node_ptr* slot;  // pointer to the node_ptr holding this inode
+    std::uint8_t child_i;    // child index we descended through
+  };
+
+  // Stack depth bounded by key_length / (prefix_capacity + 1).
+  static constexpr std::size_t max_depth = 32;
+  std::array<stack_entry, max_depth> stack{};
+  std::size_t stack_size = 0;
+  auto* slot = &root;
   auto remaining_key{remove_key};
 
+  // --- Downward pass: find the leaf ---
   while (true) {
-    const auto node_type = node->type();
-    UNODB_DETAIL_ASSERT(node_type != node_type::LEAF);
+    const auto node_val = *slot;
+    const auto ntype = node_val.type();
+    UNODB_DETAIL_ASSERT(ntype != node_type::LEAF);
 
-    auto* const inode{node->template ptr<inode_type*>()};
-    const auto& key_prefix{inode->get_key_prefix()};
-    const auto key_prefix_length{key_prefix.length()};
-    const auto shared_prefix_len{key_prefix.get_shared_length(remaining_key)};
-    if (shared_prefix_len < key_prefix_length) return false;
+    auto* const inode{node_val.template ptr<inode_type*>()};
+    const auto& kp{inode->get_key_prefix()};
+    const auto kp_len{kp.length()};
+    if (kp.get_shared_length(remaining_key) < kp_len) return false;
+    remaining_key.shift_right(kp_len);
 
-    UNODB_DETAIL_ASSERT(shared_prefix_len == key_prefix_length);
-    depth += key_prefix_length;
-    remaining_key.shift_right(key_prefix_length);
+    const auto [child_i, child_ptr]{inode->find_child(ntype, remaining_key[0])};
+    if (child_ptr == nullptr) return false;
 
-    const auto remove_result{inode->template remove_or_choose_subtree<
-        std::optional<detail::node_ptr*>>(node_type, remaining_key[0],
-                                          remove_key, *this, node)};
-    if (UNODB_DETAIL_UNLIKELY(!remove_result)) return false;
+    const auto child_val{child_ptr->load()};
+    if (child_val.type() != node_type::LEAF) {
+      UNODB_DETAIL_ASSERT(stack_size < max_depth);
+      stack[stack_size++] = {slot, child_i};
+      slot = detail::unwrap_fake_critical_section(child_ptr);
+      remaining_key.shift_right(1);
+      continue;
+    }
 
-    auto* const child_ptr{*remove_result};
-    if (child_ptr == nullptr) return true;
+    // Found a leaf — verify it matches.
+    auto* const leaf{child_val.template ptr<leaf_type*>()};
+    if (!leaf->matches(remove_key)) return false;
 
-    node = child_ptr;
-    ++depth;
-    remaining_key.shift_right(1);
+    // --- Upward pass ---
+    // The leaf is at child_i in the inode at *slot.
+    // Nothing has been removed yet.
+
+    const auto count = inode->get_children_count();
+
+    if (count > 1 || ntype != node_type::I4) {
+      // Multi-child inode, or non-I4 with 1 child (not a chain).
+      // Use existing remove_or_choose_subtree which handles leaf
+      // reclamation, shrinkage, everything.
+      const auto remove_result{inode->template remove_or_choose_subtree<
+          std::optional<detail::node_ptr*>>(ntype, remaining_key[0],
+                                            remove_key, *this, slot)};
+      UNODB_DETAIL_ASSERT(remove_result.has_value());
+      UNODB_DETAIL_ASSERT(*remove_result == nullptr);
+      return true;
+    }
+
+    // Single-child inode (chain node).  Reclaim leaf and chain,
+    // then walk up cleaning any further empty chains.
+    {
+      const auto rl{art_policy::reclaim_leaf_on_scope_exit(leaf, *this)};
+    }
+    {
+      const auto ri{art_policy::make_db_inode_unique_ptr(
+          node_val.template ptr<inode_4*>(), *this)};
+    }
+#ifdef UNODB_DETAIL_WITH_STATS
+    account_shrinking_inode<node_type::I4>();
+#endif
+
+    while (stack_size > 0) {
+      const auto entry = stack[--stack_size];
+      const auto parent_val = *entry.slot;
+      const auto ptype = parent_val.type();
+      auto* const pinode{parent_val.template ptr<inode_type*>()};
+      const auto pcount = pinode->get_children_count();
+
+      if (pcount == 1 && ptype == node_type::I4) {
+        // Parent is also a chain I4 — reclaim and continue up.
+        {
+          const auto ri{art_policy::make_db_inode_unique_ptr(
+              parent_val.template ptr<inode_4*>(), *this)};
+        }
+#ifdef UNODB_DETAIL_WITH_STATS
+        account_shrinking_inode<node_type::I4>();
+#endif
+        continue;
+      }
+
+      // Multi-child parent.  Handle shrinkage or just remove the entry.
+      if (ptype == node_type::I4 && pcount == detail::basic_inode_4<art_policy>::min_size) {
+        // I4 at min_size: remove entry, then collapse to remaining child.
+        pinode->remove_child_entry(ptype, entry.child_i);
+        auto* const pi4{parent_val.template ptr<inode_4*>()};
+        const auto remaining_iter = pi4->begin();
+        const auto remaining = pi4->get_child(0);
+        if (remaining.type() != node_type::LEAF) {
+          auto* const remaining_inode{
+              remaining.template ptr<inode_type*>()};
+          const auto child_prefix_len =
+              remaining_inode->get_key_prefix().length();
+          const auto parent_prefix_len = pi4->get_key_prefix().length();
+          if (child_prefix_len + parent_prefix_len + 1 >=
+              detail::key_prefix_capacity) {
+            // Can't collapse — prefix would overflow.  Leave the I4
+            // as a single-child chain node.
+            return true;
+          }
+          remaining_inode->get_key_prefix().prepend(
+              pi4->get_key_prefix(), remaining_iter.key_byte);
+        }
+        *entry.slot = remaining;
+        {
+          const auto ri{art_policy::make_db_inode_unique_ptr(pi4, *this)};
+        }
+#ifdef UNODB_DETAIL_WITH_STATS
+        account_shrinking_inode<node_type::I4>();
+#endif
+      } else if (
+          (ptype == node_type::I16 &&
+           pcount == detail::basic_inode_16<art_policy>::min_size) ||
+          (ptype == node_type::I48 &&
+           pcount == detail::basic_inode_48<art_policy>::min_size) ||
+          (ptype == node_type::I256 &&
+           pcount == detail::basic_inode_256<art_policy>::min_size)) {
+        // I16/I48/I256 at min_size.  Use the shrink constructors
+        // which skip child_to_delete.  The dead chain pointer is still
+        // in the slot; reclaim_leaf_if_leaf will skip it (not a leaf).
+        switch (ptype) {
+          case node_type::I16: {
+            auto new_node{inode_4::create(
+                *this,
+                *parent_val.template ptr<detail::inode_16<Key, Value>*>(),
+                entry.child_i)};
+            *entry.slot =
+                detail::node_ptr{new_node.release(), node_type::I4};
+#ifdef UNODB_DETAIL_WITH_STATS
+            account_shrinking_inode<node_type::I16>();
+#endif
+            break;
+          }
+          case node_type::I48: {
+            auto new_node{detail::inode_16<Key, Value>::create(
+                *this,
+                *parent_val.template ptr<detail::inode_48<Key, Value>*>(),
+                entry.child_i)};
+            *entry.slot =
+                detail::node_ptr{new_node.release(), node_type::I16};
+#ifdef UNODB_DETAIL_WITH_STATS
+            account_shrinking_inode<node_type::I48>();
+#endif
+            break;
+          }
+          case node_type::I256: {
+            auto new_node{detail::inode_48<Key, Value>::create(
+                *this,
+                *parent_val.template ptr<detail::inode_256<Key, Value>*>(),
+                entry.child_i)};
+            *entry.slot =
+                detail::node_ptr{new_node.release(), node_type::I48};
+#ifdef UNODB_DETAIL_WITH_STATS
+            account_shrinking_inode<node_type::I256>();
+#endif
+            break;
+          }
+          default:
+            UNODB_DETAIL_CANNOT_HAPPEN();
+        }
+      } else {
+        // Above min_size — just remove the dead entry.
+        pinode->remove_child_entry(ptype, entry.child_i);
+      }
+      return true;
+    }
+
+    // Stack empty — chain was the root.
+    root = nullptr;
+    return true;
   }
 }
 
