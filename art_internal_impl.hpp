@@ -38,6 +38,7 @@
 #include <arm_neon.h>
 #endif
 
+#include "art_allocator.hpp"
 #include "art_common.hpp"
 #include "art_internal.hpp"
 #include "assert.hpp"
@@ -524,7 +525,8 @@ template <typename Key, typename Value, template <typename, typename> class Db>
   }
 
   auto* const leaf_mem = static_cast<std::byte*>(
-      allocate_aligned(size, alignment_for_new<leaf_type>()));
+      db.get_allocator().alloc(size, alignment_for_new<leaf_type>(),
+                               db.get_allocator().ctx));
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.increment_leaf_count(size);
@@ -590,7 +592,8 @@ inline void basic_db_leaf_deleter<Db>::operator()(
   const auto leaf_size = to_delete->get_size();
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  free_aligned(to_delete);
+  const auto& alloc = db.get_allocator();
+  alloc.dealloc(to_delete, 0, alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.decrement_leaf_count(leaf_size);
@@ -602,7 +605,8 @@ inline void basic_db_inode_deleter<INode, Db>::operator()(
     INode* inode_ptr) noexcept {
   static_assert(std::is_trivially_destructible_v<INode>);
 
-  free_aligned(inode_ptr);
+  const auto& alloc = db.get_allocator();
+  alloc.dealloc(inode_ptr, sizeof(INode), alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.template decrement_inode_count<INode>();
@@ -858,7 +862,9 @@ struct basic_art_policy final {
                                                      UNODB_DETAIL_LIFETIMEBOUND,
                                                      Args&&... args) {
     auto* const inode_mem = static_cast<std::byte*>(
-        allocate_aligned(sizeof(INode), alignment_for_new<INode>()));
+        db_instance.get_allocator().alloc(sizeof(INode),
+                                          alignment_for_new<INode>(),
+                                          db_instance.get_allocator().ctx));
 
 #ifdef UNODB_DETAIL_WITH_STATS
     db_instance.template increment_inode_count<INode>();
