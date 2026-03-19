@@ -66,7 +66,17 @@ class mutex_db final {
 
  public:
   // Creation and destruction
+
+  /// Construct empty mutex-protected ART index with default allocator.
   mutex_db() noexcept = default;
+
+  /// Construct empty mutex-protected ART index with a custom allocator.
+  constexpr explicit mutex_db(allocator_type alloc) noexcept : db_{alloc} {}
+
+  /// Return the allocator used by this tree.
+  [[nodiscard]] constexpr const allocator_type& get_allocator() const noexcept {
+    return db_.get_allocator();
+  }
 
   /// Query for a value associated with a key.
   ///

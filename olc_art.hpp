@@ -22,6 +22,7 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "art_allocator.hpp"
 #include "art_common.hpp"
 #include "art_internal.hpp"
 #include "art_internal_impl.hpp"
@@ -199,7 +200,13 @@ class olc_db final {
 
  public:
   // Creation and destruction
+
+  /// Construct empty OLC ART index with default allocator.
   olc_db() noexcept = default;
+
+  /// Construct empty OLC ART index with a custom allocator.
+  constexpr explicit olc_db(allocator_type alloc) noexcept
+      : allocator_{alloc} {}
 
   ~olc_db() noexcept;
 
@@ -216,6 +223,11 @@ class olc_db final {
 
   /// Return true iff the tree is empty (no root leaf).
   [[nodiscard]] auto empty() const noexcept { return root == nullptr; }
+
+  /// Return the allocator used by this tree.
+  [[nodiscard]] constexpr const allocator_type& get_allocator() const noexcept {
+    return allocator_;
+  }
 
   /// Insert a value under a binary comparable key iff there is no entry for
   /// that key.
@@ -936,6 +948,9 @@ class olc_db final {
 
   // The root of the tree, guarded by the [root_pointer_lock].
   in_critical_section<detail::olc_node_ptr> root{detail::olc_node_ptr{nullptr}};
+
+  /// Allocator for tree nodes.
+  allocator_type allocator_{detail::default_allocator};
 
   static_assert(sizeof(root_pointer_lock) + sizeof(root) <=
                 detail::hardware_constructive_interference_size);
