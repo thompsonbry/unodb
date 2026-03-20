@@ -31,7 +31,6 @@
 #include "optimistic_lock.hpp"
 #include "portability_arch.hpp"
 #include "qsbr.hpp"
-#include "qsbr_ptr.hpp"
 #include "sync.hpp"
 
 namespace unodb {
@@ -158,8 +157,6 @@ using olc_leaf_unique_ptr =
 
 }  // namespace detail
 
-using qsbr_value_view = qsbr_ptr_span<const std::byte>;
-
 /// A thread-safe Adaptive Radix Tree that is synchronized using optimistic lock
 /// coupling. At any time, at most two directly-related tree nodes can be
 /// write-locked by the insert algorithm and three by the delete algorithm. The
@@ -173,10 +170,8 @@ class olc_db final {
   using key_type = Key;
   /// The type of the value associated with the key in the index.
   using value_type = Value;
-  using value_view = unodb::qsbr_value_view;
-  using get_result =
-      std::optional<std::conditional_t<std::is_same_v<Value, unodb::value_view>,
-                                       unodb::qsbr_value_view, value_type>>;
+  using value_view = unodb::value_view;
+  using get_result = std::optional<value_type>;
   using inode_base = detail::olc_inode_base<Key, Value>;
   using leaf_type = detail::olc_leaf_type<Key, Value>;
   using db_type = olc_db<Key, Value>;
@@ -407,7 +402,7 @@ class olc_db final {
     /// \pre The iterator MUST be valid().
     [[nodiscard, gnu::pure]] auto get_val() const noexcept
         -> std::conditional_t<std::is_same_v<Value, unodb::value_view>,
-                              qsbr_value_view, value_type>;
+                              unodb::value_view, value_type>;
 
     /// Debugging
     // LCOV_EXCL_START
@@ -3686,7 +3681,7 @@ UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 template <typename Key, typename Value>
 auto olc_db<Key, Value>::iterator::get_val() const noexcept
     -> std::conditional_t<std::is_same_v<Value, unodb::value_view>,
-                          qsbr_value_view, value_type> {
+                          unodb::value_view, value_type> {
   // Note: If the iterator is on a leaf, we return the value for
   // that leaf regardless of whether the leaf has been deleted.
   // This is part of the design semantics for the OLC ART scan.
@@ -3702,7 +3697,7 @@ auto olc_db<Key, Value>::iterator::get_val() const noexcept
     UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);      // On a leaf.
     const auto* const leaf{node.template ptr<leaf_type*>()};  // current leaf.
     if constexpr (std::is_same_v<Value, unodb::value_view>)
-      return qsbr_ptr_span{leaf->get_value_view()};
+      return leaf->get_value_view();
     else
       return leaf->template get_value<Value>();
   }
