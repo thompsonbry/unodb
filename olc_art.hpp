@@ -152,6 +152,31 @@ using olc_leaf_unique_ptr =
 
 }  // namespace detail
 
+namespace detail {
+
+/// QSBR-based defer_dealloc for OLC trees.  Queues the deallocation
+/// through QSBR so concurrent readers can finish before memory is freed.
+inline void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
+                               destroy_callback_type /*destroy_callback*/,
+                               void* /*ctx*/) noexcept(false) {
+  this_thread().on_next_epoch_deallocate(ptr
+#ifdef UNODB_DETAIL_WITH_STATS
+                                         ,
+                                         size
+#endif
+#ifndef NDEBUG
+                                         ,
+                                         nullptr
+#endif
+  );
+}
+
+/// Default allocator for OLC trees: uses QSBR for deferred reclamation.
+inline constexpr allocator_type olc_default_allocator{
+    &default_alloc, &default_dealloc, &qsbr_defer_dealloc, nullptr};
+
+}  // namespace detail
+
 /// A thread-safe Adaptive Radix Tree that is synchronized using optimistic lock
 /// coupling. At any time, at most two directly-related tree nodes can be
 /// write-locked by the insert algorithm and three by the delete algorithm. The
@@ -945,7 +970,7 @@ class olc_db final {
   in_critical_section<detail::olc_node_ptr> root{detail::olc_node_ptr{nullptr}};
 
   /// Allocator for tree nodes.
-  allocator_type allocator_{detail::default_allocator};
+  allocator_type allocator_{detail::olc_default_allocator};
 
   static_assert(sizeof(root_pointer_lock) + sizeof(root) <=
                 detail::hardware_constructive_interference_size);

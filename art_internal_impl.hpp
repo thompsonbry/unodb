@@ -516,9 +516,8 @@ template <typename Key, typename Value, template <typename, typename> class Db>
             leaf_val_bytes.size_bytes()));
   }
 
-  auto* const leaf_mem = static_cast<std::byte*>(
-      db.get_allocator().alloc(size, alignment_for_new<leaf_type>(),
-                               db.get_allocator().ctx));
+  auto* const leaf_mem = static_cast<std::byte*>(db.get_allocator().alloc(
+      size, alignment_for_new<leaf_type>(), db.get_allocator().ctx));
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.increment_leaf_count(size);
@@ -845,10 +844,10 @@ struct basic_art_policy final {
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
   [[nodiscard]] static auto make_db_inode_unique_ptr(
       db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND, Args&&... args) {
-    auto* const inode_mem = static_cast<std::byte*>(
-        db_instance.get_allocator().alloc(sizeof(INode),
-                                          alignment_for_new<INode>(),
-                                          db_instance.get_allocator().ctx));
+    auto* const inode_mem =
+        static_cast<std::byte*>(db_instance.get_allocator().alloc(
+            sizeof(INode), alignment_for_new<INode>(),
+            db_instance.get_allocator().ctx));
 
 #ifdef UNODB_DETAIL_WITH_STATS
     db_instance.template increment_inode_count<INode>();
