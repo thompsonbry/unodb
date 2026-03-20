@@ -823,7 +823,7 @@ if(LIBFUZZER_AVAILABLE)
   target_link_libraries(unodb_qsbr_lf PUBLIC unodb_util Threads::Threads)
 endif()
 
-add_unodb_library(unodb art.hpp art_common.hpp art_allocator.hpp art_allocator.cpp
+add_unodb_library(unodb art.hpp art_common.hpp art_allocator.hpp
   mutex_art.hpp optimistic_lock.hpp
   art_internal_impl.hpp olc_art.hpp art_internal.hpp art_internal.cpp
   node_type.hpp duckdb_encode_decode.hpp)
