@@ -1959,16 +1959,20 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 template <typename Key, typename Value>
 olc_db<Key, Value>::~olc_db() noexcept {
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   UNODB_DETAIL_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
+#endif
 
   delete_root_subtree();
 }  // namespace >::~
 
 template <typename Key, typename Value>
 void olc_db<Key, Value>::delete_root_subtree() noexcept {
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   UNODB_DETAIL_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
+#endif
 
   if (root != nullptr) art_policy::delete_subtree(root, *this);
 
@@ -1982,8 +1986,10 @@ void olc_db<Key, Value>::delete_root_subtree() noexcept {
 
 template <typename Key, typename Value>
 void olc_db<Key, Value>::clear() noexcept {
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   UNODB_DETAIL_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
+#endif
 
   delete_root_subtree();
 

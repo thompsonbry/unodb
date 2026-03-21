@@ -711,6 +711,7 @@ function(COMMON_TARGET_PROPERTIES TARGET)
     "$<${is_standalone}:UNODB_DETAIL_STANDALONE>"
     "$<${use_boost_stacktrace}:UNODB_DETAIL_BOOST_STACKTRACE>"
     "$<${with_stats}:UNODB_DETAIL_WITH_STATS>"
+    "$<${is_not_release_genex}:UNODB_DETAIL_QSBR_DEBUG>"
     "UNODB_SPINLOCK_LOOP_VALUE=${SPINLOCK_LOOP_VALUE}")
   target_compile_options(${TARGET} PUBLIC
     # Architecture
