@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2025 UnoDB contributors
+// Copyright 2019-2026 UnoDB contributors
 
 /// \file
 /// QSBR implementation details.
@@ -22,9 +22,8 @@
 #include <new>  // IWYU pragma: keep
 #include <utility>
 
-#include "qsbr.hpp"
-
 #include "art_allocator.hpp"
+#include "qsbr.hpp"
 
 #ifdef UNODB_DETAIL_WITH_STATS
 #include <mutex>
@@ -190,8 +189,8 @@ void add_to_orphan_list(
 /// \param orphan_list Global orphaned request list
 /// \return Taken orphaned request list
 [[nodiscard]] detail::dealloc_vector_list_node* take_orphan_list(
-    std::atomic<detail::dealloc_vector_list_node*>& orphan_list
-    UNODB_DETAIL_LIFETIMEBOUND) noexcept {
+    std::atomic<detail::dealloc_vector_list_node*>&
+        orphan_list UNODB_DETAIL_LIFETIMEBOUND) noexcept {
   return orphan_list.exchange(nullptr, std::memory_order_acq_rel);
 }
 
@@ -536,8 +535,8 @@ qsbr_epoch qsbr::change_epoch(qsbr_epoch current_global_epoch,
 namespace unodb::detail {
 
 static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
-                                destroy_callback_type /*destroy_callback*/,
-                                void* /*ctx*/) noexcept(false) {
+                               destroy_callback_type /*destroy_callback*/,
+                               void* /*ctx*/) noexcept(false) {
   this_thread().on_next_epoch_deallocate(ptr
 #ifdef UNODB_DETAIL_WITH_STATS
                                          ,
@@ -549,6 +548,10 @@ static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
 #endif
   );
 }
+
+// Forward declaration satisfies -Wmissing-variable-declarations.
+// The matching extern declaration lives in olc_art.hpp.
+extern const allocator_type olc_default_allocator;
 
 extern const allocator_type olc_default_allocator{
     &default_alloc, &default_dealloc, &qsbr_defer_dealloc, nullptr};
