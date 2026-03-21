@@ -123,7 +123,7 @@ UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=cold")
 
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
 
 namespace detail {
 
@@ -131,6 +131,10 @@ namespace detail {
 constinit std::atomic<std::uint64_t> deallocation_request::instance_count{0};
 
 }  // namespace detail
+
+#endif  // UNODB_DETAIL_QSBR_DEBUG
+
+#ifndef NDEBUG
 
 void qsbr_per_thread::register_active_ptr(const void* ptr) {
   UNODB_DETAIL_ASSERT(ptr != nullptr);

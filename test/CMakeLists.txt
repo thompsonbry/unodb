@@ -79,14 +79,15 @@ target_link_libraries(test_art_concurrency PRIVATE qsbr_test_utils)
 
 # Regression test: olc_db with custom allocator must link without libunodb_qsbr.
 # Intentionally links only unodb_util (header-only) and Threads, NOT unodb or
-# unodb_qsbr.  Does not define UNODB_DETAIL_QSBR_DEBUG, so QSBR asserts are
-# compiled out.  If this fails to link, the QSBR decoupling is broken.
+# unodb_qsbr.  Does NOT use common_target_properties (which defines
+# UNODB_DETAIL_QSBR_DEBUG).  If this fails to link, the decoupling is broken.
 add_executable(test_olc_no_qsbr test_olc_no_qsbr.cpp)
-common_target_properties(test_olc_no_qsbr)
-target_compile_definitions(test_olc_no_qsbr PRIVATE NDEBUG)
+target_compile_features(test_olc_no_qsbr PUBLIC cxx_std_20)
+set_target_properties(test_olc_no_qsbr PROPERTIES CXX_EXTENSIONS OFF)
+target_compile_definitions(test_olc_no_qsbr PRIVATE
+  "UNODB_SPINLOCK_LOOP_VALUE=${SPINLOCK_LOOP_VALUE}")
 target_link_libraries(test_olc_no_qsbr PRIVATE unodb_util Threads::Threads)
-set_clang_tidy_options(test_olc_no_qsbr "${DO_CLANG_TIDY}")
-add_sanitized_test(NAME test_olc_no_qsbr COMMAND test_olc_no_qsbr)
+add_test(NAME test_olc_no_qsbr COMMAND test_olc_no_qsbr)
 
 if(COVERAGE)
   add_custom_target(tests_for_coverage ctest
