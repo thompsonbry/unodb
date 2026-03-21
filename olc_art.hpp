@@ -159,26 +159,10 @@ using olc_leaf_unique_ptr =
 
 namespace detail {
 
-/// QSBR-based defer_dealloc for OLC trees.  Queues the deallocation
-/// through QSBR so concurrent readers can finish before memory is freed.
-inline void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
-                               destroy_callback_type /*destroy_callback*/,
-                               void* /*ctx*/) noexcept(false) {
-  this_thread().on_next_epoch_deallocate(ptr
-#ifdef UNODB_DETAIL_WITH_STATS
-                                         ,
-                                         size
-#endif
-#ifndef NDEBUG
-                                         ,
-                                         nullptr
-#endif
-  );
-}
-
 /// Default allocator for OLC trees: uses QSBR for deferred reclamation.
-inline constexpr allocator_type olc_default_allocator{
-    &default_alloc, &default_dealloc, &qsbr_defer_dealloc, nullptr};
+/// Defined in qsbr.cpp to avoid pulling QSBR link dependencies into TUs
+/// that only use olc_db with a custom allocator.
+extern const allocator_type olc_default_allocator;
 
 }  // namespace detail
 

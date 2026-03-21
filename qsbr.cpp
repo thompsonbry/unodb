@@ -24,6 +24,8 @@
 
 #include "qsbr.hpp"
 
+#include "art_allocator.hpp"
+
 #ifdef UNODB_DETAIL_WITH_STATS
 #include <mutex>
 #endif  // UNODB_DETAIL_WITH_STATS
@@ -533,3 +535,28 @@ qsbr_epoch qsbr::change_epoch(qsbr_epoch current_global_epoch,
 }
 
 }  // namespace unodb
+
+// OLC default allocator — defined here so that olc_art.hpp does not pull
+// QSBR link dependencies into TUs that use olc_db with a custom allocator.
+
+namespace unodb::detail {
+
+static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
+                                destroy_callback_type /*destroy_callback*/,
+                                void* /*ctx*/) noexcept(false) {
+  this_thread().on_next_epoch_deallocate(ptr
+#ifdef UNODB_DETAIL_WITH_STATS
+                                         ,
+                                         size
+#endif
+#ifndef NDEBUG
+                                         ,
+                                         nullptr
+#endif
+  );
+}
+
+extern const allocator_type olc_default_allocator{
+    &default_alloc, &default_dealloc, &qsbr_defer_dealloc, nullptr};
+
+}  // namespace unodb::detail
