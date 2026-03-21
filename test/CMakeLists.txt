@@ -77,6 +77,15 @@ if (NOT MSVC AND NOT SANITIZE_ADDRESS AND NOT SANITIZE_THREAD
 endif()
 target_link_libraries(test_art_concurrency PRIVATE qsbr_test_utils)
 
+# Regression test: olc_db with custom allocator must link without libunodb_qsbr.
+# Intentionally links only unodb_util (header-only) and Threads, NOT unodb or
+# unodb_qsbr.  If this fails to link, the QSBR decoupling is broken.
+add_executable(test_olc_no_qsbr test_olc_no_qsbr.cpp)
+common_target_properties(test_olc_no_qsbr)
+target_link_libraries(test_olc_no_qsbr PRIVATE unodb_util Threads::Threads)
+set_clang_tidy_options(test_olc_no_qsbr "${DO_CLANG_TIDY}")
+add_sanitized_test(NAME test_olc_no_qsbr COMMAND test_olc_no_qsbr)
+
 if(COVERAGE)
   add_custom_target(tests_for_coverage ctest
     DEPENDS test_key_encode_decode test_art test_art_key_view test_art_key_view_full_chain test_art_iter test_art_scan test_art_concurrency test_qsbr_ptr test_qsbr test_art_oom
