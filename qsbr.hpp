@@ -476,7 +476,7 @@ class [[nodiscard]] deallocation_request final {
         request_epoch{request_epoch_}
 #endif
   {
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
     instance_count.fetch_add(1, std::memory_order_relaxed);
 #endif
   }
@@ -511,7 +511,7 @@ class [[nodiscard]] deallocation_request final {
   /// Move assignment is disabled.
   deallocation_request& operator=(deallocation_request&&) = delete;
 
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   /// Assert that no instances of this class exist, indicating unhandled
   /// requests.
   static void assert_zero_instances() noexcept {
@@ -532,8 +532,10 @@ class [[nodiscard]] deallocation_request final {
   /// Debug build only: epoch when this deallocation request was created.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
   const qsbr_epoch request_epoch;
+#endif
 
-  /// Debug build only: global count of active deallocation request instances.
+#ifdef UNODB_DETAIL_QSBR_DEBUG
+  /// QSBR debug only: global count of active deallocation request instances.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   static std::atomic<std::uint64_t> instance_count;
 #endif
@@ -1076,7 +1078,9 @@ class qsbr final {
     // last thread a couple more times at the end.
     UNODB_DETAIL_ASSERT(previous_interval_orphaned_requests_empty());
     UNODB_DETAIL_ASSERT(current_interval_orphaned_requests_empty());
+#ifdef UNODB_DETAIL_QSBR_DEBUG
     detail::deallocation_request::assert_zero_instances();
+#endif
 #endif
   }
 
@@ -1464,7 +1468,7 @@ inline void deallocation_request::deallocate(
 #endif
   );
 
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   instance_count.fetch_sub(1, std::memory_order_relaxed);
 #endif
 }
