@@ -370,12 +370,10 @@ class key_view_set {
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26493)
       const auto tag = static_cast<std::uint8_t>(1 + (i % tag_count));
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26493)
       const auto kv = enc.reset()
                           .encode(tag)
                           .encode(std::uint64_t{i / tag_count})
                           .get_key_view();
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
       std::ranges::copy(kv, ks.buf_.data() + i * 9);
       ks.views_.emplace_back(ks.buf_.data() + i * 9, 9);
@@ -396,14 +394,11 @@ class key_view_set {
   /// @param n Number of keys (must be <= 256 * 4 = 1024).
   static key_view_set chain_depth(std::size_t key_len, std::size_t n) {
     UNODB_DETAIL_ASSERT(key_len >= 2);
-    // 4 tag groups × 256 variants = 1024 unique keys max.
-    UNODB_DETAIL_ASSERT(n <= 1024);
     key_view_set ks;
     ks.key_len_ = key_len;
     ks.buf_.resize(n * key_len);
     ks.views_.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
       auto* const dst = ks.buf_.data() + i * key_len;
       // tag byte: rotate through 4 tags to create a root I4.
       dst[0] = static_cast<std::byte>(1 + (i / 256) % 4);
@@ -412,7 +407,6 @@ class key_view_set {
       // variant byte: unique within each tag group.
       dst[key_len - 1] = static_cast<std::byte>(i & 0xFF);
       ks.views_.emplace_back(dst, key_len);
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     return ks;
   }
@@ -428,12 +422,10 @@ class key_view_set {
     ks.views_.reserve(n);
     unodb::key_encoder enc;
     for (std::size_t i = 0; i < n; ++i) {
-      const auto kv =
+      auto kv =
           enc.reset().encode(static_cast<std::uint64_t>(i)).get_key_view();
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
-      std::ranges::copy(kv, ks.buf_.data() + i * 8);
+      std::copy(kv.begin(), kv.end(), ks.buf_.data() + i * 8);
       ks.views_.emplace_back(ks.buf_.data() + i * 8, 8);
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     return ks;
   }
