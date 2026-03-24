@@ -2074,7 +2074,47 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanKeyReconstructionFF) {
   EXPECT_EQ(count, N);
 }
 
-UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+// Regression: C6 — VIS value bitmask not shifted on sorted-array insert.
+//
+// When inserting into inode_4 or inode_16 (sorted key arrays), children at
+// positions >= insert_pos are shifted right. The value bitmask must be shifted
+// to match. Without the fix, a packed value at position N keeps its bit at N
+// even though the value moved to N+1, causing is_value_in_slot to misidentify
+// entries.
+//
+// Trigger: keys that share a 7-byte prefix and differ only in the last byte.
+// In VIS mode with full_key_in_inode_path, these land as packed values in the
+// same bottom-level I4. Insert in descending last-byte order so each insert
+// shifts prior entries right.
+UNODB_TYPED_TEST(ARTKeyViewFullChainTest, BitmaskShiftOnInsertBeforePackedValue) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+
+  // Keys share first 7 bytes (0x80,0,0,0,0,0,0), differ at byte 7.
+  // Insert higher byte first, then lower — forces shift in the leaf I4.
+  verifier.insert(enc.reset().encode(std::uint64_t{2}).get_key_view(), 200);
+  verifier.check_present_values();
+
+  verifier.insert(enc.reset().encode(std::uint64_t{1}).get_key_view(), 100);
+  verifier.check_present_values();
+}
+
+// Same scenario but with 4 packed values (fills an I4) plus removal.
+UNODB_TYPED_TEST(ARTKeyViewFullChainTest, BitmaskShiftMultiplePackedValues) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+
+  // Insert in descending order so each insert shifts all prior entries.
+  verifier.insert(enc.reset().encode(std::uint64_t{4}).get_key_view(), 40);
+  verifier.insert(enc.reset().encode(std::uint64_t{3}).get_key_view(), 30);
+  verifier.insert(enc.reset().encode(std::uint64_t{2}).get_key_view(), 20);
+  verifier.insert(enc.reset().encode(std::uint64_t{1}).get_key_view(), 10);
+  verifier.check_present_values();
+
+  // Verify removal works (remove also shifts bitmask via remove_at).
+  verifier.remove(enc.reset().encode(std::uint64_t{2}).get_key_view());
+  verifier.check_present_values();
+}
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
