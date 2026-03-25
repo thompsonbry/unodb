@@ -2156,7 +2156,8 @@ detail::olc_node_ptr olc_db<Key, Value>::build_chain(
   const auto start = static_cast<std::size_t>(start_depth);
   auto current = child;
   bool child_is_value = art_policy::can_eliminate_leaf;
-  bool owns_current = false;  // set true once we've built at least one chain node
+  bool owns_current =
+      false;  // set true once we've built at least one chain node
   try {
     std::size_t pos = key_len;
     while (pos > start + cap) {

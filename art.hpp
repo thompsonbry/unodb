@@ -1588,7 +1588,8 @@ detail::node_ptr db<Key, Value>::build_chain(art_key_type k,
   const auto start = static_cast<std::size_t>(start_depth);
   auto current = child;
   bool child_is_value = art_policy::can_eliminate_leaf;
-  bool owns_current = false;  // set true once we've built at least one chain node
+  bool owns_current =
+      false;  // set true once we've built at least one chain node
   // Build bottom-up: start from end of key, work toward start_depth.
   // Each chain I4 consumes up to cap prefix bytes + 1 dispatch byte.
   try {
