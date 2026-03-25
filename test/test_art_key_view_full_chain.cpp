@@ -22,6 +22,7 @@
 #include <cstddef>  // IWYU pragma: keep
 #include <cstdint>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -2113,6 +2114,34 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, BitmaskShiftMultiplePackedValues) {
 
   // Verify removal works (remove also shifts bitmask via remove_at).
   verifier.remove(enc.reset().encode(std::uint64_t{2}).get_key_view());
+  verifier.check_present_values();
+}
+
+// Regression test for the P8 crash: 200 random 4-byte float keys exercise
+// deep I4/I16/I48 trees with mixed packed-value and chain children.  The
+// short keys (4 bytes) mean the full key fits in the inode path, so every
+// child is either a packed value or a chain — stressing the bitmask logic
+// across add_to_nonfull, grow, and remove.
+UNODB_TYPED_TEST(ARTKeyViewFullChainTest, RandomShortFloatKeys) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  std::mt19937_64 rng(42);
+  std::uniform_real_distribution<float> fdist(0.0F, 1e6F);
+  for (int i = 0; i < 200; ++i) {
+    const float v = fdist(rng);
+    verifier.insert(enc.reset().encode(v).get_key_view(),
+                    static_cast<std::uint64_t>(i));
+  }
+  verifier.check_present_values();
+
+  // Remove every other key and re-verify.
+  rng.seed(42);
+  for (int i = 0; i < 200; ++i) {
+    const float v = fdist(rng);
+    if (i % 2 == 0) {
+      verifier.remove(enc.reset().encode(v).get_key_view());
+    }
+  }
   verifier.check_present_values();
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
