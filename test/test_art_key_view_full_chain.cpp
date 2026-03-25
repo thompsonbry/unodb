@@ -1897,7 +1897,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, StackStructureFullScan) {
     auto k = enc.reset().encode(tag).encode(v).get_key_view();
     std::ignore = std::ranges::copy(k, h.buf.begin());
     h.len = k.size();
-    return h;
+    return h;  // NOLINT(clang-diagnostic-nrvo)
   };
 
   const auto k1 = make(0x01, 100);
@@ -1961,7 +1961,7 @@ TEST(ARTKeyViewValueViewTest, ScanRangeFloatCompoundKeyOrder) {
   unodb::db<unodb::key_view, unodb::value_view> db;
   unodb::key_encoder enc;
   constexpr std::uint8_t flag = 0x76;
-  constexpr float step = 100.0f / 1000.0f;
+  constexpr float step = 100.0F / 1000.0F;
   constexpr std::uint64_t dummy_val = 42;
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
   const unodb::value_view val{reinterpret_cast<const std::byte*>(&dummy_val),
@@ -1979,15 +1979,15 @@ TEST(ARTKeyViewValueViewTest, ScanRangeFloatCompoundKeyOrder) {
   unodb::key_encoder e1;
   unodb::key_encoder e2;
   e1.reset();
-  e1.encode(0.0f);
+  e1.encode(0.0F);
   e1.encode(std::uint8_t{0});
   e1.encode(std::uint64_t{0});
   e2.reset();
-  e2.encode(100.0f);
+  e2.encode(100.0F);
   e2.encode(std::uint8_t{0xFF});
   e2.encode(~std::uint64_t{0});
 
-  float prev = -1.0f;
+  float prev = -1.0F;
   int count = 0;
   db.scan_range(e1.get_key_view(), e2.get_key_view(), [&](auto& v) {
     unodb::key_decoder dec(v.get_key());
@@ -2012,10 +2012,11 @@ UNODB_DETAIL_DISABLE_MSVC_WARNING(26455)
 TEST(KeyViewFullChainRegression, CompoundKeyInsertStrictAliasing) {
   unodb::db<unodb::key_view, unodb::value_view> db;
   unodb::key_encoder enc;
-  const float values[] = {-100.0f, -1.0f, 0.0f, 1.0f, 100.0f, 1000.0f};
+  const std::array<float, 6> values = {-100.0F, -1.0F,  0.0F,
+                                       1.0F,    100.0F, 1000.0F};
   constexpr std::uint8_t flag = 0x76;
 
-  for (int i = 0; i < 6; ++i) {
+  for (std::size_t i = 0; i < values.size(); ++i) {
     enc.reset();
     enc.encode(values[i]);
     enc.encode(flag);
@@ -2028,7 +2029,7 @@ TEST(KeyViewFullChainRegression, CompoundKeyInsertStrictAliasing) {
     ASSERT_TRUE(db.insert(key, val)) << "insert failed at i=" << i;
   }
 
-  for (int i = 0; i < 6; ++i) {
+  for (std::size_t i = 0; i < values.size(); ++i) {
     enc.reset();
     enc.encode(values[i]);
     enc.encode(flag);
@@ -2047,7 +2048,7 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanKeyReconstructionFF) {
   TypeParam db;
   constexpr int N = 321;  // enough to span the c1->c2 encoded-float boundary
-  constexpr float step = 100.0f / 1000.0f;
+  constexpr float step = 100.0F / 1000.0F;
 
   for (int i = 0; i < N; ++i) {
     unodb::key_encoder enc;
@@ -2058,7 +2059,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanKeyReconstructionFF) {
   }
 
   int count = 0;
-  float prev = -1.0f;
+  float prev = -1.0F;
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
   db.scan([&](auto& v) {
     const auto tkv = v.get_key();

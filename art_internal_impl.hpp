@@ -1642,7 +1642,7 @@ class basic_inode_impl : public ArtPolicy::header_type {
   }
 
   /// Check if child at index holds a packed value, dispatching by type.
-  [[nodiscard]] constexpr bool is_value_in_slot(
+  [[nodiscard, gnu::pure]] constexpr bool is_value_in_slot(
       node_type type, std::uint8_t child_i) const noexcept {
     switch (type) {
       case node_type::I4:
