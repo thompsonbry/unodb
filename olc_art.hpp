@@ -1008,6 +1008,7 @@ class db_inode_qsbr_deleter
   using db_inode_qsbr_deleter_parent<Key, Value,
                                      INode>::db_inode_qsbr_deleter_parent;
 
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26447)
   void operator()(INode* inode_ptr) noexcept {
     static_assert(std::is_trivially_destructible_v<INode>);
 
@@ -1026,6 +1027,7 @@ class db_inode_qsbr_deleter
     this->get_db().template decrement_inode_count<INode>();
 #endif  // UNODB_DETAIL_WITH_STATS
   }
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 };
 
 template <class Db>
@@ -2239,7 +2241,10 @@ olc_db<Key, Value>::try_insert(art_key_type k, value_type v,
       root = build_chain(k, art_policy::pack_value(v), tree_depth_type{0});
       if (cached_leaf) cached_leaf.reset();
     } else if constexpr (art_policy::can_eliminate_key_in_leaf) {
-      auto leaf_ptr = detail::olc_node_ptr{cached_leaf.get(), node_type::LEAF};
+      UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+      const auto leaf_ptr =
+          detail::olc_node_ptr{cached_leaf.get(), node_type::LEAF};
+      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
       root = build_chain(k, leaf_ptr, tree_depth_type{0});
       cached_leaf.release();  // build_chain succeeded; tree now owns the leaf
     } else {
