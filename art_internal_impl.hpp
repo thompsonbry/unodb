@@ -3214,8 +3214,7 @@ class basic_inode_16
     children[insert_pos_index] = node_ptr{child.release(), node_type::LEAF};
     // Shift value bitmask to match shifted children array.
     if constexpr (ArtPolicy::can_eliminate_leaf) {
-      bitmask_base::insert_at(
-          static_cast<std::uint8_t>(insert_pos_index));
+      bitmask_base::insert_at(static_cast<std::uint8_t>(insert_pos_index));
     }
     ++children_count_;
     this->children_count = children_count_;

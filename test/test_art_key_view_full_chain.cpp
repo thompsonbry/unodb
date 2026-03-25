@@ -2087,7 +2087,8 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanKeyReconstructionFF) {
 // In VIS mode with full_key_in_inode_path, these land as packed values in the
 // same bottom-level I4. Insert in descending last-byte order so each insert
 // shifts prior entries right.
-UNODB_TYPED_TEST(ARTKeyViewFullChainTest, BitmaskShiftOnInsertBeforePackedValue) {
+UNODB_TYPED_TEST(ARTKeyViewFullChainTest,
+                 BitmaskShiftOnInsertBeforePackedValue) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
 
