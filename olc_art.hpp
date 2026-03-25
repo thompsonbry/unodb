@@ -1740,6 +1740,7 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
 template <typename Key, typename Value, class INode>
+// cppcheck-suppress missingReturn
 [[nodiscard]] std::optional<bool> olc_impl_helpers::remove_or_choose_subtree(
     INode& inode, std::byte key_byte, basic_art_key<Key> k,
     olc_db<Key, Value>& db_instance,

@@ -1502,6 +1502,7 @@ bool db<Key, Value>::insert_internal(art_key_type insert_key, value_type v) {
 
 template <typename Key, typename Value>
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
+// cppcheck-suppress missingReturn
 bool db<Key, Value>::insert_internal_fixed(art_key_type insert_key,
                                            value_type v) {
   if constexpr (std::is_same_v<Key, key_view>) {
