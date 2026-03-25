@@ -1041,6 +1041,7 @@ class db_leaf_qsbr_deleter {
       Db& db_ UNODB_DETAIL_LIFETIMEBOUND) noexcept
       : db_instance{db_} {}
 
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26447)
   void operator()(leaf_type* to_delete) const noexcept {
 #ifdef UNODB_DETAIL_WITH_STATS
     const auto leaf_size = to_delete->get_size();
@@ -1061,6 +1062,7 @@ class db_leaf_qsbr_deleter {
     db_instance.decrement_leaf_count(leaf_size);
 #endif  // UNODB_DETAIL_WITH_STATS
   }
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   ~db_leaf_qsbr_deleter() = default;
   db_leaf_qsbr_deleter(const db_leaf_qsbr_deleter&) = default;

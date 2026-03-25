@@ -1483,7 +1483,7 @@ bool db<Key, Value>::insert_internal(art_key_type insert_key, value_type v) {
     } else {
       auto leaf = art_policy::make_db_leaf_ptr(insert_key, v, *this);
       if constexpr (art_policy::can_eliminate_key_in_leaf) {
-        auto leaf_ptr = detail::node_ptr{leaf.get(), node_type::LEAF};
+        const auto leaf_ptr = detail::node_ptr{leaf.get(), node_type::LEAF};
         root = build_chain(insert_key, leaf_ptr, tree_depth_type{0});
         leaf.release();  // build_chain succeeded; tree now owns the leaf
       } else {
