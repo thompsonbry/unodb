@@ -27,13 +27,13 @@ using unodb::test::test_values;
 /// For key_view types, build_chain creates 1 chain I4 per 8-byte key.
 /// These are counter adjustment values (0 or 1), not booleans.
 template <class Db>
-constexpr std::uint64_t chain_i4_per_key =
+[[maybe_unused]] constexpr std::uint64_t chain_i4_per_key =
     std::is_same_v<typename Db::key_type, unodb::key_view> ? 1 : 0;
 
 /// OLC remove collapses chain I4s during prefix merge; db/mutex_db don't.
 /// Counter adjustment value (0 or 1), not a boolean.
 template <class Db>
-constexpr std::uint64_t olc_chain_collapse =
+[[maybe_unused]] constexpr std::uint64_t olc_chain_collapse =
     (std::is_same_v<typename Db::key_type, unodb::key_view> &&
      std::is_same_v<
          Db, unodb::olc_db<typename Db::key_type, typename Db::value_type>>)

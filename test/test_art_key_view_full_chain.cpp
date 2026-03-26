@@ -1897,7 +1897,9 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, StackStructureFullScan) {
     auto k = enc.reset().encode(tag).encode(v).get_key_view();
     std::ignore = std::ranges::copy(k, h.buf.begin());
     h.len = k.size();
-    return h;  // NOLINT(clang-diagnostic-nrvo)
+    UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")
+    return h;
+    UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
   };
 
   const auto k1 = make(0x01, 100);
