@@ -1759,7 +1759,7 @@ void verify_stack(const typename Db::iterator& it,
                   unodb::key_view expected_key) {
   UNODB_ASSERT_TRUE(it.valid());
   auto stk = it.test_only_stack();
-  UNODB_ASSERT_TRUE(stk.size() >= 1U);
+  UNODB_ASSERT_FALSE(stk.empty());
 
   // For can_eliminate_leaf types, the top is a packed value sentinel (0xFF).
   // For leaf types, the top is a LEAF node.
@@ -2020,7 +2020,7 @@ TEST(KeyViewFullChainRegression, CompoundKeyInsertStrictAliasing) {
     enc.reset();
     enc.encode(values[i]);
     enc.encode(flag);
-    enc.encode(static_cast<std::uint64_t>(i));
+    enc.encode(i);
     const auto key = enc.get_key_view();
     UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
     const auto val =
@@ -2033,7 +2033,7 @@ TEST(KeyViewFullChainRegression, CompoundKeyInsertStrictAliasing) {
     enc.reset();
     enc.encode(values[i]);
     enc.encode(flag);
-    enc.encode(static_cast<std::uint64_t>(i));
+    enc.encode(i);
     ASSERT_TRUE(db.get(enc.get_key_view()).has_value())
         << "get failed at i=" << i;
   }
@@ -2063,7 +2063,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanKeyReconstructionFF) {
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
   db.scan([&](auto& v) {
     const auto tkv = v.get_key();
-    EXPECT_EQ(tkv.size(), 13u) << "wrong key size at index " << count;
+    EXPECT_EQ(tkv.size(), 13U) << "wrong key size at index " << count;
     unodb::key_decoder dec(unodb::key_view(tkv.data(), tkv.size()));
     float val{};
     dec.decode(val);
@@ -2127,7 +2127,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, BitmaskShiftMultiplePackedValues) {
 UNODB_TYPED_TEST(ARTKeyViewFullChainTest, RandomShortFloatKeys) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
-  std::mt19937_64 rng(42);
+  std::mt19937_64 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
   std::uniform_real_distribution<float> fdist(0.0F, 1e6F);
   for (int i = 0; i < 200; ++i) {
     const float v = fdist(rng);
@@ -2137,7 +2137,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, RandomShortFloatKeys) {
   verifier.check_present_values();
 
   // Remove every other key and re-verify.
-  rng.seed(42);
+  rng.seed(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
   for (int i = 0; i < 200; ++i) {
     const float v = fdist(rng);
     if (i % 2 == 0) {

@@ -1502,9 +1502,10 @@ bool db<Key, Value>::insert_internal(art_key_type insert_key, value_type v) {
 
 template <typename Key, typename Value>
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
-// cppcheck-suppress missingReturn
-bool db<Key, Value>::insert_internal_fixed(art_key_type insert_key,
-                                           value_type v) {
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=noreturn")
+    // cppcheck-suppress missingReturn
+    bool db<Key, Value>::insert_internal_fixed(art_key_type insert_key,
+                                               value_type v) {
   if constexpr (std::is_same_v<Key, key_view>) {
     // Unreachable: caller dispatches key_view to insert_internal_key_view.
     std::ignore = insert_key;
@@ -1636,6 +1637,7 @@ detail::node_ptr db<Key, Value>::build_chain(art_key_type k,
   }
   return current;
 }
+UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 template <typename Key, typename Value>

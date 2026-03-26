@@ -76,7 +76,8 @@ struct value_bitmask_field {
   }
   /// Remove bit at position \p i, shifting higher bits down.
   constexpr void remove_at(std::uint8_t i) noexcept {
-    const auto above = static_cast<Storage>(bits >> (i + 1));
+    const auto above =
+        static_cast<Storage>(bits >> static_cast<unsigned>(i + 1));
     const auto below = static_cast<Storage>(bits & ((Storage{1} << i) - 1));
     bits = static_cast<Storage>(below | (above << i));
   }
@@ -85,7 +86,8 @@ struct value_bitmask_field {
   constexpr void insert_at(std::uint8_t i) noexcept {
     const auto above = static_cast<Storage>(bits >> i);
     const auto below = static_cast<Storage>(bits & ((Storage{1} << i) - 1));
-    bits = static_cast<Storage>(below | (above << (i + 1)));
+    bits =
+        static_cast<Storage>(below | (above << static_cast<unsigned>(i + 1)));
   }
 };
 
