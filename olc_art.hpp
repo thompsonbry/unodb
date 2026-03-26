@@ -1827,7 +1827,7 @@ template <typename Key, typename Value, class INode>
 
   if constexpr (olc_art_policy<Key, Value>::can_eliminate_leaf) {
     // No LEAF nodes exist — child was an inode, handled above.
-    UNODB_DETAIL_CANNOT_HAPPEN();
+    UNODB_DETAIL_CANNOT_HAPPEN();  // cppcheck-suppress missingReturn
   } else {
     const auto* const leaf{child->ptr<olc_leaf_type<Key, Value>*>()};
     if (!leaf->matches(k)) {

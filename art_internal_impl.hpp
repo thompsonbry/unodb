@@ -97,7 +97,7 @@ struct value_bitmask_field<Enabled, std::array<T, N>> {
   std::array<T, N> bits{};
 
   [[nodiscard]] constexpr bool test(std::uint8_t i) const noexcept {
-    return (bits[static_cast<std::size_t>(i) / 8] >>
+    return (static_cast<unsigned>(bits[static_cast<std::size_t>(i) / 8]) >>
             (static_cast<unsigned>(i) % 8U)) &
            1U;
   }
@@ -717,6 +717,7 @@ struct basic_art_policy final {
     static_assert(can_eliminate_leaf);
     const auto raw = n.raw_val() ^ pack_xor_sentinel;
     Value v{};
+    // cppcheck-suppress memsetClass
     std::memcpy(&v, &raw, sizeof(v));
     return v;
   }

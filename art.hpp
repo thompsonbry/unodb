@@ -1510,7 +1510,7 @@ bool db<Key, Value>::insert_internal_fixed(art_key_type insert_key,
     // Unreachable: caller dispatches key_view to insert_internal_key_view.
     std::ignore = insert_key;
     std::ignore = v;
-    UNODB_DETAIL_CANNOT_HAPPEN();
+    UNODB_DETAIL_CANNOT_HAPPEN();  // cppcheck-suppress missingReturn
   } else {
     auto* node = &root;
     tree_depth_type depth{};
