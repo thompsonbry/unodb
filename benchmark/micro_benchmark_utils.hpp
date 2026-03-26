@@ -28,6 +28,9 @@
 #include "olc_art.hpp"
 #include "qsbr.hpp"
 
+// size_t == uint64_t on Linux but not macOS; casts are needed for portability.
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wuseless-cast")
+
 // TODO(laurynas): std::uint64_t-specific
 
 #define UNODB_START_BENCHMARKS()           \
@@ -314,7 +317,10 @@ class key_view_set {
     ks.views_.reserve(n);
     unodb::key_encoder enc;
     for (std::size_t i = 0; i < n; ++i) {
-      const auto kv = enc.reset().encode(tag).encode(i).get_key_view();
+      const auto kv = enc.reset()
+                          .encode(tag)
+                          .encode(static_cast<std::uint64_t>(i))
+                          .get_key_view();
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26459)
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
       std::copy(kv.begin(), kv.end(), ks.buf_.data() + i * 9);
@@ -341,7 +347,7 @@ class key_view_set {
                           .encode(tag)
                           .encode(std::uint64_t{0x4242424242424242ULL})
                           .encode(static_cast<std::uint8_t>(i & 0xFF))
-                          .encode(i)
+                          .encode(static_cast<std::uint64_t>(i))
                           .get_key_view();
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
       std::ranges::copy(kv, ks.buf_.data() + i * 18);
@@ -425,7 +431,8 @@ class key_view_set {
     ks.views_.reserve(n);
     unodb::key_encoder enc;
     for (std::size_t i = 0; i < n; ++i) {
-      const auto kv = enc.reset().encode(i).get_key_view();
+      const auto kv =
+          enc.reset().encode(static_cast<std::uint64_t>(i)).get_key_view();
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
       std::ranges::copy(kv, ks.buf_.data() + i * 8);
       ks.views_.emplace_back(ks.buf_.data() + i * 8, 8);
@@ -449,5 +456,7 @@ class key_view_set {
 };
 
 }  // namespace unodb::benchmark
+
+UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 
 #endif  // UNODB_DETAIL_MICRO_BENCHMARK_UTILS_HPP

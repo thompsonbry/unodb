@@ -17,6 +17,8 @@
 // Google Benchmark uses `for (auto _ : state)` where _ is intentionally unused.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(4189)
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26496)
+// size_t == uint64_t on Linux but not macOS; casts are needed for portability.
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wuseless-cast")
 ///
 /// ## Benchmark groups
 ///
@@ -416,3 +418,4 @@ UNODB_BENCHMARK_MAIN();
 
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+UNODB_DETAIL_RESTORE_GCC_WARNINGS()

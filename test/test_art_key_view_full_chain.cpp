@@ -2022,7 +2022,7 @@ TEST(KeyViewFullChainRegression, CompoundKeyInsertStrictAliasing) {
     enc.reset();
     enc.encode(values[i]);
     enc.encode(flag);
-    enc.encode(i);
+    enc.encode(static_cast<std::uint64_t>(i));
     const auto key = enc.get_key_view();
     UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
     const auto val =
@@ -2035,7 +2035,7 @@ TEST(KeyViewFullChainRegression, CompoundKeyInsertStrictAliasing) {
     enc.reset();
     enc.encode(values[i]);
     enc.encode(flag);
-    enc.encode(i);
+    enc.encode(static_cast<std::uint64_t>(i));
     ASSERT_TRUE(db.get(enc.get_key_view()).has_value())
         << "get failed at i=" << i;
   }
