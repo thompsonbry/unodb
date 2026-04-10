@@ -4224,16 +4224,18 @@ class basic_inode_48
     return is_value_in_slot_by_ci(ci);
   }
   constexpr void set_value_bit(std::uint8_t key_byte_i) noexcept {
-    if constexpr (!ArtPolicy::can_eliminate_leaf) return;
-    const auto ci = child_indexes[key_byte_i].load();
-    UNODB_DETAIL_ASSERT(ci != empty_child);
-    bitmask_base::set(ci);
+    if constexpr (ArtPolicy::can_eliminate_leaf) {
+      const auto ci = child_indexes[key_byte_i].load();
+      UNODB_DETAIL_ASSERT(ci != empty_child);
+      bitmask_base::set(ci);
+    }
   }
   constexpr void clear_value_bit(std::uint8_t key_byte_i) noexcept {
-    if constexpr (!ArtPolicy::can_eliminate_leaf) return;
-    const auto ci = child_indexes[key_byte_i].load();
-    UNODB_DETAIL_ASSERT(ci != empty_child);
-    bitmask_base::clear(ci);
+    if constexpr (ArtPolicy::can_eliminate_leaf) {
+      const auto ci = child_indexes[key_byte_i].load();
+      UNODB_DETAIL_ASSERT(ci != empty_child);
+      bitmask_base::clear(ci);
+    }
   }
   /// Check by children array index (for internal iteration).
   [[nodiscard]] constexpr bool is_value_in_slot_by_ci(

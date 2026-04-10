@@ -1661,8 +1661,10 @@ olc_impl_helpers::add_or_choose_subtree(
                   chain_start);
             } else {
               create_leaf_if_needed(cached_leaf, k, v, db_instance);
+              UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
               const auto leaf_ptr =
                   detail::olc_node_ptr{cached_leaf.release(), node_type::LEAF};
+              UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
               chain_top = db_instance.build_chain(k, leaf_ptr, chain_start);
             }
             auto larger_node{
@@ -1755,8 +1757,10 @@ olc_impl_helpers::add_or_choose_subtree(
               chain_start);
         } else {
           create_leaf_if_needed(cached_leaf, k, v, db_instance);
+          UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
           const auto leaf_ptr =
               detail::olc_node_ptr{cached_leaf.release(), node_type::LEAF};
+          UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
           chain_top = db_instance.build_chain(k, leaf_ptr, chain_start);
         }
 
@@ -2464,8 +2468,10 @@ olc_db<Key, Value>::try_insert(art_key_type k, value_type v,
             chain_top = build_chain(k, art_policy::pack_value(v), chain_start);
           } else {
             create_leaf_if_needed(cached_leaf, k, v, *this);
+            UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
             const auto leaf_ptr =
                 detail::olc_node_ptr{cached_leaf.release(), node_type::LEAF};
+            UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
             chain_top = build_chain(k, leaf_ptr, chain_start);
           }
           auto new_node{inode_4::create(*this, node, shared_prefix_length)};
