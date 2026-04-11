@@ -503,7 +503,10 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainNonfull) {
   const auto v = unodb::test::get_test_value<TypeParam>(0);
   const auto v_long = unodb::test::get_test_value<TypeParam>(1);
 
-  unodb::key_encoder enc1, enc2, enc3, enc_long;
+  unodb::key_encoder enc1;
+  unodb::key_encoder enc2;
+  unodb::key_encoder enc3;
+  unodb::key_encoder enc_long;
   const auto short1 = enc1.encode(std::uint8_t{1}).get_key_view();
   const auto short2 = enc2.encode(std::uint8_t{2}).get_key_view();
   const auto short3 = enc3.encode(std::uint8_t{3}).get_key_view();
@@ -538,7 +541,11 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainGrow) {
   const auto v = unodb::test::get_test_value<TypeParam>(0);
   const auto v_long = unodb::test::get_test_value<TypeParam>(1);
 
-  unodb::key_encoder enc1, enc2, enc3, enc4, enc_long;
+  unodb::key_encoder enc1;
+  unodb::key_encoder enc2;
+  unodb::key_encoder enc3;
+  unodb::key_encoder enc4;
+  unodb::key_encoder enc_long;
   const auto short1 = enc1.encode(std::uint8_t{1}).get_key_view();
   const auto short2 = enc2.encode(std::uint8_t{2}).get_key_view();
   const auto short3 = enc3.encode(std::uint8_t{3}).get_key_view();
@@ -575,7 +582,8 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainPrefixSplit) {
   const auto v1 = unodb::test::get_test_value<TypeParam>(0);
   const auto v2 = unodb::test::get_test_value<TypeParam>(1);
 
-  unodb::key_encoder enc1, enc2;
+  unodb::key_encoder enc1;
+  unodb::key_encoder enc2;
   const auto key1 =
       enc1.encode(std::uint8_t{0x42}).encode(std::uint64_t{1}).get_key_view();
   // uint64 value with high bit set → first encoded byte is 0x80, diverges
@@ -606,7 +614,10 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainMultiNode) {
   const auto v = unodb::test::get_test_value<TypeParam>(0);
   const auto v_long = unodb::test::get_test_value<TypeParam>(1);
 
-  unodb::key_encoder enc1, enc2, enc3, enc_long;
+  unodb::key_encoder enc1;
+  unodb::key_encoder enc2;
+  unodb::key_encoder enc3;
+  unodb::key_encoder enc_long;
   const auto short1 = enc1.encode(std::uint8_t{1}).get_key_view();
   const auto short2 = enc2.encode(std::uint8_t{2}).get_key_view();
   const auto short3 = enc3.encode(std::uint8_t{3}).get_key_view();
