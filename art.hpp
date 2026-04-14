@@ -1518,6 +1518,8 @@ bool db<Key, Value>::insert_internal(art_key_type insert_key, value_type v) {
 }
 
 UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=noreturn")
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=cold")
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=pure")
 template <typename Key, typename Value>
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
 // cppcheck-suppress missingReturn
@@ -1669,6 +1671,8 @@ detail::node_ptr db<Key, Value>::build_chain(art_key_type k,
   }
   return current;
 }
+UNODB_DETAIL_RESTORE_GCC_WARNINGS()
+UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 

@@ -495,7 +495,12 @@ class [[nodiscard]] tree_verifier final {
 
   template <typename T>
   bool try_insert(T k, value_type v) {
-    return test_db.insert(coerce_key(k), v);
+    if constexpr (is_olc_db<Db>) {
+      const quiescent_state_on_scope_exit qsbr_after_insert{};
+      return test_db.insert(coerce_key(k), v);
+    } else {
+      return test_db.insert(coerce_key(k), v);
+    }
   }
 
   template <typename T>
