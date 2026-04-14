@@ -2224,6 +2224,13 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
   match = false;  // unless we wind up with an exact match.
   if (UNODB_DETAIL_UNLIKELY(db_.root == nullptr)) return *this;  // aka end
 
+  // Empty key_view sorts before all keys — go to first (fwd) or end (rev).
+  if constexpr (std::is_same_v<Key, key_view>) {
+    if (UNODB_DETAIL_UNLIKELY(search_key.size() == 0)) {
+      return fwd ? left_most_traversal(db_.root) : *this;
+    }
+  }
+
   auto node{db_.root};
   const auto k = search_key;
   auto remaining_key{k};

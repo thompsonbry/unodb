@@ -1947,6 +1947,23 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, EmptyKeyRejected) {
                          empty_key, unodb::test::get_test_value<TypeParam>(0)),
                      std::length_error);
   UNODB_ASSERT_TRUE(db.empty());
+
+  // get and remove return sentinel values for empty key (get is noexcept).
+  UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(empty_key)));
+  UNODB_ASSERT_FALSE(db.remove(empty_key));
+
+  // scan_from with empty key on non-empty tree: visits all entries (fwd).
+  unodb::key_encoder enc;
+  UNODB_ASSERT_TRUE(db.insert(make_short_key(enc, 0x01),
+                              unodb::test::get_test_value<TypeParam>(1)));
+  UNODB_ASSERT_TRUE(db.insert(make_short_key(enc, 0x02),
+                              unodb::test::get_test_value<TypeParam>(2)));
+  std::size_t count{0};
+  db.scan_from(empty_key, [&count](const auto& /*v*/) {
+    ++count;
+    return false;
+  });
+  UNODB_ASSERT_EQ(count, 2);
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 

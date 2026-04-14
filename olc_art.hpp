@@ -3239,6 +3239,16 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
     return false;
     // LCOV_EXCL_STOP
   }
+
+  // Empty key_view sorts before all keys — go to first (fwd) or end (rev).
+  if constexpr (std::is_same_v<Key, key_view>) {
+    if (UNODB_DETAIL_UNLIKELY(search_key.size() == 0)) {
+      return fwd ? try_left_most_traversal(node, parent_critical_section)
+                 : UNODB_DETAIL_LIKELY(
+                       parent_critical_section.try_read_unlock());
+    }
+  }
+
   const auto k = search_key;
   auto remaining_key{k};
   while (true) {
