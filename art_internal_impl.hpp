@@ -477,9 +477,9 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 ///
 /// \throws std::length_error if key or value exceeds maximum size
 template <typename Key, typename Value, template <typename, typename> class Db>
-[[nodiscard]] auto make_db_leaf_ptr(
-    basic_art_key<Key> k, Value v,
-    Db<Key, Value>& db UNODB_DETAIL_LIFETIMEBOUND) {
+[[nodiscard]] auto make_db_leaf_ptr(basic_art_key<Key> k, Value v,
+                                    Db<Key, Value>& db
+                                    UNODB_DETAIL_LIFETIMEBOUND) {
   using db_type = Db<Key, Value>;
   using header_type = typename db_type::header_type;
   using leaf_type = basic_leaf<leaf_key_type<Key, Value>, header_type>;
@@ -786,9 +786,9 @@ struct basic_art_policy final {
   /// \param db_instance Database for memory tracking
   ///
   /// \return Unique pointer to newly allocated leaf
-  [[nodiscard]] static auto make_db_leaf_ptr(
-      art_key_type k, value_type v,
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND) {
+  [[nodiscard]] static auto make_db_leaf_ptr(art_key_type k, value_type v,
+                                             db_type& db_instance
+                                             UNODB_DETAIL_LIFETIMEBOUND) {
     static_assert(
         !can_eliminate_leaf,
         "make_db_leaf_ptr must not be called when leaf is eliminated");
@@ -848,8 +848,9 @@ struct basic_art_policy final {
   UNODB_DETAIL_DISABLE_GCC_11_WARNING("-Wmismatched-new-delete")
   template <class INode, class... Args>
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
-  [[nodiscard]] static auto make_db_inode_unique_ptr(
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND, Args&&... args) {
+  [[nodiscard]] static auto make_db_inode_unique_ptr(db_type& db_instance
+                                                     UNODB_DETAIL_LIFETIMEBOUND,
+                                                     Args&&... args) {
     auto* const inode_mem = static_cast<std::byte*>(
         allocate_aligned(sizeof(INode), alignment_for_new<INode>()));
 
