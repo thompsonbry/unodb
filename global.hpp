@@ -264,8 +264,13 @@
 
 #endif
 
+#ifdef UNODB_DETAIL_GENMC
+#define UNODB_DETAIL_LIKELY(condition) (!!(condition))
+#define UNODB_DETAIL_UNLIKELY(condition) (!!(condition))
+#else
 #define UNODB_DETAIL_LIKELY(condition) __builtin_expect(condition, 1)
 #define UNODB_DETAIL_UNLIKELY(condition) __builtin_expect(condition, 0)
+#endif
 
 #define UNODB_DETAIL_UNUSED [[gnu::unused]]
 #define UNODB_DETAIL_FORCE_INLINE __attribute__((always_inline))

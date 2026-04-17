@@ -216,19 +216,38 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#ifndef UNODB_DETAIL_GENMC
 #include <iomanip>
 #include <iostream>
 #include <thread>
+#endif
 #include <tuple>
 #include <type_traits>
 
+#ifndef UNODB_DETAIL_GENMC
 #ifdef UNODB_DETAIL_X86_64
 #include <emmintrin.h>
 #endif
+#endif
 
+#ifdef UNODB_DETAIL_GENMC
+#include <cassert>
+#define UNODB_DETAIL_ASSERT(condition) ((void)0)
+#else
 #include "assert.hpp"
+#endif
 
 namespace unodb {
+
+/// Memory ordering for seqlock-protected data (in_critical_section).
+/// Production: relaxed is correct on real hardware (Boehm 2012).
+/// GenMC: seq_cst closes the gap between the C++ memory model and hardware,
+/// allowing model checking of the OLC protocol above the seqlock layer.
+#ifdef UNODB_DETAIL_GENMC
+inline constexpr auto seqlock_data_order = std::memory_order_seq_cst;
+#else
+inline constexpr auto seqlock_data_order = std::memory_order_relaxed;
+#endif
 
 /// Optimistic spinlock wait loop algorithm implementation. The implementation
 /// is selected by #UNODB_DETAIL_SPINLOCK_LOOP_VALUE, set by CMake, and can be
@@ -237,7 +256,9 @@ namespace unodb {
 // TODO(laurynas): move to unodb::detail namespace
 // LCOV_EXCL_START
 inline void spin_wait_loop_body() noexcept {
-#if UNODB_SPINLOCK_LOOP_VALUE == UNODB_DETAIL_SPINLOCK_LOOP_PAUSE
+#ifdef UNODB_DETAIL_GENMC
+  // No-op under GenMC — pause/yield is not modeled
+#elif UNODB_SPINLOCK_LOOP_VALUE == UNODB_DETAIL_SPINLOCK_LOOP_PAUSE
 
 #if defined(UNODB_DETAIL_X86_64)
   _mm_pause();
@@ -343,12 +364,14 @@ class [[nodiscard]] optimistic_lock final {
 
     /// Output the lock word to \a os output stream. Should only be used
     /// for debug dumping.
+#ifndef UNODB_DETAIL_GENMC
     [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os) const {
       os << "version = 0x" << std::hex << std::setfill('0') << std::setw(8)
          << version << std::dec;
       if (is_write_locked()) os << " (write locked)";
       if (is_obsolete()) os << " (obsoleted)";
     }
+#endif
 
    private:
     /// Raw lock word value.
@@ -417,8 +440,10 @@ class [[nodiscard]] optimistic_lock final {
     /// Raw atomic lock word.
     std::atomic<std::uint64_t> version;
 
+#ifndef UNODB_DETAIL_GENMC
     static_assert(decltype(version)::is_always_lock_free,
                   "Must use always lock-free atomics");
+#endif
   };  // class atomic_version_type
 
  public:
@@ -749,6 +774,7 @@ class [[nodiscard]] optimistic_lock final {
 
   /// Output the lock representation to \a os output stream. Should only be used
   /// for debug dumping.
+#ifndef UNODB_DETAIL_GENMC
   [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os) const {
     const auto dump_version = version.load_acquire();
     os << "lock: ";
@@ -758,6 +784,7 @@ class [[nodiscard]] optimistic_lock final {
        << read_lock_count.load(std::memory_order_acquire);
 #endif
   }
+#endif
 
   optimistic_lock(const optimistic_lock&) = delete;
   optimistic_lock(optimistic_lock&&) = delete;
@@ -928,12 +955,12 @@ class [[nodiscard]] in_critical_section final {
 
   /// Explicitly read the wrapped value.
   [[nodiscard]] T load() const noexcept {
-    return value.load(std::memory_order_relaxed);
+    return value.load(seqlock_data_order);
   }
 
   /// Explicitly assign the wrapped value from \a new_value.
   void store(T new_value) noexcept {
-    value.store(new_value, std::memory_order_relaxed);
+    value.store(new_value, seqlock_data_order);
   }
 
   in_critical_section(const in_critical_section&) = delete;
@@ -944,8 +971,10 @@ class [[nodiscard]] in_critical_section final {
   /// Wrapped value.
   std::atomic<T> value;
 
+#ifndef UNODB_DETAIL_GENMC
   static_assert(std::atomic<T>::is_always_lock_free,
                 "Must use always lock-free atomics");
+#endif
 };  // class in_critical_section
 
 }  // namespace unodb
