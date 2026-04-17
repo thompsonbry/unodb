@@ -239,14 +239,20 @@
 
 namespace unodb {
 
-/// Memory ordering for seqlock-protected data (in_critical_section).
-/// Production: relaxed is correct on real hardware (Boehm 2012).
-/// GenMC: seq_cst closes the gap between the C++ memory model and hardware,
-/// allowing model checking of the OLC protocol above the seqlock layer.
+/// Memory orderings for seqlock-protected data (in_critical_section).
+/// Production: relaxed is correct on real hardware (Boehm 2012) because
+/// x86-TSO and ARMv8 multi-copy atomicity prevent the reordering that the
+/// C++ memory model formally allows.
+/// GenMC: release stores + acquire loads are the minimum orderings that close
+/// the gap. The writer's release store synchronizes-with the reader's acquire
+/// load on the same data location, establishing happens-before that prevents
+/// the reader from seeing partial writes while version validation succeeds.
 #ifdef UNODB_DETAIL_GENMC
-inline constexpr auto seqlock_data_order = std::memory_order_seq_cst;
+inline constexpr auto seqlock_data_load_order = std::memory_order_acquire;
+inline constexpr auto seqlock_data_store_order = std::memory_order_release;
 #else
-inline constexpr auto seqlock_data_order = std::memory_order_relaxed;
+inline constexpr auto seqlock_data_load_order = std::memory_order_relaxed;
+inline constexpr auto seqlock_data_store_order = std::memory_order_relaxed;
 #endif
 
 /// Optimistic spinlock wait loop algorithm implementation. The implementation
@@ -955,12 +961,12 @@ class [[nodiscard]] in_critical_section final {
 
   /// Explicitly read the wrapped value.
   [[nodiscard]] T load() const noexcept {
-    return value.load(seqlock_data_order);
+    return value.load(seqlock_data_load_order);
   }
 
   /// Explicitly assign the wrapped value from \a new_value.
   void store(T new_value) noexcept {
-    value.store(new_value, seqlock_data_order);
+    value.store(new_value, seqlock_data_store_order);
   }
 
   in_critical_section(const in_critical_section&) = delete;
