@@ -857,8 +857,9 @@ struct basic_art_policy final {
   UNODB_DETAIL_DISABLE_GCC_11_WARNING("-Wmismatched-new-delete")
   template <class INode, class... Args>
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
-  [[nodiscard]] static auto make_db_inode_unique_ptr(
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND, Args&&... args) {
+  [[nodiscard]] static auto make_db_inode_unique_ptr(db_type& db_instance
+                                                     UNODB_DETAIL_LIFETIMEBOUND,
+                                                     Args&&... args) {
     auto* const inode_mem =
         static_cast<std::byte*>(db_instance.get_allocator().alloc(
             sizeof(INode), alignment_for_new<INode>(),

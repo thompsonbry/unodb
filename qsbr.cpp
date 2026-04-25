@@ -22,9 +22,8 @@
 #include <new>  // IWYU pragma: keep
 #include <utility>
 
-#include "qsbr.hpp"
-
 #include "art_allocator.hpp"
+#include "qsbr.hpp"
 
 #ifdef UNODB_DETAIL_WITH_STATS
 #include <mutex>
@@ -546,8 +545,8 @@ qsbr_epoch qsbr::change_epoch(qsbr_epoch current_global_epoch,
 namespace unodb::detail {
 
 static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
-                                destroy_callback_type /*destroy_callback*/,
-                                void* /*ctx*/) noexcept(false) {
+                               destroy_callback_type /*destroy_callback*/,
+                               void* /*ctx*/) noexcept(false) {
   this_thread().on_next_epoch_deallocate(ptr
 #ifdef UNODB_DETAIL_WITH_STATS
                                          ,
