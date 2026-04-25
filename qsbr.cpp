@@ -15,6 +15,7 @@
 // IWYU pragma: no_include <__hash_table>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -544,9 +545,11 @@ qsbr_epoch qsbr::change_epoch(qsbr_epoch current_global_epoch,
 
 namespace unodb::detail {
 
-static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
-                               destroy_callback_type /*destroy_callback*/,
-                               void* /*ctx*/) noexcept(false) {
+namespace {
+
+void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
+                        destroy_callback_type /*destroy_callback*/,
+                        void* /*ctx*/) noexcept(false) {
   this_thread().on_next_epoch_deallocate(ptr
 #ifdef UNODB_DETAIL_WITH_STATS
                                          ,
@@ -559,7 +562,8 @@ static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
   );
 }
 
-// NOLINTNEXTLINE(misc-use-internal-linkage)
+}  // namespace
+
 extern const allocator_type olc_default_allocator{
     .alloc = &default_alloc,
     .dealloc = &default_dealloc,

@@ -157,14 +157,7 @@ using olc_leaf_unique_ptr =
 
 }  // namespace detail
 
-namespace detail {
-
-/// Default allocator for OLC trees: uses QSBR for deferred reclamation.
-/// Defined in qsbr.cpp to avoid pulling QSBR link dependencies into TUs
-/// that only use olc_db with a custom allocator.
-extern const allocator_type olc_default_allocator;
-
-}  // namespace detail
+namespace detail {}  // namespace detail
 
 /// A thread-safe Adaptive Radix Tree that is synchronized using optimistic lock
 /// coupling. At any time, at most two directly-related tree nodes can be

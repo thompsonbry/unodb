@@ -75,6 +75,10 @@ inline void default_destroy(void* ptr, std::size_t size, void* ctx) noexcept {
 inline constexpr allocator_type default_allocator{
     &default_alloc, &default_dealloc, &default_defer_dealloc, nullptr};
 
+/// OLC allocator with QSBR-based deferred reclamation.
+/// Defined in qsbr.cpp.
+extern const allocator_type olc_default_allocator;
+
 }  // namespace detail
 
 }  // namespace unodb
