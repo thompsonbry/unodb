@@ -559,7 +559,11 @@ static void qsbr_defer_dealloc(void* ptr, [[maybe_unused]] std::size_t size,
   );
 }
 
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 extern const allocator_type olc_default_allocator{
-    &default_alloc, &default_dealloc, &qsbr_defer_dealloc, nullptr};
+    .alloc = &default_alloc,
+    .dealloc = &default_dealloc,
+    .defer_dealloc = &qsbr_defer_dealloc,
+    .ctx = nullptr};
 
 }  // namespace unodb::detail
