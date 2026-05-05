@@ -1608,10 +1608,9 @@ UNODB_DETAIL_DISABLE_MSVC_WARNING(26411)
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26415)
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
 template <typename Key, typename Value>
-void create_leaf_if_needed(
-            olc_db_leaf_unique_ptr<Key, Value>& cached_leaf,
-            basic_art_key<Key> k, Value v,
-            unodb::olc_db<Key, Value>& db_instance) {
+void create_leaf_if_needed(olc_db_leaf_unique_ptr<Key, Value>& cached_leaf,
+                           basic_art_key<Key> k, Value v,
+                           unodb::olc_db<Key, Value>& db_instance) {
   if constexpr (olc_art_policy<Key, Value>::can_eliminate_leaf) {
     // No leaf allocation needed — values are packed in inode slots.
   } else {
