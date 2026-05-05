@@ -1,4 +1,4 @@
-# Copyright 2021-2026 Laurynas Biveinis
+# Copyright 2021-2026 UnoDB contributors
 
 enable_testing()
 

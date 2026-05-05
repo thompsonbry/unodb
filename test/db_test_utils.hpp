@@ -51,7 +51,7 @@ extern template class unodb::olc_db<unodb::key_view, unodb::value_view>;
 // so gcov can instrument them.  Without this, gcov attributes coverage to
 // db_test_utils.cpp (the explicit instantiation TU) and the header lines
 // show as uncovered.
-#ifndef COVERAGE
+#ifndef UNODB_COVERAGE
 extern template class unodb::db<unodb::key_view, std::uint64_t>;
 extern template class unodb::mutex_db<unodb::key_view, std::uint64_t>;
 extern template class unodb::olc_db<unodb::key_view, std::uint64_t>;

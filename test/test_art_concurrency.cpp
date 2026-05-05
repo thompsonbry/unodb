@@ -1320,6 +1320,9 @@ UNODB_TEST(OLCRemoveChooseSubtree, ConcurrentLeafReplacement) {
   // key_a may or may not exist depending on who won the race.
   // The important thing is no crash, no hang, no corruption.
   const unodb::quiescent_state_on_scope_exit q2{};
+  if (const auto r = db.get(key_a); r.has_value()) {
+    UNODB_ASSERT_TRUE(std::ranges::equal(*r, val2));
+  }
   UNODB_ASSERT_TRUE(db.get(key_b).has_value());
   UNODB_ASSERT_TRUE(db.get(key_c).has_value());
 }
@@ -1455,16 +1458,17 @@ UNODB_TEST(OLCInsertGrowth, ConcurrentInsertDuringGrowth) {
   const unodb::quiescent_state_on_scope_exit q{};
   UNODB_ASSERT_TRUE(db.get(t1_key).has_value());
   UNODB_ASSERT_TRUE(db.get(t2_key).has_value());
+  UNODB_ASSERT_TRUE(db.get(key_a).has_value());
+  UNODB_ASSERT_TRUE(db.get(key_b).has_value());
+  UNODB_ASSERT_TRUE(db.get(key_c).has_value());
+  UNODB_ASSERT_TRUE(db.get(key_d).has_value());
 }
 
 // T1 builds a chain for a non-full inode insert, then a concurrent T2
 // removes a sibling, invalidating T1's node version.  T1's write guard
 // must_restart, so T1 deletes the chain it built and retries.
-UNODB_DETAIL_DISABLE_MSVC_WARNING(26426)
-UNODB_DETAIL_DISABLE_MSVC_WARNING(26409)
-UNODB_DETAIL_DISABLE_MSVC_WARNING(26455)
 UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
-TEST(OLCNonfullChainRestart, ConcurrentRemoveDuringChainInsert) {
+UNODB_TEST(OLCNonfullChainRestart, ConcurrentRemoveDuringChainInsert) {
   using db_type = unodb::olc_db<unodb::key_view, std::uint64_t>;
   db_type db;
   unodb::key_encoder enc;
@@ -1521,9 +1525,6 @@ TEST(OLCNonfullChainRestart, ConcurrentRemoveDuringChainInsert) {
   UNODB_ASSERT_TRUE(db.get(k_seed1).has_value());
   UNODB_ASSERT_FALSE(db.get(k_seed2).has_value());
 }
-UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 #endif  // NDEBUG

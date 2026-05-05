@@ -1603,11 +1603,12 @@ void olc_inode_48<Key, Value>::init(
   UNODB_DETAIL_ASSERT(!source_node_guard.active());
 }
 
-template <typename Key, typename Value>
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26411)
-    UNODB_DETAIL_DISABLE_MSVC_WARNING(26415)
-        UNODB_DETAIL_DISABLE_MSVC_WARNING(26460) void create_leaf_if_needed(
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26415)
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
+template <typename Key, typename Value>
+void create_leaf_if_needed(
             olc_db_leaf_unique_ptr<Key, Value>& cached_leaf,
             basic_art_key<Key> k, Value v,
             unodb::olc_db<Key, Value>& db_instance) {
@@ -2338,10 +2339,9 @@ olc_db<Key, Value>::try_insert(art_key_type k, value_type v,
     } else if constexpr (art_policy::can_eliminate_key_in_leaf) {
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
       const auto leaf_ptr =
-          detail::olc_node_ptr{cached_leaf.get(), node_type::LEAF};
+          detail::olc_node_ptr{cached_leaf.release(), node_type::LEAF};
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
       root = build_chain(k, leaf_ptr, tree_depth_type{0});
-      cached_leaf.release();  // build_chain succeeded; tree now owns the leaf
     } else {
       root = detail::olc_node_ptr{cached_leaf.release(), node_type::LEAF};
     }

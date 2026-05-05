@@ -2327,9 +2327,9 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
             const auto cnxt = icnode->next(
                 cnode.type(), centry.child_index);  // right-sibling.
             if (cnxt) {
-              auto nchild = icnode->get_child(cnode.type(), centry.child_index);
-              return descend_left(icnode, cnode.type(), centry.child_index,
-                                  nchild);
+              const auto si = cnxt.value().child_index;
+              auto nchild = icnode->get_child(cnode.type(), si);
+              return descend_left(icnode, cnode.type(), si, nchild);
             }
             pop();
           }
@@ -2358,9 +2358,9 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
           const auto cnxt =
               icnode->prior(cnode.type(), centry.child_index);  // left-sibling.
           if (cnxt) {
-            auto nchild = icnode->get_child(cnode.type(), centry.child_index);
-            return descend_right(icnode, cnode.type(), centry.child_index,
-                                 nchild);
+            const auto si = cnxt.value().child_index;
+            auto nchild = icnode->get_child(cnode.type(), si);
+            return descend_right(icnode, cnode.type(), si, nchild);
           }
           pop();
         }

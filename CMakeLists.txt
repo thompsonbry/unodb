@@ -1,4 +1,4 @@
-# Copyright 2019-2025 Laurynas Biveinis
+# Copyright 2019-2025 UnoDB contributors
 cmake_minimum_required(VERSION 3.16)
 
 # Set to new once Boost 1.70 is the minimum oldest version
@@ -202,7 +202,6 @@ if(COVERAGE)
   if(MSVC)
     message(FATAL_ERROR "MSVC is incompatible with code code coverage reporting")
   endif()
-  add_compile_definitions(COVERAGE)
   option(GCOV_PATH "gcov tool location to be used by lcov")
   if(GCOV_PATH)
     set(LCOV_GCOV_ARG "--gcov-tool" "${GCOV_PATH}")
@@ -712,6 +711,7 @@ function(COMMON_TARGET_PROPERTIES TARGET)
     "$<${is_standalone}:UNODB_DETAIL_STANDALONE>"
     "$<${use_boost_stacktrace}:UNODB_DETAIL_BOOST_STACKTRACE>"
     "$<${with_stats}:UNODB_DETAIL_WITH_STATS>"
+    "$<${coverage_on}:UNODB_COVERAGE>"
     "UNODB_SPINLOCK_LOOP_VALUE=${SPINLOCK_LOOP_VALUE}")
   target_compile_options(${TARGET} PUBLIC
     # Architecture

@@ -252,8 +252,9 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
   verifier.insert(make17(0xBB, 0x03), val);
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
-  // chain I4 (bytes 0-7) + split I4 (at byte 10) + chain I4 (bytes 11-15)
-  // + bottom I4 (A,B) + 3 leaves
+  // chain I4 (bytes 0-7) + chain I4 (bytes 8-9, splits at byte 10)
+  // + chain I4 (C, bytes 11-15) + chain I4 (A/B, bytes 11-15)
+  // + bottom I4 (A,B at byte 16) + 3 leaves
   verifier.assert_node_counts({3, 5, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }

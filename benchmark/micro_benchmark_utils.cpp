@@ -32,6 +32,7 @@ template void destroy_tree<unodb::olc_db<std::uint64_t, unodb::value_view>>(
 
 template void destroy_tree<unodb::db<unodb::key_view, unodb::value_view>>(
     unodb::db<unodb::key_view, unodb::value_view>&, ::benchmark::State&);
+// mutex_db<key_view, ...> not instantiated — mutex variant not benchmarked
 template void destroy_tree<unodb::olc_db<unodb::key_view, unodb::value_view>>(
     unodb::olc_db<unodb::key_view, unodb::value_view>&, ::benchmark::State&);
 template void destroy_tree<unodb::db<unodb::key_view, std::uint64_t>>(
