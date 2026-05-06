@@ -29,10 +29,13 @@ VARIABLES
     i_cver,       \* snapshot of c_ver taken during read_child
     \* Remover state
     rpc,          \* remover program counter
-    r_target      \* which node the remover targets: "parent" or "child"
+    r_target,     \* which node the remover targets: "parent" or "child"
+    \* Writer state (normal writer — bumps version without obsoleting)
+    wpc,          \* writer program counter: idle | lock | unlock
+    w_target      \* which node writer targets: "parent" or "child"
 
 vars == <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-          ipc, i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+          ipc, i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 -----------------------------------------------------------------------------
 (* Initial state *)
@@ -50,6 +53,8 @@ Init ==
     /\ i_cver = 0
     /\ rpc = "idle"
     /\ r_target = "child"
+    /\ wpc = "idle"
+    /\ w_target = "child"
 
 -----------------------------------------------------------------------------
 (* Iterator actions.
@@ -65,7 +70,7 @@ IterReadGP ==
     /\ i_gp_ver' = gp_ver
     /\ ipc' = "read_gp"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_p_ver, i_cver, rpc, r_target>>
+                   i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 2: Descend to parent — validate grandparent version unchanged
 IterDescendToParent ==
@@ -74,7 +79,7 @@ IterDescendToParent ==
        THEN ipc' = "read_parent"
        ELSE ipc' = "idle"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 3: Read parent — snapshot version
 \* Enabled only when parent is unlocked and not obsolete (spin/restart)
@@ -85,7 +90,7 @@ IterReadParent ==
     /\ i_p_ver' = p_ver
     /\ ipc' = "descend_to_child"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 3b: Restart if parent is obsolete
 IterReadParentRestart ==
@@ -93,7 +98,7 @@ IterReadParentRestart ==
     /\ p_ver = OBSOLETE
     /\ ipc' = "idle"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 4: Descend to child — validate parent version unchanged
 IterDescendToChild ==
@@ -102,7 +107,7 @@ IterDescendToChild ==
        THEN ipc' = "read_child"
        ELSE ipc' = "idle"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 5: Read child — snapshot version
 \* Enabled only when child is unlocked and not obsolete (spin/restart)
@@ -113,7 +118,7 @@ IterReadChild ==
     /\ i_cver' = c_ver
     /\ ipc' = "validate_child"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, rpc, r_target, wpc, w_target>>
 
 \* Step 5b: Restart if child is obsolete
 IterReadChildRestart ==
@@ -121,7 +126,7 @@ IterReadChildRestart ==
     /\ c_ver = OBSOLETE
     /\ ipc' = "idle"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 6: Validate child — check version unchanged and not obsolete
 IterValidateChild ==
@@ -130,14 +135,14 @@ IterValidateChild ==
        THEN ipc' = "act"
        ELSE ipc' = "idle"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 \* Step 7: Act on the data and finish
 IterAct ==
     /\ ipc = "act"
     /\ ipc' = "done"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+                   i_gp_ver, i_p_ver, i_cver, rpc, r_target, wpc, w_target>>
 
 -----------------------------------------------------------------------------
 (* Remover actions — targets either parent or child *)
@@ -149,7 +154,7 @@ RemoverChooseTarget ==
         /\ r_target' = t
         /\ rpc' = "lock"
     /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   ipc, i_gp_ver, i_p_ver, i_cver>>
+                   ipc, i_gp_ver, i_p_ver, i_cver, wpc, w_target>>
 
 \* Lock the grandparent (write-lock for structural change)
 RemoverLockGP ==
@@ -159,7 +164,7 @@ RemoverLockGP ==
     /\ gp_ver' = gp_ver + 1
     /\ rpc' = "lock_target"
     /\ UNCHANGED <<gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   ipc, i_gp_ver, i_p_ver, i_cver, r_target>>
+                   ipc, i_gp_ver, i_p_ver, i_cver, r_target, wpc, w_target>>
 
 \* Lock the target node
 RemoverLockTarget ==
@@ -174,7 +179,7 @@ RemoverLockTarget ==
             /\ c_ver' = c_ver + 1
             /\ UNCHANGED <<p_ver, c_obsolete, p_child>>
     /\ rpc' = "obsolete"
-    /\ UNCHANGED <<gp_ver, gp_child, ipc, i_gp_ver, i_p_ver, i_cver, r_target>>
+    /\ UNCHANGED <<gp_ver, gp_child, ipc, i_gp_ver, i_p_ver, i_cver, r_target, wpc, w_target>>
 
 \* Mark target obsolete and unlink
 RemoverObsolete ==
@@ -188,7 +193,7 @@ RemoverObsolete ==
             /\ p_child' = FALSE
             /\ UNCHANGED <<p_ver, gp_child>>
     /\ rpc' = "unlock_gp"
-    /\ UNCHANGED <<gp_ver, ipc, i_gp_ver, i_p_ver, i_cver, r_target>>
+    /\ UNCHANGED <<gp_ver, ipc, i_gp_ver, i_p_ver, i_cver, r_target, wpc, w_target>>
 
 \* Unlock grandparent (bump version to next even)
 RemoverUnlockGP ==
@@ -196,7 +201,43 @@ RemoverUnlockGP ==
     /\ gp_ver' = gp_ver + 1
     /\ rpc' = "done"
     /\ UNCHANGED <<gp_child, p_ver, p_child, c_ver, c_obsolete,
-                   ipc, i_gp_ver, i_p_ver, i_cver, r_target>>
+                   ipc, i_gp_ver, i_p_ver, i_cver, r_target, wpc, w_target>>
+
+-----------------------------------------------------------------------------
+(* Normal writer: locks a node, bumps version, unlocks. No obsolescence.
+   Tests that iterator detects version changes from concurrent inserts. *)
+
+WriterChoose ==
+    /\ wpc = "idle"
+    /\ \E t \in {"parent", "child"} :
+        /\ w_target' = t
+    /\ wpc' = "lock"
+    /\ UNCHANGED <<gp_ver, gp_child, p_ver, p_child, c_ver, c_obsolete,
+                   ipc, i_gp_ver, i_p_ver, i_cver, rpc, r_target>>
+
+WriterLock ==
+    /\ wpc = "lock"
+    /\ IF w_target = "parent"
+       THEN /\ p_ver % 2 = 0 /\ p_ver < MaxVersion
+            /\ p_ver' = p_ver + 1
+            /\ UNCHANGED c_ver
+       ELSE /\ c_ver % 2 = 0 /\ c_ver < MaxVersion /\ ~c_obsolete
+            /\ c_ver' = c_ver + 1
+            /\ UNCHANGED p_ver
+    /\ wpc' = "unlock"
+    /\ UNCHANGED <<gp_ver, gp_child, p_child, c_obsolete,
+                   ipc, i_gp_ver, i_p_ver, i_cver, rpc, r_target, w_target>>
+
+WriterUnlock ==
+    /\ wpc = "unlock"
+    /\ IF w_target = "parent"
+       THEN /\ p_ver' = p_ver + 1
+            /\ UNCHANGED c_ver
+       ELSE /\ c_ver' = c_ver + 1
+            /\ UNCHANGED p_ver
+    /\ wpc' = "idle"
+    /\ UNCHANGED <<gp_ver, gp_child, p_child, c_obsolete,
+                   ipc, i_gp_ver, i_p_ver, i_cver, rpc, r_target, w_target>>
 
 -----------------------------------------------------------------------------
 (* Specification *)
@@ -216,6 +257,9 @@ Next ==
     \/ RemoverLockTarget
     \/ RemoverObsolete
     \/ RemoverUnlockGP
+    \/ WriterChoose
+    \/ WriterLock
+    \/ WriterUnlock
 
 Spec == Init /\ [][Next]_vars
 
@@ -236,6 +280,8 @@ TypeOK ==
     /\ i_cver \in 0..MaxVersion
     /\ rpc \in {"idle", "lock", "lock_target", "obsolete", "unlock_gp", "done"}
     /\ r_target \in {"parent", "child"}
+    /\ wpc \in {"idle", "lock", "unlock"}
+    /\ w_target \in {"parent", "child"}
 
 \* Safety: if iterator acts, it validated against an even (unlocked),
 \* non-obsolete version.
