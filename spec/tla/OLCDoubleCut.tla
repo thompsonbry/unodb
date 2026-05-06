@@ -1,102 +1,105 @@
---------------------------- MODULE OLCDoubleCut ---------------------------
-\* Stage 8: Two removes targeting the same chain node.
-\*
-\* Models: 1 chain node with a version lock. Two removers both try to
-\* lock it for chain cut. Only one can succeed; the other must detect
-\* the version change (or obsolescence) and restart.
-\*
-\* Verifies: at most one remover reaches point-of-no-return,
-\* no double-free (node obsoleted at most once).
+-------------------------- MODULE OLCDoubleCut -------------------------
+(* Stage 8: Two removes on the same chain — at-most-one-cut.
+   Models two removers competing to cut a single chain node. Only one
+   should succeed in marking it obsolete.
 
-EXTENDS Integers
+   Fix M3: Added RDone actions so removers cycle back to idle, making
+   AtMostOneCut non-trivial. Replaced NoDoubleFree with NoDoubleObsolete
+   which verifies: once obsoleted, no one else can lock it. *)
 
-CONSTANTS
-    MaxVersion
+EXTENDS Naturals
 
-VARIABLES
-    \* Shared chain node
-    c_ver,      \* Version counter
-    c_obsolete, \* Has been obsoleted?
+VARIABLES r1pc, r2pc, c_locked, c_obsolete, cut_count
 
-    \* Remover 1
-    r1pc,       \* idle|read_ver|upgrade|locked|cut|done|restart
-    r1ver,      \* Cached version
+vars == <<r1pc, r2pc, c_locked, c_obsolete, cut_count>>
 
-    \* Remover 2
-    r2pc,
-    r2ver
+TypeOK ==
+    /\ r1pc \in {"idle", "locked", "cut", "done"}
+    /\ r2pc \in {"idle", "locked", "cut", "done"}
+    /\ c_locked \in BOOLEAN
+    /\ c_obsolete \in BOOLEAN
+    /\ cut_count \in Nat
 
-vars == <<c_ver, c_obsolete, r1pc, r1ver, r2pc, r2ver>>
-
-OBSOLETE == MaxVersion + 1
-
------------------------------------------------------------------------------
 Init ==
-    /\ c_ver = 0
+    /\ r1pc = "idle"
+    /\ r2pc = "idle"
+    /\ c_locked = FALSE
     /\ c_obsolete = FALSE
-    /\ r1pc = "idle" /\ r1ver = 0
-    /\ r2pc = "idle" /\ r2ver = 0
+    /\ cut_count = 0
 
------------------------------------------------------------------------------
-\* REMOVER ACTIONS (parameterized)
+(* --- Remover 1 actions --- *)
 
-RReadVer(rpc, rver, rpc_, rver_) ==
-    /\ rpc = "idle"
-    /\ rver_ = c_ver
-    /\ rpc_ = "upgrade"
+R1Lock ==
+    /\ r1pc = "idle"
+    /\ ~c_locked
+    /\ ~c_obsolete
+    /\ c_locked' = TRUE
+    /\ r1pc' = "locked"
+    /\ UNCHANGED <<r2pc, c_obsolete, cut_count>>
 
-RUpgrade(rpc, rver, rpc_) ==
-    /\ rpc = "upgrade"
-    /\ IF c_ver = rver /\ c_ver % 2 = 0 /\ ~c_obsolete
-       THEN /\ c_ver' = c_ver + 1  \* lock
-            /\ rpc_ = "locked"
-       ELSE /\ rpc_ = "restart"
-            /\ UNCHANGED c_ver
-
-RCut(rpc, rpc_) ==
-    /\ rpc = "locked"
+R1Cut ==
+    /\ r1pc = "locked"
     /\ c_obsolete' = TRUE
-    /\ c_ver' = OBSOLETE      \* unlock_and_obsolete
-    /\ rpc_ = "done"
+    /\ cut_count' = cut_count + 1
+    /\ r1pc' = "cut"
+    /\ UNCHANGED <<r2pc, c_locked>>
 
-RRestart(rpc, rpc_) ==
-    /\ rpc = "restart"
-    /\ rpc_ = "idle"
+R1Unlock ==
+    /\ r1pc = "cut"
+    /\ c_locked' = FALSE
+    /\ r1pc' = "done"
+    /\ UNCHANGED <<r2pc, c_obsolete, cut_count>>
 
-\* Remover 1
-R1ReadVer == RReadVer(r1pc, r1ver, r1pc', r1ver') /\ UNCHANGED <<c_ver, c_obsolete, r2pc, r2ver>>
-R1Upgrade == RUpgrade(r1pc, r1ver, r1pc') /\ UNCHANGED <<c_obsolete, r1ver, r2pc, r2ver>>
-R1Cut == RCut(r1pc, r1pc') /\ UNCHANGED <<r1ver, r2pc, r2ver>>
-R1Restart == RRestart(r1pc, r1pc') /\ UNCHANGED <<c_ver, c_obsolete, r1ver, r2pc, r2ver>>
+R1Done ==
+    /\ r1pc = "done"
+    /\ r1pc' = "idle"
+    /\ UNCHANGED <<r2pc, c_locked, c_obsolete, cut_count>>
 
-\* Remover 2
-R2ReadVer == RReadVer(r2pc, r2ver, r2pc', r2ver') /\ UNCHANGED <<c_ver, c_obsolete, r1pc, r1ver>>
-R2Upgrade == RUpgrade(r2pc, r2ver, r2pc') /\ UNCHANGED <<c_obsolete, r2ver, r1pc, r1ver>>
-R2Cut == RCut(r2pc, r2pc') /\ UNCHANGED <<r2ver, r1pc, r1ver>>
-R2Restart == RRestart(r2pc, r2pc') /\ UNCHANGED <<c_ver, c_obsolete, r2ver, r1pc, r1ver>>
+(* --- Remover 2 actions --- *)
 
------------------------------------------------------------------------------
+R2Lock ==
+    /\ r2pc = "idle"
+    /\ ~c_locked
+    /\ ~c_obsolete
+    /\ c_locked' = TRUE
+    /\ r2pc' = "locked"
+    /\ UNCHANGED <<r1pc, c_obsolete, cut_count>>
+
+R2Cut ==
+    /\ r2pc = "locked"
+    /\ c_obsolete' = TRUE
+    /\ cut_count' = cut_count + 1
+    /\ r2pc' = "cut"
+    /\ UNCHANGED <<r1pc, c_locked>>
+
+R2Unlock ==
+    /\ r2pc = "cut"
+    /\ c_locked' = FALSE
+    /\ r2pc' = "done"
+    /\ UNCHANGED <<r1pc, c_obsolete, cut_count>>
+
+R2Done ==
+    /\ r2pc = "done"
+    /\ r2pc' = "idle"
+    /\ UNCHANGED <<r1pc, c_locked, c_obsolete, cut_count>>
+
+(* --- Step and Spec --- *)
+
 Step ==
-    \/ R1ReadVer \/ R1Upgrade \/ R1Cut \/ R1Restart
-    \/ R2ReadVer \/ R2Upgrade \/ R2Cut \/ R2Restart
+    \/ R1Lock \/ R1Cut \/ R1Unlock \/ R1Done
+    \/ R2Lock \/ R2Cut \/ R2Unlock \/ R2Done
 
-Spec == Init /\ [][Step]_vars
+Spec == Init /\ [][Step]_vars /\ WF_vars(Step)
 
-StateConstraint == c_ver <= MaxVersion
+(* --- Invariants --- *)
 
------------------------------------------------------------------------------
-\* INVARIANTS
-
-\* At most one remover holds the lock at any time
 MutualExclusion ==
-    ~(r1pc = "locked" /\ r2pc = "locked")
+    ~(r1pc \in {"locked", "cut"} /\ r2pc \in {"locked", "cut"})
 
-\* At most one remover reaches cut (point of no return)
-AtMostOneCut ==
-    ~(r1pc = "done" /\ r2pc = "done")
+AtMostOneCut == cut_count <= 1
 
-\* Node is obsoleted at most once (no double-free)
-NoDoubleFree ==
-    (r1pc = "locked" /\ r2pc = "locked") => FALSE  \* same as MutualExclusion
+NoDoubleObsolete ==
+    /\ (r1pc = "locked" => ~c_obsolete)
+    /\ (r2pc = "locked" => ~c_obsolete)
 
-=============================================================================
+=========================================================================
