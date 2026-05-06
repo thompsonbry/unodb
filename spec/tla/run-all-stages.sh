@@ -13,7 +13,7 @@ run_stage() {
   rm -rf /tmp/tlc-run
   local output
   output=$(timeout 300 java -Xmx4g -XX:+UseParallelGC \
-    -cp ${TLA2TOOLS:-~/tools/tla/tla2tools.jar} tlc2.TLC \
+    -cp ~/tools/tla/tla2tools.jar tlc2.TLC \
     "$tla" -config "$cfg" -workers 4 \
     -metadir /tmp/tlc-run -noGenerateSpecTE 2>&1)
   local rc=$?

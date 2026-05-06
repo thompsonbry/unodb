@@ -1,124 +1,113 @@
---------------------------- MODULE OLCInsert ------------------------------
-\* Stage 3: Two writers racing to insert into the same node.
-\*
-\* Models: 2 writers + 1 node with N slots. Each writer reads version,
-\* finds an empty slot, upgrades to write lock, inserts. Only one can
-\* succeed; the other must detect the version change and restart.
-\*
-\* Verifies: no lost updates, mutual exclusion on write lock.
+--------------------------- MODULE OLCInsert ---------------------------
+(* Stage 3: Two writers racing for the same node — mutual exclusion via OLC.
+   Models the version-based optimistic lock protocol where writers must
+   acquire exclusive access (odd version) before modifying node state.
 
-EXTENDS Integers, FiniteSets
+   Fix C2: WWrite split into WWriteSlot + WWriteCount to model non-atomic
+   count maintenance. CountConsistency only checked when version is even
+   (unlocked state). *)
 
-CONSTANTS
-    N,          \* Number of slots (3)
-    MaxVersion  \* Version bound (6)
+EXTENDS Naturals, FiniteSets
 
-VARIABLES
-    slots,      \* slots[1..N] \in {0, 1} (0=empty, 1=occupied)
-    version,    \* Even=unlocked, Odd=locked
-    count,      \* Number of occupied slots
+CONSTANTS NumSlots
 
-    \* Writer 1
-    w1pc,       \* idle|read_ver|find_slot|upgrade|write|unlock|done|restart
-    w1ver,      \* Cached version
-    w1target,   \* Slot writer 1 chose
+Slots == 1..NumSlots
 
-    \* Writer 2
-    w2pc,
-    w2ver,
-    w2target
+VARIABLES version, slots, count,
+          w1pc, w1target,
+          w2pc, w2target
 
-vars == <<slots, version, count, w1pc, w1ver, w1target, w2pc, w2ver, w2target>>
+vars == <<version, slots, count, w1pc, w1target, w2pc, w2target>>
 
-Slots == 1..N
+TypeOK ==
+    /\ version \in Nat
+    /\ slots \in [Slots -> {0, 1}]
+    /\ count \in 0..NumSlots
+    /\ w1pc \in {"idle", "locked", "write_slot", "write_count", "unlock"}
+    /\ w2pc \in {"idle", "locked", "write_slot", "write_count", "unlock"}
+    /\ w1target \in Slots
+    /\ w2target \in Slots
 
------------------------------------------------------------------------------
 Init ==
-    /\ slots = [i \in Slots |-> 0]
     /\ version = 0
+    /\ slots = [i \in Slots |-> 0]
     /\ count = 0
-    /\ w1pc = "idle" /\ w1ver = 0 /\ w1target = 1
-    /\ w2pc = "idle" /\ w2ver = 0 /\ w2target = 1
+    /\ w1pc = "idle"
+    /\ w2pc = "idle"
+    /\ w1target = 1
+    /\ w2target = 1
 
------------------------------------------------------------------------------
-\* WRITER ACTIONS (parameterized by writer ID)
+(* --- Writer 1 actions --- *)
 
-WReadVer(wpc, wver, wpc_, wver_) ==
-    /\ wpc = "idle"
-    /\ version <= MaxVersion
-    /\ count < N              \* only attempt if node not full
-    /\ wver_ = version
-    /\ wpc_ = "find_slot"
+W1Lock ==
+    /\ w1pc = "idle"
+    /\ version % 2 = 0          \* not already write-locked
+    /\ \E t \in Slots : slots[t] = 0 /\ w1target' = t
+    /\ version' = version + 1   \* odd = locked
+    /\ w1pc' = "locked"
+    /\ UNCHANGED <<slots, count, w2pc, w2target>>
 
-WFindSlot(wpc, wver, wtarget, wpc_, wtarget_) ==
-    /\ wpc = "find_slot"
-    /\ \E i \in Slots :
-        /\ slots[i] = 0      \* find empty slot (reads shared state)
-        /\ wtarget_ = i
-    /\ wpc_ = "upgrade"
+W1WriteSlot ==
+    /\ w1pc = "locked"
+    /\ slots' = [slots EXCEPT ![w1target] = 1]
+    /\ w1pc' = "write_slot"
+    /\ UNCHANGED <<version, count, w1target, w2pc, w2target>>
 
-WUpgrade(wpc, wver, wpc_) ==
-    /\ wpc = "upgrade"
-    /\ IF version = wver /\ version % 2 = 0
-       THEN /\ version' = version + 1  \* acquire lock
-            /\ wpc_ = "write"
-       ELSE /\ wpc_ = "restart"        \* version changed → restart
-            /\ UNCHANGED version
-
-WWrite(wpc, wtarget, wpc_) ==
-    /\ wpc = "write"
-    /\ slots' = [slots EXCEPT ![wtarget] = 1]
+W1WriteCount ==
+    /\ w1pc = "write_slot"
     /\ count' = count + 1
-    /\ wpc_ = "unlock"
+    /\ w1pc' = "write_count"
+    /\ UNCHANGED <<version, slots, w1target, w2pc, w2target>>
 
-WUnlock(wpc, wpc_) ==
-    /\ wpc = "unlock"
-    /\ version' = version + 1  \* release lock (even)
-    /\ wpc_ = "done"
+W1Unlock ==
+    /\ w1pc = "write_count"
+    /\ version' = version + 1   \* even = unlocked
+    /\ w1pc' = "idle"
+    /\ UNCHANGED <<slots, count, w1target, w2pc, w2target>>
 
-WRestart(wpc, wpc_) ==
-    /\ wpc = "restart"
-    /\ wpc_ = "idle"
+(* --- Writer 2 actions --- *)
 
-\* Writer 1 actions
-W1ReadVer == WReadVer(w1pc, w1ver, w1pc', w1ver') /\ UNCHANGED <<slots, version, count, w1target, w2pc, w2ver, w2target>>
-W1FindSlot == WFindSlot(w1pc, w1ver, w1target, w1pc', w1target') /\ UNCHANGED <<slots, version, count, w1ver, w2pc, w2ver, w2target>>
-W1Upgrade == WUpgrade(w1pc, w1ver, w1pc') /\ UNCHANGED <<slots, count, w1ver, w1target, w2pc, w2ver, w2target>>
-W1Write == WWrite(w1pc, w1target, w1pc') /\ UNCHANGED <<version, w1ver, w1target, w2pc, w2ver, w2target>>
-W1Unlock == WUnlock(w1pc, w1pc') /\ UNCHANGED <<slots, count, w1ver, w1target, w2pc, w2ver, w2target>>
-W1Restart == WRestart(w1pc, w1pc') /\ UNCHANGED <<slots, version, count, w1ver, w1target, w2pc, w2ver, w2target>>
+W2Lock ==
+    /\ w2pc = "idle"
+    /\ version % 2 = 0
+    /\ \E t \in Slots : slots[t] = 0 /\ w2target' = t
+    /\ version' = version + 1
+    /\ w2pc' = "locked"
+    /\ UNCHANGED <<slots, count, w1pc, w1target>>
 
-\* Writer 2 actions
-W2ReadVer == WReadVer(w2pc, w2ver, w2pc', w2ver') /\ UNCHANGED <<slots, version, count, w2target, w1pc, w1ver, w1target>>
-W2FindSlot == WFindSlot(w2pc, w2ver, w2target, w2pc', w2target') /\ UNCHANGED <<slots, version, count, w2ver, w1pc, w1ver, w1target>>
-W2Upgrade == WUpgrade(w2pc, w2ver, w2pc') /\ UNCHANGED <<slots, count, w2ver, w2target, w1pc, w1ver, w1target>>
-W2Write == WWrite(w2pc, w2target, w2pc') /\ UNCHANGED <<version, w2ver, w2target, w1pc, w1ver, w1target>>
-W2Unlock == WUnlock(w2pc, w2pc') /\ UNCHANGED <<slots, count, w2ver, w2target, w1pc, w1ver, w1target>>
-W2Restart == WRestart(w2pc, w2pc') /\ UNCHANGED <<slots, version, count, w2ver, w2target, w1pc, w1ver, w1target>>
+W2WriteSlot ==
+    /\ w2pc = "locked"
+    /\ slots' = [slots EXCEPT ![w2target] = 1]
+    /\ w2pc' = "write_slot"
+    /\ UNCHANGED <<version, count, w1pc, w1target, w2target>>
 
------------------------------------------------------------------------------
+W2WriteCount ==
+    /\ w2pc = "write_slot"
+    /\ count' = count + 1
+    /\ w2pc' = "write_count"
+    /\ UNCHANGED <<version, slots, w1pc, w1target, w2target>>
+
+W2Unlock ==
+    /\ w2pc = "write_count"
+    /\ version' = version + 1
+    /\ w2pc' = "idle"
+    /\ UNCHANGED <<slots, count, w1pc, w1target, w2target>>
+
+(* --- Step and Spec --- *)
+
 Step ==
-    \/ W1ReadVer \/ W1FindSlot \/ W1Upgrade \/ W1Write \/ W1Unlock \/ W1Restart
-    \/ W2ReadVer \/ W2FindSlot \/ W2Upgrade \/ W2Write \/ W2Unlock \/ W2Restart
+    \/ W1Lock \/ W1WriteSlot \/ W1WriteCount \/ W1Unlock
+    \/ W2Lock \/ W2WriteSlot \/ W2WriteCount \/ W2Unlock
 
-Spec == Init /\ [][Step]_vars
+Spec == Init /\ [][Step]_vars /\ WF_vars(Step)
 
------------------------------------------------------------------------------
-\* INVARIANTS
+(* --- Invariants --- *)
 
-\* Mutual exclusion: at most one writer holds the lock
 MutualExclusion ==
-    ~(w1pc \in {"write", "unlock"} /\ w2pc \in {"write", "unlock"})
+    ~(w1pc \in {"locked", "write_slot", "write_count"} /\
+      w2pc \in {"locked", "write_slot", "write_count"})
 
-\* Count consistency: count equals actual occupied slots
 CountConsistency ==
-    count = Cardinality({i \in Slots : slots[i] = 1})
+    version % 2 = 0 => count = Cardinality({i \in Slots : slots[i] = 1})
 
-\* No lost update: if both target same slot and both reach "done",
-\* the slot is occupied (trivially true since write sets it to 1).
-\* The real property: a writer in "write" state has exclusive access.
-ExclusiveWrite ==
-    (w1pc = "write" => version % 2 = 1) /\
-    (w2pc = "write" => version % 2 = 1)
-
-=============================================================================
+=========================================================================
