@@ -1,23 +1,25 @@
-// Copyright 2025 UnoDB contributors
+// Copyright 2025-2026 UnoDB contributors
 
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
 
 // IWYU pragma: no_include <__cstddef/byte.h>
-// IWYU pragma: no_include <array>
-// IWYU pragma: no_include <span>
 // IWYU pragma: no_include <string>
 // IWYU pragma: no_include <string_view>
 
+#include <array>
 #include <cstddef>  // IWYU pragma: keep
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <stdexcept>
 #include <tuple>
+#include <vector>
 
 #include <gtest/gtest.h>
 
 #include "art_common.hpp"
+#include "assert.hpp"  // UNODB_DETAIL_ASSERT
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 
@@ -250,9 +252,10 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest,
   verifier.insert(make17(0xBB, 0x03), val);
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
-  // chain I4 (bytes 0-7) + split I4 (at byte 10) + chain I4 (bytes 11-15)
-  // + bottom I4 (A,B) + 3 leaves
-  verifier.assert_node_counts({3, 4, 0, 0, 0});
+  // chain I4 (bytes 0-7) + chain I4 (bytes 8-9, splits at byte 10)
+  // + chain I4 (C, bytes 11-15) + chain I4 (A/B, bytes 11-15)
+  // + bottom I4 (A,B at byte 16) + 3 leaves
+  verifier.assert_node_counts({3, 5, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -328,7 +331,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertThenRemove) {
 #ifdef UNODB_DETAIL_WITH_STATS
   // Bottom I4 collapsed via leave_last_child.  Chain I4 remains with
   // 1 child (the surviving leaf).
-  verifier.assert_node_counts({1, 1, 0, 0, 0});
+  verifier.assert_node_counts({1, 2, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -349,7 +352,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveFromChainLeavesInode) {
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
   // Root I4 (2 children: key3 leaf + chain) + chain I4 + 2 leaves
-  verifier.assert_node_counts({2, 2, 0, 0, 0});
+  verifier.assert_node_counts({2, 4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -459,7 +462,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveMixedLengthFromChain) {
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
   // Chain I4 + 1 surviving leaf
-  verifier.assert_node_counts({1, 1, 0, 0, 0});
+  verifier.assert_node_counts({1, 2, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
   verifier.remove(make_key(enc, 0x42, 2));
   verifier.assert_empty();
@@ -547,7 +550,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MixedLengthKeysLongPrefix) {
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
   // chain I4 + bottom I4 (2 children) + 2 leaves
-  verifier.assert_node_counts({2, 2, 0, 0, 0});
+  verifier.assert_node_counts({2, 3, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -727,7 +730,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI4) {
   verifier.insert(make_key(enc, 0x42, 2), val);
   verifier.insert(make_short_key(enc, 0x01), val);
   // root I4(2: 0x42→chain, 0x01→leaf) + chain I4 + bottom I4 + 3 leaves
-  verifier.assert_node_counts({3, 3, 0, 0, 0});
+  verifier.assert_node_counts({3, 2, 0, 0, 0});
 
   verifier.remove(make_key(enc, 0x42, 1));
   // Bottom I4 collapsed via leave_last_child.  Chain I4 has 1 child (leaf).
@@ -738,7 +741,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI4) {
   verifier.check_present_values();
   // Chain fully reclaimed.  Root I4 at min_size(2) loses a child →
   // leave_last_child → root becomes the surviving leaf.
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
+  verifier.assert_node_counts({1, 1, 0, 0, 0});
 }
 
 /// Chain under I16(5 children).  Remove chain → I16 shrinks to I4.
@@ -753,7 +756,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI16) {
   for (std::uint8_t t = 0x01; t <= 0x04; ++t)
     verifier.insert(make_short_key(enc, t), val);
   // root I16(5) + chain I4 + bottom I4 + 6 leaves
-  verifier.assert_node_counts({6, 2, 1, 0, 0});
+  verifier.assert_node_counts({6, 1, 1, 0, 0});
 
   verifier.remove(make_key(enc, 0x42, 1));
   verifier.remove(make_key(enc, 0x42, 2));
@@ -775,7 +778,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI48) {
   for (std::uint8_t t = 0x01; t <= 0x10; ++t)
     verifier.insert(make_short_key(enc, t), val);
   // root I48(17) + chain I4 + bottom I4 + 18 leaves
-  verifier.assert_node_counts({18, 2, 0, 1, 0});
+  verifier.assert_node_counts({18, 1, 0, 1, 0});
 
   verifier.remove(make_key(enc, 0x42, 1));
   verifier.remove(make_key(enc, 0x42, 2));
@@ -796,7 +799,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CascadeChainUnderI256) {
   for (std::uint8_t t = 0x01; t <= 0x30; ++t)
     verifier.insert(make_short_key(enc, t), val);
   // root I256(49) + chain I4 + bottom I4 + 50 leaves
-  verifier.assert_node_counts({50, 2, 0, 0, 1});
+  verifier.assert_node_counts({50, 1, 0, 0, 1});
 
   verifier.remove(make_key(enc, 0x42, 1));
   verifier.remove(make_key(enc, 0x42, 2));
@@ -861,7 +864,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, MultiLevelChainRemoveAll) {
 
   verifier.remove(make17(0x01));
   // Bottom I4 collapsed.  Two chain I4s remain, last one has 1 child (leaf).
-  verifier.assert_node_counts({1, 2, 0, 0, 0});
+  verifier.assert_node_counts({1, 3, 0, 0, 0});
 
   verifier.remove(make17(0x02));
   verifier.assert_empty();
@@ -888,7 +891,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainParentGrowthI4ToI16) {
     verifier.insert(make_short_key(enc, t), val);
   verifier.check_present_values();
   // root I16(5: 0x42→chain, 0x01..0x04→leaves) + chain-I4 + bottom-I4
-  verifier.assert_node_counts({6, 2, 1, 0, 0});
+  verifier.assert_node_counts({6, 1, 1, 0, 0});
 }
 
 /// Parent I16→I48 growth with a chain child.
@@ -903,7 +906,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainParentGrowthI16ToI48) {
     verifier.insert(make_short_key(enc, t), val);
   verifier.check_present_values();
   // root I48(17) + chain-I4 + bottom-I4
-  verifier.assert_node_counts({18, 2, 0, 1, 0});
+  verifier.assert_node_counts({18, 1, 0, 1, 0});
 }
 
 /// Parent I48→I256 growth with a chain child.
@@ -918,7 +921,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ChainParentGrowthI48ToI256) {
     verifier.insert(make_short_key(enc, t), val);
   verifier.check_present_values();
   // root I256(49) + chain-I4 + bottom-I4
-  verifier.assert_node_counts({50, 2, 0, 0, 1});
+  verifier.assert_node_counts({50, 1, 0, 0, 1});
 }
 
 // -------------------------------------------------------------------
@@ -1588,7 +1591,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ScanChainMixedLengths) {
   verifier.insert(make_long_key(enc, 0x42, 4, 0x01), val);
   // check_present_values does a full scan + per-key probe.
   verifier.check_present_values();
-  verifier.assert_node_counts({4, 2, 0, 0, 0});
+  verifier.assert_node_counts({4, 4, 0, 0, 0});
 
   // Remove a 10-byte key, verify scan still works.
   verifier.remove(make_long_key(enc, 0x42, 3, 0x01));
@@ -1600,5 +1603,72 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ScanChainMixedLengths) {
 }
 
 #endif  // UNODB_DETAIL_WITH_STATS
+
+// Regression test: basic_art_key<key_view>::cmp() must compare actual
+// key data, not the raw std::span struct bytes (pointer + size).
+// The bug caused scan_range to pick the wrong direction when key
+// buffers were at addresses that disagreed with key data ordering.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, ScanRangeReversedPointerOrder) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  const auto val = unodb::test::test_values[0];
+
+  // Insert 3 keys: 0x01, 0x02, 0x03.
+  std::array<std::byte, 1> buf_a{std::byte{0x01}};
+  std::array<std::byte, 1> buf_b{std::byte{0x02}};
+  std::array<std::byte, 1> buf_c{std::byte{0x03}};
+  const auto ka = unodb::key_view{buf_a.data(), 1};
+  const auto kb = unodb::key_view{buf_b.data(), 1};
+  const auto kc = unodb::key_view{buf_c.data(), 1};
+  verifier.insert(ka, val);
+  verifier.insert(kb, val);
+  verifier.insert(kc, val);
+
+  // Construct from/to keys in separate buffers where the "larger" key
+  // data (0x03) is at a LOWER address than the "smaller" key (0x01).
+  // This triggers the bug: cmp() compared pointer values, not key data.
+  std::array<std::byte, 256> mem{};
+  mem[0] = std::byte{0x03};    // larger key at lower address
+  mem[128] = std::byte{0x01};  // smaller key at higher address
+  const auto mem_span = std::span{mem};
+  const auto from_key = unodb::key_view{mem_span.subspan(128, 1)};  // 0x01
+  const auto to_key = unodb::key_view{mem_span.subspan(0, 1)};      // 0x03
+
+  // scan_range(0x01, 0x03) should visit 0x01 and 0x02 (forward scan,
+  // exclusive upper bound).
+  std::vector<std::byte> visited;
+  verifier.get_db().scan_range(from_key, to_key,
+                               [&visited](const auto& visitor) {
+                                 const auto k = visitor.get_key();
+                                 UNODB_DETAIL_ASSERT(k.size() == 1);
+                                 visited.push_back(k[0]);
+                                 return false;  // continue
+                               });
+  UNODB_ASSERT_EQ(visited.size(), 2U);
+  UNODB_EXPECT_EQ(visited[0], std::byte{0x01});
+  UNODB_EXPECT_EQ(visited[1], std::byte{0x02});
+}
+
+// Dispatch-byte collision: two keys sharing >7 prefix bytes with the same
+// dispatch byte.  Exercises the chain-creation path in try_insert for
+// value_view (keyed-leaf) instantiations.
+UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, DispatchByteCollision) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  unodb::key_encoder enc;
+  constexpr auto val = unodb::test::test_value_1;
+
+  // make_key(0x42, 1) and make_key(0x42, 2) share 8 bytes — exercises
+  // the chain-creation path for keys with long shared prefixes.
+  // Note: for key_view types, can_eliminate_key_in_leaf is true so the
+  // dispatch-byte collision branch is dead; this tests the VIS chain path.
+  verifier.insert(make_key(enc, 0x42, 1), val);
+  verifier.insert(make_key(enc, 0x42, 2), val);
+  verifier.check_present_values();
+
+  verifier.insert(make_key(enc, 0x42, 3), val);
+  verifier.check_present_values();
+
+  verifier.remove(make_key(enc, 0x42, 2));
+  verifier.check_present_values();
+}
 
 }  // namespace
