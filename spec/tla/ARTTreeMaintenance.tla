@@ -436,4 +436,117 @@ TypeOK ==
 
 StateConstraint == nxt <= 7
 
+(***************************************************************************)
+(* BUGGY INSERT — No ancestor collapse on unwind                           *)
+(*                                                                         *)
+(* Models the real implementation's iterative insert which does NOT check   *)
+(* whether ancestors became collapsible after a prefix split deeper in     *)
+(* the tree.                                                               *)
+(***************************************************************************)
+
+RECURSIVE BuggyDoInsert(_, _, _, _, _, _)
+BuggyDoInsert(ns, rt, key, pos, nid, nx) ==
+    LET n == ns[nid]
+        plen == Len(n.prefix)
+        key_rem == Len(key) - pos + 1
+        match_max == IF plen < key_rem THEN plen ELSE key_rem
+        RECURSIVE PfxMatch(_)
+        PfxMatch(i) ==
+            IF i > match_max THEN match_max
+            ELSE IF key[pos + i - 1] /= n.prefix[i] THEN i - 1
+            ELSE PfxMatch(i + 1)
+        mlen == IF plen = 0 THEN 0 ELSE PfxMatch(1)
+    IN
+    IF mlen < plen THEN
+        \* PREFIX SPLIT — identical to correct version
+        LET sb == n.prefix[mlen + 1]
+            osuf == IF mlen + 2 > plen THEN <<>>
+                    ELSE SubSeq(n.prefix, mlen + 2, plen)
+            bpfx == IF mlen = 0 THEN <<>>
+                    ELSE SubSeq(n.prefix, 1, mlen)
+            kpos == pos + mlen
+            ns2 == [ns EXCEPT ![nid].prefix = osuf]
+            nid_collapsible ==
+                /\ ~n.is_vis
+                /\ Cardinality(DOMAIN n.children) = 1
+                /\ LET cd == CHOOSE b \in DOMAIN n.children : TRUE
+                       cid == n.children[cd]
+                   IN /\ cid \in DOMAIN ns
+                      /\ Len(osuf) + 1 + Len(ns[cid].prefix) <= PrefixCapacity
+        IN
+        IF kpos > Len(key) THEN
+            LET bid == nx
+                bn == [prefix |-> bpfx, children |-> (sb :> nid), is_vis |-> TRUE]
+                raw == <<(bid :> bn) @@ ns2, IF nid = rt THEN bid ELSE rt, nx + 1, bid>>
+            IN IF nid_collapsible THEN
+                 LET cd == CHOOSE b \in DOMAIN n.children : TRUE
+                     cid == n.children[cd]
+                     new_pfx == osuf \o <<cd>> \o ns[cid].prefix
+                     ns_c == [nd \in (DOMAIN raw[1] \ {nid}) |->
+                               IF nd = cid
+                               THEN [raw[1][cid] EXCEPT !.prefix = new_pfx]
+                               ELSE raw[1][nd]]
+                     ns_d == [ns_c EXCEPT ![bid].children = (sb :> cid)]
+                 IN <<ns_d, raw[2], raw[3], raw[4]>>
+               ELSE raw
+        ELSE
+            LET kd == key[kpos]
+                ch == MkChain(key, kpos + 1, nx + 1)
+                bid == nx
+                bc == (sb :> nid) @@ (kd :> ch[2])
+                bn == [prefix |-> bpfx, children |-> bc, is_vis |-> FALSE]
+                raw == <<(bid :> bn) @@ ch[1] @@ ns2,
+                         IF nid = rt THEN bid ELSE rt, ch[3], bid>>
+            IN IF nid_collapsible THEN
+                 LET cd == CHOOSE b \in DOMAIN n.children : TRUE
+                     cid == n.children[cd]
+                     new_pfx == osuf \o <<cd>> \o ns[cid].prefix
+                     ns_c == [nd \in (DOMAIN raw[1] \ {nid}) |->
+                               IF nd = cid
+                               THEN [raw[1][cid] EXCEPT !.prefix = new_pfx]
+                               ELSE raw[1][nd]]
+                     ns_d == [ns_c EXCEPT ![bid].children[sb] = cid]
+                 IN <<ns_d, raw[2], raw[3], raw[4]>>
+               ELSE raw
+    ELSE
+        \* FULL PREFIX MATCH
+        LET ap == pos + plen IN
+        IF ap > Len(key) THEN
+            <<[ns EXCEPT ![nid].is_vis = TRUE], rt, nx, nid>>
+        ELSE
+            LET d == key[ap] IN
+            IF d \in DOMAIN n.children THEN
+                \* BUG: No ancestor collapse check after recursive return
+                LET cid == n.children[d]
+                    sub == BuggyDoInsert(ns, rt, key, ap + 1, cid, nx)
+                    ns1 == IF sub[4] /= cid
+                           THEN [sub[1] EXCEPT ![nid].children[d] = sub[4]]
+                           ELSE sub[1]
+                IN <<ns1, sub[2], sub[3], nid>>
+            ELSE
+                LET ch == MkChain(key, ap + 1, nx)
+                    ns2 == [ns EXCEPT ![nid].children = n.children @@ (d :> ch[2])]
+                IN <<ch[1] @@ ns2, rt, ch[3], nid>>
+
+BuggyInsert(key) ==
+    /\ key \notin present
+    /\ IF root = NULL THEN
+           LET ch == MkChain(key, 1, nxt)
+           IN /\ nodes' = ch[1]
+              /\ root' = ch[2]
+              /\ present' = present \union {key}
+              /\ nxt' = ch[3]
+       ELSE
+           LET r == BuggyDoInsert(nodes, root, key, 1, root, nxt)
+           IN /\ nodes' = r[1]
+              /\ root' = r[2]
+              /\ present' = present \union {key}
+              /\ nxt' = r[3]
+
+BuggyNext ==
+    \/ \E key \in Keys : BuggyInsert(key)
+    \/ \E key \in Keys : Remove(key)
+
+BuggySpec == Init /\ [][BuggyNext]_vars
+
 ================================================================================
