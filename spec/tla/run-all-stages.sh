@@ -20,7 +20,7 @@ run_stage() {
   rm -rf /tmp/tlc-run
   if echo "$output" | grep -q "No error has been found"; then
     local states
-    states=$(echo "$output" | grep "distinct states" | grep -oP '\d+ distinct' | head -1)
+    states=$(echo "$output" | grep "distinct states found" | grep -oP "\\d+ distinct" | tail -1)
     echo -e "${GREEN}PASS${NC} ($states)"
   else
     echo -e "${RED}FAIL${NC}"
@@ -40,6 +40,7 @@ run_stage "Stage 6: OLCIterRemove (obsolescence)"       OLCIterRemove.tla    OLC
 run_stage "Stage 7: OLCInsertChainVIS (transient VIS)"  OLCInsertChainVIS.tla OLCInsertChainVIS.cfg
 run_stage "Stage 8: OLCDoubleCut (two removes)"         OLCDoubleCut.tla     OLCDoubleCut.cfg
 run_stage "Stage 9: OLCChainMultiLevel (multi-level chain)"  OLCChainMultiLevel.tla OLCChainMultiLevel.cfg
+run_stage "Stage 10: OLCChainCutFull (root/shrink/cascade)" OLCChainCutFull.tla OLCChainCutFull.cfg
 echo
 if [ $FAIL -eq 0 ]; then
   echo -e "${GREEN}All stages passed!${NC}"
