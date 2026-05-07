@@ -41,6 +41,7 @@ run_stage "Stage 7: OLCInsertChainVIS (transient VIS)"  OLCInsertChainVIS.tla OL
 run_stage "Stage 8: OLCDoubleCut (two removes)"         OLCDoubleCut.tla     OLCDoubleCut.cfg
 run_stage "Stage 9: OLCChainMultiLevel (multi-level chain)"  OLCChainMultiLevel.tla OLCChainMultiLevel.cfg
 run_stage "Stage 10: OLCChainCutFull (root/shrink/cascade)" OLCChainCutFull.tla OLCChainCutFull.cfg
+run_stage "Stage 11: OLCKeyViewChain (VIS + shared prefix)"  OLCKeyViewChain.tla OLCKeyViewChain.cfg
 echo
 if [ $FAIL -eq 0 ]; then
   echo -e "${GREEN}All stages passed!${NC}"
