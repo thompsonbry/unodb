@@ -39,6 +39,7 @@ run_stage "Stage 5: OLCChainCut (Cases A/B/C)"          OLCChainCut.tla      OLC
 run_stage "Stage 6: OLCIterRemove (obsolescence)"       OLCIterRemove.tla    OLCIterRemove.cfg
 run_stage "Stage 7: OLCInsertChainVIS (transient VIS)"  OLCInsertChainVIS.tla OLCInsertChainVIS.cfg
 run_stage "Stage 8: OLCDoubleCut (two removes)"         OLCDoubleCut.tla     OLCDoubleCut.cfg
+run_stage "Stage 9: OLCChainMultiLevel (multi-level chain)"  OLCChainMultiLevel.tla OLCChainMultiLevel.cfg
 echo
 if [ $FAIL -eq 0 ]; then
   echo -e "${GREEN}All stages passed!${NC}"
