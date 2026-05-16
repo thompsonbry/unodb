@@ -1,6 +1,7 @@
-# Copyright 2020-2022 Laurynas Biveinis
+# Copyright 2020-2026 UnoDB contributors
 
 set(micro_benchmark_key_prefix_quick_arg "") # Benchmark is quick as-is
+set(micro_benchmark_key_view_quick_arg "") # Benchmark is quick as-is
 set(micro_benchmark_n4_quick_arg "--benchmark_filter=\"/16$$|/25|/100\"")
 set(micro_benchmark_n16_quick_arg "--benchmark_filter=\"/64\"")
 set(micro_benchmark_n48_quick_arg "--benchmark_filter=\"/8$$|/128|/192\"")
@@ -12,6 +13,7 @@ set(micro_benchmark_olc_quick_arg "--benchmark_filter=\"/4/70000/\"")
 
 add_custom_target(benchmarks
   env ${SANITIZER_ENV} ./micro_benchmark_key_prefix
+  COMMAND env ${SANITIZER_ENV} ./micro_benchmark_key_view
   COMMAND env ${SANITIZER_ENV} ./micro_benchmark_n4
   COMMAND env ${SANITIZER_ENV} ./micro_benchmark_n16
   COMMAND env ${SANITIZER_ENV} ./micro_benchmark_n48
@@ -23,6 +25,8 @@ add_custom_target(benchmarks
 add_custom_target(quick_benchmarks
   env ${SANITIZER_ENV}
   ./micro_benchmark_key_prefix ${micro_benchmark_key_prefix_quick_arg}
+  COMMAND env ${SANITIZER_ENV}
+  ./micro_benchmark_key_view ${micro_benchmark_key_view_quick_arg}
   COMMAND env ${SANITIZER_ENV}
   ./micro_benchmark_n4 ${micro_benchmark_n4_quick_arg}
   COMMAND env ${SANITIZER_ENV}
@@ -41,6 +45,8 @@ add_custom_target(quick_benchmarks
 add_custom_target(valgrind_benchmarks
   COMMAND ${VALGRIND_COMMAND} ./micro_benchmark_key_prefix
   ${micro_benchmark_key_prefix_quick_arg}
+  COMMAND ${VALGRIND_COMMAND} ./micro_benchmark_key_view
+  ${micro_benchmark_key_view_quick_arg}
   COMMAND ${VALGRIND_COMMAND} ./micro_benchmark_n4
   ${micro_benchmark_n4_quick_arg}
   COMMAND ${VALGRIND_COMMAND} ./micro_benchmark_n16
@@ -88,6 +94,7 @@ function(ADD_CONCURRENT_BENCHMARK_TARGET TARGET)
 endfunction()
 
 add_benchmark_target(micro_benchmark_key_prefix)
+add_benchmark_target(micro_benchmark_key_view)
 add_node_benchmark_target(micro_benchmark_n4)
 add_node_benchmark_target(micro_benchmark_n16)
 add_node_benchmark_target(micro_benchmark_n48)
