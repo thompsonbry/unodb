@@ -28,9 +28,6 @@
 #include "olc_art.hpp"
 #include "qsbr.hpp"
 
-// size_t == uint64_t on Linux but not macOS; casts are needed for portability.
-UNODB_DETAIL_DISABLE_GCC_WARNING("-Wuseless-cast")
-
 // TODO(laurynas): std::uint64_t-specific
 
 #define UNODB_START_BENCHMARKS()           \
@@ -303,6 +300,9 @@ destroy_tree<unodb::olc_db<unodb::key_view, std::uint64_t>>(
 ///
 /// Supports parameterization on value type (e.g., uint64_t for tuple
 /// identifier use cases).
+// size_t == uint64_t on Linux but not macOS; casts are needed for portability.
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wuseless-cast")
+
 class key_view_set {
  public:
   key_view_set() = default;
@@ -318,7 +318,6 @@ class key_view_set {
   /// sequentially (0..n-1), producing unique dispatch bytes.
   static key_view_set compound(std::uint8_t tag, std::size_t n) {
     key_view_set ks;
-    ks.key_len_ = 9;
     ks.buf_.resize(n * 9);
     ks.views_.reserve(n);
     unodb::key_encoder enc;
@@ -344,7 +343,6 @@ class key_view_set {
   /// the Step 2 loop in the atomic chain cut algorithm.
   static key_view_set deep_compound(std::uint8_t tag, std::size_t n) {
     key_view_set ks;
-    ks.key_len_ = 18;
     ks.buf_.resize(n * 18);
     ks.views_.reserve(n);
     unodb::key_encoder enc;
@@ -371,7 +369,6 @@ class key_view_set {
   /// prefixes (e.g., different column values in a secondary index).
   static key_view_set multi_tag(std::uint8_t tag_count, std::size_t n) {
     key_view_set ks;
-    ks.key_len_ = 9;
     ks.buf_.resize(n * 9);
     ks.views_.reserve(n);
     unodb::key_encoder enc;
@@ -408,7 +405,6 @@ class key_view_set {
     // 4 tag groups × 256 variants = 1024 unique keys max.
     UNODB_DETAIL_ASSERT(n <= 1024);
     key_view_set ks;
-    ks.key_len_ = key_len;
     ks.buf_.resize(n * key_len);
     ks.views_.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
@@ -432,7 +428,6 @@ class key_view_set {
   /// Baseline for isolating key_view encoding overhead vs u64 keys.
   static key_view_set dense_sequential(std::size_t n) {
     key_view_set ks;
-    ks.key_len_ = 8;
     ks.buf_.resize(n * 8);
     ks.views_.reserve(n);
     unodb::key_encoder enc;
@@ -458,11 +453,10 @@ class key_view_set {
  private:
   std::vector<std::byte> buf_;
   std::vector<unodb::key_view> views_;
-  std::size_t key_len_{0};
 };
 
-}  // namespace unodb::benchmark
-
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
+
+}  // namespace unodb::benchmark
 
 #endif  // UNODB_DETAIL_MICRO_BENCHMARK_UTILS_HPP

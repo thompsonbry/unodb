@@ -679,6 +679,7 @@ struct basic_art_policy final {
   /// Whether values are stored directly in inode child slots rather than
   /// in separate leaf nodes.  True when the value fits in a uint64_t.
   static constexpr bool value_in_slot =
+      std::is_trivially_copyable_v<Value> &&
       (sizeof(Value) <= sizeof(std::uint64_t));
   static_assert(sizeof(std::uintptr_t) <= sizeof(std::uint64_t),
                 "node_ptr must fit in a uint64_t slot");

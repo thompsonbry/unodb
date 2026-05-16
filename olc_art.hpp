@@ -2599,7 +2599,6 @@ olc_db<Key, Value>::try_insert(art_key_type k, value_type v,
           return {};  // LCOV_EXCL_LINE
         if (UNODB_DETAIL_UNLIKELY(cached_leaf != nullptr)) cached_leaf.reset();
         return false;
-        // LCOV_EXCL_STOP
       }
     }
 

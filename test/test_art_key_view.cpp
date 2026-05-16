@@ -329,8 +329,8 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, CompoundKeysInsertThenRemove) {
   verifier.remove(make_key(enc, 0x42, 1));
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
-  // Bottom I4 collapsed via leave_last_child.  Chain I4 remains with
-  // 1 child (the surviving leaf).
+  // Bottom I4 collapsed via leave_last_child.  2 chain I4s remain
+  // (root chain + surviving key's chain) with 1 leaf.
   verifier.assert_node_counts({1, 2, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
@@ -461,7 +461,7 @@ UNODB_TYPED_TEST(ARTKeyViewCorrectnessTest, RemoveMixedLengthFromChain) {
   verifier.remove(make_long_key(enc, 0x42, 1, 0xFF));
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
-  // Chain I4 + 1 surviving leaf
+  // 2 chain I4s + 1 surviving leaf
   verifier.assert_node_counts({1, 2, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
   verifier.remove(make_key(enc, 0x42, 2));

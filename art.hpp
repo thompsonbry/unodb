@@ -1497,9 +1497,8 @@ bool db<Key, Value>::insert_internal(art_key_type insert_key, value_type v) {
     } else {
       auto leaf = art_policy::make_db_leaf_ptr(insert_key, v, *this);
       if constexpr (art_policy::can_eliminate_key_in_leaf) {
-        const auto leaf_ptr = detail::node_ptr{leaf.get(), node_type::LEAF};
+        const auto leaf_ptr = detail::node_ptr{leaf.release(), node_type::LEAF};
         root = build_chain(insert_key, leaf_ptr, tree_depth_type{0});
-        leaf.release();  // build_chain succeeded; tree now owns the leaf
       } else {
         root = detail::node_ptr{leaf.release(), node_type::LEAF};
       }
@@ -2329,9 +2328,11 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
             const auto cnxt = icnode->next(
                 cnode.type(), centry.child_index);  // right-sibling.
             if (cnxt) {
-              const auto si = cnxt.value().child_index;
-              auto nchild = icnode->get_child(cnode.type(), si);
-              return descend_left(icnode, cnode.type(), si, nchild);
+              const auto& e2 = cnxt.value();
+              pop();
+              push(e2);
+              auto nchild = icnode->get_child(cnode.type(), e2.child_index);
+              return descend_left(icnode, cnode.type(), e2.child_index, nchild);
             }
             pop();
           }
@@ -2360,9 +2361,11 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
           const auto cnxt =
               icnode->prior(cnode.type(), centry.child_index);  // left-sibling.
           if (cnxt) {
-            const auto si = cnxt.value().child_index;
-            auto nchild = icnode->get_child(cnode.type(), si);
-            return descend_right(icnode, cnode.type(), si, nchild);
+            const auto& e2 = cnxt.value();
+            pop();
+            push(e2);
+            auto nchild = icnode->get_child(cnode.type(), e2.child_index);
+            return descend_right(icnode, cnode.type(), e2.child_index, nchild);
           }
           pop();
         }
