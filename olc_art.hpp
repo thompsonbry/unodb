@@ -527,8 +527,8 @@ class olc_db final {
       // each of them.
       const auto& e = top();
       const auto n = static_cast<std::size_t>(
-          (e.node.type() != node_type::LEAF &&
-           !(art_policy::can_eliminate_leaf && e.packed_leaf))
+          (!(art_policy::can_eliminate_leaf && e.packed_leaf) &&
+           e.node.type() != node_type::LEAF)
               ? e.prefix.length() + 1
               : 0);
       keybuf_.pop(n);
@@ -2592,7 +2592,9 @@ olc_db<Key, Value>::try_insert(art_key_type k, value_type v,
     if constexpr (art_policy::can_eliminate_leaf) {
       const auto [ci_chk, _] = inode->find_child(node_type, remaining_key[0]);
       if (inode->is_value_in_slot(node_type, ci_chk)) {
-        // Packed value in slot — key already exists (duplicate).
+        // Packed value in slot — key already exists (duplicate).  The ART
+        // prefix restriction guarantees no key is a prefix of another.
+        UNODB_DETAIL_ASSERT(remaining_key.size() == 1);
         if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE
         if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
@@ -3430,11 +3432,24 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
             const auto cnxt = icnode->next(
                 cnode.type(), centry.child_index);  // right-sibling.
             if (cnxt) {
-              const auto si = cnxt.value().child_index;
-              auto nchild = icnode->get_child(cnode.type(), si);
+              const auto& e2 = cnxt.value();
+              auto nchild = icnode->get_child(cnode.type(), e2.child_index);
               if (UNODB_DETAIL_UNLIKELY(
                       !c_critical_section.check()))  // before using [nchild]
                 return false;                        // LCOV_EXCL_LINE
+              pop();
+              if (UNODB_DETAIL_UNLIKELY(
+                      !try_push(e2, c_critical_section)))  // push sibling
+                return false;                              // LCOV_EXCL_LINE
+              if constexpr (art_policy::can_eliminate_leaf) {
+                if (icnode->is_value_in_slot(cnode.type(), e2.child_index)) {
+                  if (UNODB_DETAIL_UNLIKELY(
+                          !try_push_leaf(nchild, c_critical_section)))
+                    return false;  // LCOV_EXCL_LINE
+                  return UNODB_DETAIL_LIKELY(
+                      c_critical_section.try_read_unlock());
+                }
+              }
               return try_left_most_traversal(nchild, c_critical_section);
             }
             pop();
@@ -3494,11 +3509,24 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
           const auto cnxt =
               icnode->prior(cnode.type(), centry.child_index);  // left-sibling.
           if (cnxt) {
-            const auto si = cnxt.value().child_index;
-            auto nchild = icnode->get_child(cnode.type(), si);
+            const auto& e2 = cnxt.value();
+            auto nchild = icnode->get_child(cnode.type(), e2.child_index);
             if (UNODB_DETAIL_UNLIKELY(
                     !c_critical_section.check()))  // before using [nchild]
               return false;                        // LCOV_EXCL_LINE
+            pop();
+            if (UNODB_DETAIL_UNLIKELY(
+                    !try_push(e2, c_critical_section)))  // push sibling
+              return false;                              // LCOV_EXCL_LINE
+            if constexpr (art_policy::can_eliminate_leaf) {
+              if (icnode->is_value_in_slot(cnode.type(), e2.child_index)) {
+                if (UNODB_DETAIL_UNLIKELY(
+                        !try_push_leaf(nchild, c_critical_section)))
+                  return false;  // LCOV_EXCL_LINE
+                return UNODB_DETAIL_LIKELY(
+                    c_critical_section.try_read_unlock());
+              }
+            }
             return try_right_most_traversal(nchild, c_critical_section);
           }
           pop();

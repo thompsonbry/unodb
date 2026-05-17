@@ -577,8 +577,8 @@ class db final {
 
       const auto& e = top();
       const auto n = static_cast<std::size_t>(
-          (e.node.type() != node_type::LEAF &&
-           !(art_policy::can_eliminate_leaf && e.packed_leaf))
+          (!(art_policy::can_eliminate_leaf && e.packed_leaf) &&
+           e.node.type() != node_type::LEAF)
               ? e.prefix.length() + 1
               : 0);
       keybuf_.pop(n);
@@ -1816,7 +1816,9 @@ bool db<Key, Value>::insert_internal_key_view(art_key_type insert_key,
       const auto [ci, _] = inode->find_child(node_type, remaining_key[0]);
       if (inode->is_value_in_slot(node_type, ci)) {
         // The chain encoded the full key. Reaching a packed value
-        // means the key already exists (duplicate).
+        // means the key already exists (duplicate).  The ART prefix
+        // restriction guarantees no key is a prefix of another.
+        UNODB_DETAIL_ASSERT(remaining_key.size() == 1);
         return false;
       }
     }
