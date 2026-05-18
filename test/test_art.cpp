@@ -1,4 +1,4 @@
-// Copyright 2019-2025 UnoDB contributors
+// Copyright 2019-2026 UnoDB contributors
 
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
@@ -24,6 +24,21 @@
 namespace {
 using unodb::detail::thread_syncs;
 using unodb::test::test_values;
+/// For key_view types, build_chain creates 1 chain I4 per 8-byte key.
+/// These are counter adjustment values (0 or 1), not booleans.
+template <class Db>
+[[maybe_unused]] constexpr std::uint64_t chain_i4_per_key =
+    std::is_same_v<typename Db::key_type, unodb::key_view> ? 1 : 0;
+
+/// OLC remove collapses chain I4s during prefix merge; db/mutex_db don't.
+/// Counter adjustment value (0 or 1), not a boolean.
+template <class Db>
+[[maybe_unused]] constexpr std::uint64_t olc_chain_collapse =
+    (std::is_same_v<typename Db::key_type, unodb::key_view> &&
+     std::is_same_v<
+         Db, unodb::olc_db<typename Db::key_type, typename Db::value_type>>)
+        ? 1
+        : 0;
 
 template <class Db>
 class ARTCorrectnessTest : public ::testing::Test {
@@ -48,8 +63,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeEmptyValue) {
   verifier.check_absent_keys({0});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
+  verifier.assert_growing_inodes({ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -61,8 +77,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeNonemptyValue) {
   verifier.check_absent_keys({0, 2});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
+  verifier.assert_growing_inodes({ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -92,8 +109,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, ExpandLeafToNode4) {
   verifier.insert(0, unodb::test::test_values[1]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
+  verifier.assert_growing_inodes({ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.insert(1, unodb::test::test_values[2]);
@@ -113,7 +131,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, DuplicateKey) {
   verifier.insert(0, unodb::test::test_values[0]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
 
   const auto mem_use_before = verifier.get_db().get_current_memory_use();
 #endif  // UNODB_DETAIL_WITH_STATS
@@ -127,8 +146,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, DuplicateKey) {
 #ifdef UNODB_DETAIL_WITH_STATS
   UNODB_ASSERT_EQ(mem_use_before, verifier.get_db().get_current_memory_use());
 
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
-  verifier.assert_growing_inodes({0, 0, 0, 0});
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
+  verifier.assert_growing_inodes({ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -167,6 +186,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TwoNode4) {
   verifier.insert(3, unodb::test::test_values[2]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
   verifier.assert_growing_inodes({1, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
@@ -177,8 +197,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TwoNode4) {
   verifier.check_absent_keys({0xFF00, 2});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({3, 2, 0, 0, 0});
-  verifier.assert_growing_inodes({2, 0, 0, 0});
+  verifier.assert_node_counts({3, 2 + ci4, 0, 0, 0});
+  verifier.assert_growing_inodes({2 + ci4, 0, 0, 0});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
 }
@@ -192,7 +212,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, DbInsertNodeRecursion) {
   verifier.insert(0xFF0001, unodb::test::test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_growing_inodes({2, 0, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_growing_inodes({2 + ci4, 0, 0, 0});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
 
@@ -204,9 +225,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, DbInsertNodeRecursion) {
   verifier.check_absent_keys({0xFF0100, 0xFF0000, 2});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({4, 3, 0, 0, 0});
-  verifier.assert_growing_inodes({3, 0, 0, 0});
-  verifier.assert_key_prefix_splits(1);
+  verifier.assert_node_counts({4, 3 + (2 * ci4), 0, 0, 0});
+  verifier.assert_growing_inodes({3 + (2 * ci4), 0, 0, 0});
+
+  verifier.assert_key_prefix_splits((1 + ci4));
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -252,8 +274,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyPrefixSplit) {
   verifier.check_absent_keys({9, 0x10FF});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({6, 1, 1, 0, 0});
-  verifier.assert_growing_inodes({2, 1, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({6, (1 + ci4), 1, 0, 0});
+  verifier.assert_growing_inodes({2 + ci4, 1, 0, 0});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
 }
@@ -330,6 +353,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48KeyPrefixSplit) {
   verifier.insert_key_range(10, 17);
 
 #ifdef UNODB_DETAIL_WITH_STATS
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
   verifier.assert_node_counts({17, 0, 0, 1, 0});
   verifier.assert_growing_inodes({1, 1, 1, 0});
   verifier.assert_key_prefix_splits(0);
@@ -342,8 +366,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48KeyPrefixSplit) {
   verifier.check_absent_keys({9, 27, 0x100019, 0x100100, 0x110000});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({18, 1, 0, 1, 0});
-  verifier.assert_growing_inodes({2, 1, 1, 0});
+  verifier.assert_node_counts({18, (1 + ci4), 0, 1, 0});
+  verifier.assert_growing_inodes({2 + ci4, 1, 1, 0});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
 }
@@ -382,6 +406,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixSplit) {
   verifier.insert_key_range(20, 49);
 
 #ifdef UNODB_DETAIL_WITH_STATS
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
   verifier.assert_node_counts({49, 0, 0, 0, 1});
   verifier.assert_growing_inodes({1, 1, 1, 1});
   verifier.assert_key_prefix_splits(0);
@@ -394,8 +419,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixSplit) {
   verifier.check_absent_keys({19, 69, 0x100019, 0x100100, 0x110000});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({50, 1, 0, 0, 1});
-  verifier.assert_growing_inodes({2, 1, 1, 1});
+  verifier.assert_node_counts({50, (1 + ci4), 0, 0, 1});
+  verifier.assert_growing_inodes({2 + ci4, 1, 1, 1});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
 }
@@ -435,7 +460,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeAttemptDeleteAbsent) {
   verifier.check_absent_keys({1, 3, 0xFF02});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -505,6 +531,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4ShrinkToSingleLeaf) {
   verifier.insert_key_range(1, 2);
 
 #ifdef UNODB_DETAIL_WITH_STATS
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
   verifier.assert_shrinking_inodes({0, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
@@ -514,8 +541,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4ShrinkToSingleLeaf) {
   verifier.check_absent_keys({1});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_shrinking_inodes({1, 0, 0, 0});
-  verifier.assert_node_counts({1, 0, 0, 0, 0});
+  verifier.assert_shrinking_inodes({1 - ci4, 0, 0, 0});
+  verifier.assert_node_counts({1, ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -527,6 +554,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteLowerNode) {
   verifier.insert(0xFF00, unodb::test::test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
   verifier.assert_shrinking_inodes({0, 0, 0, 0});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
@@ -538,9 +566,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteLowerNode) {
   verifier.check_absent_keys({0, 2, 0xFF01});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_shrinking_inodes({1, 0, 0, 0});
+  verifier.assert_shrinking_inodes({1 - ci4, 0, 0, 0});
   verifier.assert_key_prefix_splits(1);
-  verifier.assert_node_counts({2, 1, 0, 0, 0});
+  verifier.assert_node_counts({2, 1 + (2 * ci4), 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -552,8 +580,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteKeyPrefixMerge) {
   verifier.insert(0x90AA, unodb::test::test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
   verifier.assert_key_prefix_splits(1);
-  verifier.assert_node_counts({3, 2, 0, 0, 0});
+  verifier.assert_node_counts({3, 2 + ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // And delete it
@@ -564,8 +593,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteKeyPrefixMerge) {
 
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_key_prefix_splits(1);
-  verifier.assert_node_counts({2, 1, 0, 0, 0});
-  verifier.assert_shrinking_inodes({1, 0, 0, 0});
+  constexpr auto oc = olc_chain_collapse<TypeParam>;
+  verifier.assert_node_counts({2, (1 + ci4) - oc, 0, 0, 0});
+  verifier.assert_shrinking_inodes({1 + oc, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -607,11 +637,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16ShrinkToNode4DeleteMiddle) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 5);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({5, 0, 1, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(2);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 1, 0, 0});
   verifier.assert_node_counts({4, 1, 0, 0, 0});
@@ -625,11 +657,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16ShrinkToNode4DeleteBeginning) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 5);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({5, 0, 1, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(1);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 1, 0, 0});
   verifier.assert_node_counts({4, 1, 0, 0, 0});
@@ -643,11 +677,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16ShrinkToNode4DeleteEnd) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 5);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({5, 0, 1, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(5);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 1, 0, 0});
   verifier.assert_node_counts({4, 1, 0, 0, 0});
@@ -663,8 +699,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyPrefixMerge) {
   verifier.insert_key_range(10, 5);
   // Insert a value that does not share full prefix with the current Node16
   verifier.insert(0x1020, unodb::test::test_values[0]);
+
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({6, 1, 1, 0, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({6, (1 + ci4), 1, 0, 0});
   verifier.assert_key_prefix_splits(1);
 #endif  // UNODB_DETAIL_WITH_STATS
 
@@ -676,8 +714,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyPrefixMerge) {
   verifier.check_absent_keys({9, 16, 0x1020});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_shrinking_inodes({1, 0, 0, 0});
-  verifier.assert_node_counts({5, 0, 1, 0, 0});
+  verifier.assert_shrinking_inodes(
+      {1 + olc_chain_collapse<TypeParam>, 0, 0, 0});
+  verifier.assert_node_counts(
+      {5, ci4 - olc_chain_collapse<TypeParam>, 1, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -704,11 +744,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48ShrinkToNode16DeleteMiddle) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(0x80, 17);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({17, 0, 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(0x85);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 0, 1, 0});
   verifier.assert_node_counts({16, 0, 1, 0, 0});
@@ -722,11 +764,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48ShrinkToNode16DeleteBeginning) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 17);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({17, 0, 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(1);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 0, 1, 0});
   verifier.assert_node_counts({16, 0, 1, 0, 0});
@@ -740,11 +784,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48ShrinkToNode16DeleteEnd) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 17);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({17, 0, 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(17);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 0, 1, 0});
   verifier.assert_node_counts({16, 0, 1, 0, 0});
@@ -760,8 +806,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48KeyPrefixMerge) {
   verifier.insert_key_range(10, 17);
   // Insert a value that does not share full prefix with the current Node48
   verifier.insert(0x2010, unodb::test::test_values[1]);
+
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({18, 1, 0, 1, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({18, (1 + ci4), 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // And delete it, so that upper level Node4 key prefix gets merged with
@@ -772,8 +820,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48KeyPrefixMerge) {
   verifier.check_absent_keys({9, 0x2010, 28});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_shrinking_inodes({1, 0, 0, 0});
-  verifier.assert_node_counts({17, 0, 0, 1, 0});
+  verifier.assert_shrinking_inodes(
+      {1 + olc_chain_collapse<TypeParam>, 0, 0, 0});
+  verifier.assert_node_counts(
+      {17, ci4 - olc_chain_collapse<TypeParam>, 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -792,7 +842,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256DeleteBeginningMiddleEnd) {
   verifier.check_absent_keys({0, 1, 180, 256});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({253, 0, 0, 0, 1});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  constexpr auto oc = olc_chain_collapse<TypeParam>;
+  verifier.assert_node_counts({253, ci4 - oc, 0, 0, 1});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -800,11 +852,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256ShrinkToNode48DeleteMiddle) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 49);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({49, 0, 0, 0, 1});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(25);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 0, 0, 1});
   verifier.assert_node_counts({48, 0, 0, 1, 0});
@@ -818,11 +872,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256ShrinkToNode48DeleteBeginning) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 49);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({49, 0, 0, 0, 1});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(1);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 0, 0, 1});
   verifier.assert_node_counts({48, 0, 0, 1, 0});
@@ -836,11 +892,13 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256ShrinkToNode48DeleteEnd) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
   verifier.insert_key_range(1, 49);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_node_counts({49, 0, 0, 0, 1});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   verifier.remove(49);
+
 #ifdef UNODB_DETAIL_WITH_STATS
   verifier.assert_shrinking_inodes({0, 0, 0, 1});
   verifier.assert_node_counts({48, 0, 0, 1, 0});
@@ -856,8 +914,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixMerge) {
   verifier.insert_key_range(10, 49);
   // Insert a value that does not share full prefix with the current Node256
   verifier.insert(0x2010, unodb::test::test_values[1]);
+
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({50, 1, 0, 0, 1});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({50, (1 + ci4), 0, 0, 1});
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // And delete it, so that upper level Node4 key prefix gets merged with
@@ -868,8 +928,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixMerge) {
   verifier.check_absent_keys({9, 0x2010, 60});
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_shrinking_inodes({1, 0, 0, 0});
-  verifier.assert_node_counts({49, 0, 0, 0, 1});
+  verifier.assert_shrinking_inodes(
+      {1 + olc_chain_collapse<TypeParam>, 0, 0, 0});
+  verifier.assert_node_counts(
+      {49, ci4 - olc_chain_collapse<TypeParam>, 0, 0, 1});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
@@ -937,7 +999,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48InsertIntoDeletedSlot) {
   verifier.check_present_values();
 
 #ifdef UNODB_DETAIL_WITH_STATS
-  verifier.assert_node_counts({18, 0, 0, 1, 0});
+  constexpr auto ci4 = chain_i4_per_key<TypeParam>;
+  verifier.assert_node_counts({18, 18 * ci4, 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
