@@ -1077,4 +1077,44 @@ UNODB_TYPED_TEST(ARTScanTest, scanRangeC143) {
   do_scan_range_test<TypeParam>(823, 247, 999);
 }
 
+// Regression test for T-5bec51c4: scan_from fails to backtrack across
+// sibling subtrees when the seek key exceeds all children in a subtree.
+// Keys {100,200,300,400,500} encoded as 8-byte BE branch at byte 6:
+//   child 0x00 → {100,200}, child 0x01 → {300,400,500}.
+// seek(250) enters child 0x00, finds no child >= 0xFA at byte 7,
+// must backtrack to byte 6 and descend child 0x01 to find 300.
+UNODB_TYPED_TEST(ARTScanTest, scanFromBacktrackAcrossSiblingSubtrees) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  TypeParam& db = verifier.get_db();
+  for (const std::uint64_t k : {100U, 200U, 300U, 400U, 500U})
+    verifier.insert(k, unodb::test::test_values[0]);
+  // FWD: scan_from(250) should find 300, 400, 500.
+  {
+    std::vector<std::uint64_t> results;
+    db.scan_from(
+        250, [&results](const unodb::visitor<typename TypeParam::iterator>& v) {
+          results.push_back(decode(v.get_key()));
+          return false;
+        });
+    UNODB_ASSERT_EQ(3U, results.size());
+    UNODB_EXPECT_EQ(300U, results[0]);
+    UNODB_EXPECT_EQ(400U, results[1]);
+    UNODB_EXPECT_EQ(500U, results[2]);
+  }
+  // REV: scan_from(250, fn, false) should find 200, 100.
+  {
+    std::vector<std::uint64_t> results;
+    db.scan_from(
+        250,
+        [&results](const unodb::visitor<typename TypeParam::iterator>& v) {
+          results.push_back(decode(v.get_key()));
+          return false;
+        },
+        false /*fwd*/);
+    UNODB_ASSERT_EQ(2U, results.size());
+    UNODB_EXPECT_EQ(200U, results[0]);
+    UNODB_EXPECT_EQ(100U, results[1]);
+  }
+}
+
 }  // namespace
