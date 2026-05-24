@@ -510,6 +510,10 @@ jobs:
         working-directory: ${{github.workspace}}/build
         run: make -k quick_benchmarks
         if: env.STATIC_ANALYSIS != 'ON'
+        env:
+          BENCHMARK_MIN_TIME: >-
+            ${{ (env.BUILD_TYPE == 'Debug' && (env.SANITIZE_ADDRESS == 'ON'
+            || env.SANITIZE_THREAD == 'ON')) && '1x' || '' }}
 
       - name: DeepState 1 minute fuzzing
         working-directory: ${{github.workspace}}/build

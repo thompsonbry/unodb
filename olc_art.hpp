@@ -22,6 +22,7 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "art_allocator.hpp"
 #include "art_common.hpp"
 #include "art_internal.hpp"
 #include "art_internal_impl.hpp"
@@ -30,7 +31,6 @@
 #include "optimistic_lock.hpp"
 #include "portability_arch.hpp"
 #include "qsbr.hpp"
-#include "qsbr_ptr.hpp"
 #include "sync.hpp"
 
 namespace unodb {
@@ -39,6 +39,9 @@ template <typename Key, typename Value>
 class olc_db;
 
 namespace detail {
+
+/// OLC allocator with QSBR-based deferred reclamation (defined in qsbr.cpp).
+extern const allocator_type olc_default_allocator;
 
 /// Sync point: fires after chain locked, before acquiring cut_point_parent.
 inline sync_point sync_after_chain_locked;
@@ -157,8 +160,6 @@ using olc_leaf_unique_ptr =
 
 }  // namespace detail
 
-using qsbr_value_view = qsbr_ptr_span<const std::byte>;
-
 /// A thread-safe Adaptive Radix Tree that is synchronized using optimistic lock
 /// coupling. At any time, at most two directly-related tree nodes can be
 /// write-locked by the insert algorithm and three by the delete algorithm. The
@@ -172,10 +173,7 @@ class olc_db final {
   using key_type = Key;
   /// The type of the value associated with the key in the index.
   using value_type = Value;
-  using value_view = unodb::qsbr_value_view;
-  using get_result =
-      std::optional<std::conditional_t<std::is_same_v<Value, unodb::value_view>,
-                                       unodb::qsbr_value_view, value_type>>;
+  using get_result = std::optional<value_type>;
   using inode_base = detail::olc_inode_base<Key, Value>;
   using leaf_type = detail::olc_leaf_type<Key, Value>;
   using db_type = olc_db<Key, Value>;
@@ -204,7 +202,17 @@ class olc_db final {
 
  public:
   // Creation and destruction
+
+  /// Construct empty OLC ART index with default allocator.
   olc_db() noexcept = default;
+
+  /// Construct empty OLC ART index with a custom allocator.
+  constexpr explicit olc_db(const allocator_type& alloc) noexcept
+      : allocator_{alloc} {
+    UNODB_DETAIL_ASSERT(allocator_.alloc != nullptr);
+    UNODB_DETAIL_ASSERT(allocator_.dealloc != nullptr);
+    UNODB_DETAIL_ASSERT(allocator_.defer_dealloc != nullptr);
+  }
 
   ~olc_db() noexcept;
 
@@ -221,6 +229,11 @@ class olc_db final {
 
   /// Return true iff the tree is empty (no root leaf).
   [[nodiscard]] auto empty() const noexcept { return root == nullptr; }
+
+  /// Return the allocator used by this tree.
+  [[nodiscard]] constexpr const allocator_type& get_allocator() const noexcept {
+    return allocator_;
+  }
 
   /// Insert a value under a binary comparable key iff there is no entry for
   /// that key.
@@ -400,7 +413,7 @@ class olc_db final {
     /// \pre The iterator MUST be valid().
     [[nodiscard, gnu::pure]] auto get_val() const noexcept
         -> std::conditional_t<std::is_same_v<Value, unodb::value_view>,
-                              qsbr_value_view, value_type>;
+                              unodb::value_view, value_type>;
 
     /// Debugging
     // LCOV_EXCL_START
@@ -950,6 +963,10 @@ class olc_db final {
   static_assert(sizeof(root_pointer_lock) + sizeof(root) <=
                 detail::hardware_constructive_interference_size);
 
+  /// Allocator for tree nodes (cold — read only at deallocation time).
+  alignas(detail::hardware_destructive_interference_size)
+      allocator_type allocator_{detail::olc_default_allocator};
+
 #ifdef UNODB_DETAIL_WITH_STATS
 
   // Current logically allocated memory that is not scheduled to be reclaimed.
@@ -1022,16 +1039,8 @@ class db_inode_qsbr_deleter
   void operator()(INode* inode_ptr) noexcept {
     static_assert(std::is_trivially_destructible_v<INode>);
 
-    this_thread().on_next_epoch_deallocate(inode_ptr
-#ifdef UNODB_DETAIL_WITH_STATS
-                                           ,
-                                           sizeof(INode)
-#endif
-#ifndef NDEBUG
-                                               ,
-                                           olc_node_header::check_on_dealloc
-#endif
-    );
+    const auto& alloc = this->get_db().get_allocator();
+    alloc.defer_dealloc(inode_ptr, sizeof(INode), &default_destroy, alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
     this->get_db().template decrement_inode_count<INode>();
@@ -1055,20 +1064,9 @@ class db_leaf_qsbr_deleter {
 
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26447)
   void operator()(leaf_type* to_delete) const noexcept {
-#ifdef UNODB_DETAIL_WITH_STATS
     const auto leaf_size = to_delete->get_size();
-#endif  // UNODB_DETAIL_WITH_STATS
-
-    this_thread().on_next_epoch_deallocate(to_delete
-#ifdef UNODB_DETAIL_WITH_STATS
-                                           ,
-                                           leaf_size
-#endif  // UNODB_DETAIL_WITH_STATS
-#ifndef NDEBUG
-                                           ,
-                                           olc_node_header::check_on_dealloc
-#endif
-    );
+    const auto& alloc = db_instance.get_allocator();
+    alloc.defer_dealloc(to_delete, leaf_size, &default_destroy, alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
     db_instance.decrement_leaf_count(leaf_size);
@@ -2054,7 +2052,7 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 template <typename Key, typename Value>
 olc_db<Key, Value>::~olc_db() noexcept {
-  UNODB_DETAIL_ASSERT(
+  UNODB_DETAIL_QSBR_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
 
   delete_root_subtree();
@@ -2062,7 +2060,7 @@ olc_db<Key, Value>::~olc_db() noexcept {
 
 template <typename Key, typename Value>
 void olc_db<Key, Value>::delete_root_subtree() noexcept {
-  UNODB_DETAIL_ASSERT(
+  UNODB_DETAIL_QSBR_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
 
   if (root != nullptr) art_policy::delete_subtree(root, *this);
@@ -2077,7 +2075,7 @@ void olc_db<Key, Value>::delete_root_subtree() noexcept {
 
 template <typename Key, typename Value>
 void olc_db<Key, Value>::clear() noexcept {
-  UNODB_DETAIL_ASSERT(
+  UNODB_DETAIL_QSBR_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
 
   delete_root_subtree();
@@ -3730,7 +3728,7 @@ UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 template <typename Key, typename Value>
 auto olc_db<Key, Value>::iterator::get_val() const noexcept
     -> std::conditional_t<std::is_same_v<Value, unodb::value_view>,
-                          qsbr_value_view, value_type> {
+                          unodb::value_view, value_type> {
   // Note: If the iterator is on a leaf, we return the value for
   // that leaf regardless of whether the leaf has been deleted.
   // This is part of the design semantics for the OLC ART scan.
@@ -3746,7 +3744,7 @@ auto olc_db<Key, Value>::iterator::get_val() const noexcept
     UNODB_DETAIL_ASSERT(node.type() == node_type::LEAF);      // On a leaf.
     const auto* const leaf{node.template ptr<leaf_type*>()};  // current leaf.
     if constexpr (std::is_same_v<Value, unodb::value_view>)
-      return qsbr_ptr_span{leaf->get_value_view()};
+      return leaf->get_value_view();
     else
       return leaf->template get_value<Value>();
   }

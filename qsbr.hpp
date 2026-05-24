@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2025 UnoDB contributors
+// Copyright 2019-2026 UnoDB contributors
 #ifndef UNODB_DETAIL_QSBR_HPP
 #define UNODB_DETAIL_QSBR_HPP
 
@@ -450,6 +450,10 @@ struct qsbr_state {
 
 namespace detail {
 
+/// Function type for destroy callbacks invoked when deferred deallocation is
+/// safe.  Matches the signature in art_allocator.hpp.
+using destroy_callback_type = void (*)(void* ptr, std::size_t size, void* ctx);
+
 /// Pending deallocation request for QSBR-managed memory.
 class [[nodiscard]] deallocation_request final {
  public:
@@ -459,24 +463,31 @@ class [[nodiscard]] deallocation_request final {
   using debug_callback = std::function<void(const void*)>;
 #endif
 
-  /// Create a new deallocation request for \a pointer_. In debug builds also
-  /// pass \a request_epoch_ and \a dealloc_callback_ to be executed during
-  /// deallocation.
-  explicit deallocation_request(void* pointer_ UNODB_DETAIL_LIFETIMEBOUND
+  /// Create a new deallocation request for \a pointer_. Also stores the
+  /// \a destroy_callback_, \a size_, and \a ctx_ needed to perform the actual
+  /// deallocation when the epoch advances. In debug builds also pass
+  /// \a request_epoch_ and \a dealloc_callback_ for diagnostics.
+  explicit deallocation_request(void* pointer_ UNODB_DETAIL_LIFETIMEBOUND,
+                                std::size_t size_,
+                                destroy_callback_type destroy_callback_,
+                                void* ctx_
 #ifndef NDEBUG
                                 ,
                                 qsbr_epoch request_epoch_,
                                 debug_callback dealloc_callback_
 #endif
                                 ) noexcept
-      : pointer{pointer_}
+      : pointer{pointer_},
+        size{size_},
+        destroy_callback{destroy_callback_},
+        ctx{ctx_}
 #ifndef NDEBUG
         ,
         dealloc_callback{std::move(dealloc_callback_)},
         request_epoch{request_epoch_}
 #endif
   {
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
     instance_count.fetch_add(1, std::memory_order_relaxed);
 #endif
   }
@@ -511,7 +522,7 @@ class [[nodiscard]] deallocation_request final {
   /// Move assignment is disabled.
   deallocation_request& operator=(deallocation_request&&) = delete;
 
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   /// Assert that no instances of this class exist, indicating unhandled
   /// requests.
   static void assert_zero_instances() noexcept {
@@ -524,6 +535,18 @@ class [[nodiscard]] deallocation_request final {
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
   void* const pointer;
 
+  /// Size of the allocation.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+  const std::size_t size;
+
+  /// Callback to invoke when deallocation is safe.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+  const destroy_callback_type destroy_callback;
+
+  /// Allocator context passed to destroy_callback.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+  void* const ctx;
+
 #ifndef NDEBUG
   /// Debug build only: callback to execute during deallocation.
   // Non-const to support move
@@ -532,8 +555,10 @@ class [[nodiscard]] deallocation_request final {
   /// Debug build only: epoch when this deallocation request was created.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
   const qsbr_epoch request_epoch;
+#endif
 
-  /// Debug build only: global count of active deallocation request instances.
+#ifdef UNODB_DETAIL_QSBR_DEBUG
+  /// QSBR debug only: global count of active deallocation request instances.
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
   static std::atomic<std::uint64_t> instance_count;
 #endif
@@ -722,18 +747,15 @@ class [[nodiscard]] qsbr_per_thread final {
   /// Request deallocation of \a pointer when it is safe to do so.
   ///
   /// \param pointer Memory to deallocate
-#ifdef UNODB_DETAIL_WITH_STATS
-  /// \param size Size of the memory, for statistics
-#endif
+  /// \param size Size of the allocation
+  /// \param destroy_callback Callback to invoke when deallocation is safe
+  /// \param ctx Allocator context for the callback
 #ifndef NDEBUG
   /// \param dealloc_callback Debug callback to execute during deallocation
 #endif
   void on_next_epoch_deallocate(
-      void* pointer
-#ifdef UNODB_DETAIL_WITH_STATS
-      ,
-      std::size_t size
-#endif
+      void* pointer, std::size_t size,
+      detail::destroy_callback_type destroy_callback, void* ctx
 #ifndef NDEBUG
       ,
       detail::deallocation_request::debug_callback dealloc_callback
@@ -1076,7 +1098,9 @@ class qsbr final {
     // last thread a couple more times at the end.
     UNODB_DETAIL_ASSERT(previous_interval_orphaned_requests_empty());
     UNODB_DETAIL_ASSERT(current_interval_orphaned_requests_empty());
+#ifdef UNODB_DETAIL_QSBR_DEBUG
     detail::deallocation_request::assert_zero_instances();
+#endif
 #endif
   }
 
@@ -1110,7 +1134,8 @@ class qsbr final {
   /// In debug builds, call \a debug_callback at the actual deallocation time.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26447)
   static void deallocate(
-      void* pointer
+      void* pointer, std::size_t size,
+      detail::destroy_callback_type destroy_callback, void* ctx
 #ifndef NDEBUG
       ,
       const detail::deallocation_request::debug_callback& debug_callback
@@ -1119,7 +1144,7 @@ class qsbr final {
 #ifndef NDEBUG
     if (debug_callback != nullptr) debug_callback(pointer);
 #endif
-    detail::free_aligned(pointer);
+    destroy_callback(pointer, size, ctx);
   }
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
@@ -1265,11 +1290,8 @@ inline qsbr_per_thread::qsbr_per_thread()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 inline void qsbr_per_thread::on_next_epoch_deallocate(
-    void* pointer
-#ifdef UNODB_DETAIL_WITH_STATS
-    ,
-    std::size_t size
-#endif
+    void* pointer, std::size_t size,
+    detail::destroy_callback_type destroy_callback, void* ctx
 #ifndef NDEBUG
     ,
     detail::deallocation_request::debug_callback dealloc_callback
@@ -1284,7 +1306,7 @@ inline void qsbr_per_thread::on_next_epoch_deallocate(
 
   if (UNODB_DETAIL_UNLIKELY(single_thread_mode)) {
     advance_last_seen_epoch(single_thread_mode, current_global_epoch);
-    qsbr::deallocate(pointer
+    qsbr::deallocate(pointer, size, destroy_callback, ctx
 #ifndef NDEBUG
                      ,
                      dealloc_callback
@@ -1295,7 +1317,7 @@ inline void qsbr_per_thread::on_next_epoch_deallocate(
 
   if (last_seen_epoch != current_global_epoch) {
     detail::dealloc_request_vector new_current_requests;
-    new_current_requests.emplace_back(pointer
+    new_current_requests.emplace_back(pointer, size, destroy_callback, ctx
 #ifndef NDEBUG
                                       ,
                                       current_global_epoch,
@@ -1312,11 +1334,11 @@ inline void qsbr_per_thread::on_next_epoch_deallocate(
     return;
   }
 
-  current_interval_dealloc_requests.emplace_back(pointer
+  current_interval_dealloc_requests.emplace_back(
+      pointer, size, destroy_callback, ctx
 #ifndef NDEBUG
-                                                 ,
-                                                 last_seen_epoch,
-                                                 std::move(dealloc_callback)
+      ,
+      last_seen_epoch, std::move(dealloc_callback)
 #endif
   );
 #ifdef UNODB_DETAIL_WITH_STATS
@@ -1457,14 +1479,14 @@ inline void deallocation_request::deallocate(
                          *dealloc_epoch == request_epoch.advance()) ||
                         *dealloc_epoch == request_epoch.advance(2))));
 
-  qsbr::deallocate(pointer
+  qsbr::deallocate(pointer, size, destroy_callback, ctx
 #ifndef NDEBUG
                    ,
                    dealloc_callback
 #endif
   );
 
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
   instance_count.fetch_sub(1, std::memory_order_relaxed);
 #endif
 }

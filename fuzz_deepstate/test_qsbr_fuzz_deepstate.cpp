@@ -1,4 +1,4 @@
-// Copyright 2021-2025 Laurynas Biveinis
+// Copyright 2021-2026 UnoDB contributors
 
 #include "global.hpp"
 
@@ -200,6 +200,11 @@ void check_qsbr_pointer_on_dealloc(const void* ptr) noexcept {
 }
 #endif
 
+void fuzz_destroy_callback(void* ptr, std::size_t /*size*/,
+                           void* /*ctx*/) noexcept {
+  unodb::detail::free_aligned(ptr);
+}
+
 void deallocate_pointer(std::uint64_t* ptr) {
   ASSERT(!unodb::this_thread().is_qsbr_paused());
   ASSERT(*ptr == object_mem);
@@ -221,13 +226,9 @@ void deallocate_pointer(std::uint64_t* ptr) {
     bool op_completed;
     try {
       unodb::this_thread().on_next_epoch_deallocate(
-          ptr
-#ifdef UNODB_DETAIL_WITH_STATS
-          ,
-          sizeof(object_mem)
-#endif
+          ptr, sizeof(object_mem), &fuzz_destroy_callback, nullptr
 #ifndef NDEBUG
-              ,
+          ,
           check_qsbr_pointer_on_dealloc
 #endif
       );

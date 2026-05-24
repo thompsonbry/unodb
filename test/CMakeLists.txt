@@ -64,6 +64,7 @@ add_db_test_target(test_art_key_view_full_chain)
 add_db_test_target(test_art_iter)
 add_db_test_target(test_art_scan)
 add_db_test_target(test_art_concurrency)
+add_db_test_target(test_art_allocator)
 # - Google Test with MSVC standard library tries to allocate memory in the
 # exception-thrown-as-expected-path.
 # - clang analyzer diagnoses potential memory leak in Google Test matcher
@@ -77,9 +78,24 @@ if (NOT MSVC AND NOT SANITIZE_ADDRESS AND NOT SANITIZE_THREAD
 endif()
 target_link_libraries(test_art_concurrency PRIVATE qsbr_test_utils)
 
+# Regression test: olc_db with custom allocator must link without libunodb_qsbr.
+# Intentionally links only unodb_util (header-only) and Threads, NOT unodb or
+# unodb_qsbr.  Does NOT use common_target_properties (which defines
+# UNODB_DETAIL_QSBR_DEBUG).  If this fails to link, the decoupling is broken.
+add_executable(test_olc_no_qsbr test_olc_no_qsbr.cpp)
+target_compile_features(test_olc_no_qsbr PUBLIC cxx_std_20)
+set_target_properties(test_olc_no_qsbr PROPERTIES CXX_EXTENSIONS OFF)
+target_compile_definitions(test_olc_no_qsbr PRIVATE
+  "UNODB_SPINLOCK_LOOP_VALUE=${SPINLOCK_LOOP_VALUE}")
+target_compile_options(test_olc_no_qsbr PRIVATE
+  "$<${is_x86_64_any_msvc}:$<IF:${has_avx2},/arch:AVX2,/arch:AVX>>"
+  "$<${is_not_windows_x86_64}:$<IF:${has_avx2},-mavx2,-msse4.1>>")
+target_link_libraries(test_olc_no_qsbr PRIVATE unodb_util Threads::Threads)
+add_test(NAME test_olc_no_qsbr COMMAND test_olc_no_qsbr)
+
 if(COVERAGE)
   add_custom_target(tests_for_coverage ctest
-    DEPENDS test_key_encode_decode test_art test_art_key_view test_art_key_view_full_chain test_art_iter test_art_scan test_art_concurrency test_qsbr_ptr test_qsbr test_art_oom
+    DEPENDS test_key_encode_decode test_art test_art_key_view test_art_key_view_full_chain test_art_iter test_art_scan test_art_concurrency test_art_allocator test_olc_no_qsbr test_qsbr_ptr test_qsbr test_art_oom
             test_qsbr_oom)
   add_coverage_target(TARGET coverage DEPENDENCY tests_for_coverage)
 endif()
