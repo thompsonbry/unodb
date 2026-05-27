@@ -168,6 +168,15 @@ assert_failure(const char* file, int line, const char* func,
 
 #endif  // !defined(NDEBUG)
 
+/// Assert that is only active when QSBR debug checking is enabled.
+/// Use for assertions that reference QSBR state (qsbr::instance(), etc.)
+/// which may not be available in builds without QSBR linked.
+#ifdef UNODB_DETAIL_QSBR_DEBUG
+#define UNODB_DETAIL_QSBR_ASSERT(condition) UNODB_DETAIL_ASSERT(condition)
+#else
+#define UNODB_DETAIL_QSBR_ASSERT(condition) ((void)0)
+#endif
+
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 }  // namespace unodb::detail

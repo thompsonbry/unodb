@@ -26,7 +26,6 @@ class mutex_db final {
   using key_type = Key;
   /// The type of the value associated with the keys in the index.
   using value_type = Value;
-  using value_view = unodb::value_view;
 
   /// If the search key was found, that is, the first pair member has a value,
   /// then the second member is a locked tree mutex which must be released ASAP
@@ -66,7 +65,18 @@ class mutex_db final {
 
  public:
   // Creation and destruction
+
+  /// Construct empty mutex-protected ART index with default allocator.
   mutex_db() noexcept = default;
+
+  /// Construct empty mutex-protected ART index with a custom allocator.
+  constexpr explicit mutex_db(const allocator_type& alloc) noexcept
+      : db_{alloc} {}
+
+  /// Return the allocator used by this tree.
+  [[nodiscard]] constexpr const allocator_type& get_allocator() const noexcept {
+    return db_.get_allocator();
+  }
 
   /// Query for a value associated with a key.
   ///

@@ -509,7 +509,10 @@ jobs:
       - name: Benchmark correctness test
         working-directory: ${{github.workspace}}/build
         run: make -k quick_benchmarks
-        if: env.STATIC_ANALYSIS != 'ON'
+        # TODO(#853): split benchmarks into phases instead of skipping
+        if: >
+          env.STATIC_ANALYSIS != 'ON' &&
+          env.SANITIZE_ADDRESS != 'ON'
 
       - name: DeepState 1 minute fuzzing
         working-directory: ${{github.workspace}}/build

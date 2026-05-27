@@ -712,6 +712,7 @@ function(COMMON_TARGET_PROPERTIES TARGET)
     "$<${use_boost_stacktrace}:UNODB_DETAIL_BOOST_STACKTRACE>"
     "$<${with_stats}:UNODB_DETAIL_WITH_STATS>"
     "$<${coverage_on}:UNODB_COVERAGE>"
+    "$<${is_not_release_genex}:UNODB_DETAIL_QSBR_DEBUG>"
     "UNODB_SPINLOCK_LOOP_VALUE=${SPINLOCK_LOOP_VALUE}")
   target_compile_options(${TARGET} PUBLIC
     # Architecture
@@ -823,7 +824,8 @@ if(LIBFUZZER_AVAILABLE)
   target_link_libraries(unodb_qsbr_lf PUBLIC unodb_util Threads::Threads)
 endif()
 
-add_unodb_library(unodb art.hpp art_common.hpp mutex_art.hpp optimistic_lock.hpp
+add_unodb_library(unodb art.hpp art_common.hpp art_allocator.hpp
+  mutex_art.hpp optimistic_lock.hpp
   art_internal_impl.hpp olc_art.hpp art_internal.hpp art_internal.cpp
   node_type.hpp duckdb_encode_decode.hpp)
 target_link_libraries(unodb PUBLIC unodb_util unodb_qsbr)

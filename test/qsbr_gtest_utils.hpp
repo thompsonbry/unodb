@@ -168,6 +168,11 @@ class QSBRTestBase : public ::testing::Test {
   }
 #endif
 
+  static void test_destroy_callback(void* ptr, std::size_t /*size*/,
+                                    void* /*ctx*/) noexcept {
+    unodb::detail::free_aligned(ptr);
+  }
+
   static void qsbr_deallocate(void* ptr) {
 #ifdef UNODB_DETAIL_WITH_STATS
     const auto current_interval_total_dealloc_size_before =
@@ -179,14 +184,11 @@ class QSBRTestBase : public ::testing::Test {
         unodb::this_thread().current_interval_requests_empty();
 
     try {
-      unodb::this_thread().on_next_epoch_deallocate(ptr
-#ifdef UNODB_DETAIL_WITH_STATS
-                                                    ,
-                                                    1
-#endif
+      unodb::this_thread().on_next_epoch_deallocate(
+          ptr, 1, &test_destroy_callback, nullptr
 #ifndef NDEBUG
-                                                    ,
-                                                    check_ptr_on_qsbr_dealloc
+          ,
+          check_ptr_on_qsbr_dealloc
 #endif
       );
     } catch (...) {
