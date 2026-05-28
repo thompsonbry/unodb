@@ -1115,6 +1115,33 @@ UNODB_TYPED_TEST(ARTScanTest, scanFromBacktrackAcrossSiblingSubtrees) {
     UNODB_EXPECT_EQ(200U, results[0]);
     UNODB_EXPECT_EQ(100U, results[1]);
   }
+  // FWD scan_range: [250, 501) should find 300, 400, 500.
+  {
+    std::vector<std::uint64_t> results;
+    db.scan_range(
+        250, 501,
+        [&results](const unodb::visitor<typename TypeParam::iterator>& v) {
+          results.push_back(decode(v.get_key()));
+          return false;
+        });
+    UNODB_ASSERT_EQ(3U, results.size());
+    UNODB_EXPECT_EQ(300U, results[0]);
+    UNODB_EXPECT_EQ(400U, results[1]);
+    UNODB_EXPECT_EQ(500U, results[2]);
+  }
+  // REV scan_range: [250, 99) should find 200, 100.
+  {
+    std::vector<std::uint64_t> results;
+    db.scan_range(
+        250, 99,
+        [&results](const unodb::visitor<typename TypeParam::iterator>& v) {
+          results.push_back(decode(v.get_key()));
+          return false;
+        });
+    UNODB_ASSERT_EQ(2U, results.size());
+    UNODB_EXPECT_EQ(200U, results[0]);
+    UNODB_EXPECT_EQ(100U, results[1]);
+  }
 }
 
 }  // namespace
