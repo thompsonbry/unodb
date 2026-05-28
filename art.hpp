@@ -25,6 +25,7 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "art_allocator.hpp"
 #include "art_common.hpp"
 #include "art_internal.hpp"
 #include "art_internal_impl.hpp"
@@ -130,12 +131,9 @@ class db final {
   /// The type of the value associated with the keys in the index.
   using value_type = Value;
 
-  /// View type for values stored in the index.
-  using value_view = unodb::value_view;
-
   /// Result type for get operations.
   ///
-  /// Contains value_view if key was found, otherwise empty.
+  /// Contains the value if key was found, otherwise empty.
   using get_result = std::optional<value_type>;
 
   /// Base class type for internal nodes.
@@ -206,8 +204,15 @@ class db final {
  public:
   // Creation and destruction
 
-  /// Construct empty ART index.
+  /// Construct empty ART index with default allocator.
   db() noexcept = default;
+
+  /// Construct empty ART index with a custom allocator.
+  constexpr explicit db(const allocator_type& alloc) noexcept
+      : allocator_{alloc} {
+    UNODB_DETAIL_ASSERT(allocator_.alloc != nullptr);
+    UNODB_DETAIL_ASSERT(allocator_.dealloc != nullptr);
+  }
 
   /// Destroy ART index, freeing all tree nodes.
   ~db() noexcept;
@@ -240,6 +245,11 @@ class db final {
   /// Return true iff the index is empty.
   [[nodiscard, gnu::pure]] bool empty() const noexcept {
     return root == nullptr;
+  }
+
+  /// Return the allocator used by this tree.
+  [[nodiscard]] constexpr const allocator_type& get_allocator() const noexcept {
+    return allocator_;
   }
 
   /// Insert a value under a key iff there is no entry for that key.
@@ -923,6 +933,9 @@ class db final {
 
   /// Root of the tree (nullptr if empty).
   detail::node_ptr root{nullptr};
+
+  /// Allocator for tree nodes.
+  allocator_type allocator_{detail::default_allocator};
 
 #ifdef UNODB_DETAIL_WITH_STATS
 

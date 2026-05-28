@@ -38,6 +38,7 @@
 #include <arm_neon.h>
 #endif
 
+#include "art_allocator.hpp"
 #include "art_common.hpp"
 #include "art_internal.hpp"
 #include "assert.hpp"
@@ -318,16 +319,12 @@ class [[nodiscard]] basic_leaf final : public Header {
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-#ifdef UNODB_DETAIL_WITH_STATS
-
   /// Return byte size of leaf data structure.
   ///
   /// \return Size in bytes
   [[nodiscard, gnu::pure]] constexpr auto get_size() const noexcept {
     return compute_size(key_size, value_size);
   }
-
-#endif  // UNODB_DETAIL_WITH_STATS
 
   /// Dump leaf contents to stream for debugging.
   ///
@@ -429,11 +426,10 @@ class [[nodiscard]] basic_leaf<no_key_tag, Header> final : public Header {
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
-#ifdef UNODB_DETAIL_WITH_STATS
+  /// Return byte size of keyless leaf data structure.
   [[nodiscard, gnu::pure]] constexpr auto get_size() const noexcept {
     return compute_size(value_size);
   }
-#endif
 
   /// Dump keyless leaf contents to stream for debugging.
   [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os,
@@ -523,8 +519,8 @@ template <typename Key, typename Value, template <typename, typename> class Db>
             leaf_val_bytes.size_bytes()));
   }
 
-  auto* const leaf_mem = static_cast<std::byte*>(
-      allocate_aligned(size, alignment_for_new<leaf_type>()));
+  auto* const leaf_mem = static_cast<std::byte*>(db.get_allocator().alloc(
+      size, alignment_for_new<leaf_type>(), db.get_allocator().ctx));
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.increment_leaf_count(size);
@@ -586,11 +582,9 @@ struct basic_inode_def final {
 template <class Db>
 inline void basic_db_leaf_deleter<Db>::operator()(
     leaf_type* to_delete) const noexcept {
-#ifdef UNODB_DETAIL_WITH_STATS
   const auto leaf_size = to_delete->get_size();
-#endif  // UNODB_DETAIL_WITH_STATS
-
-  free_aligned(to_delete);
+  const auto& alloc = db.get_allocator();
+  alloc.dealloc(to_delete, leaf_size, alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.decrement_leaf_count(leaf_size);
@@ -602,7 +596,8 @@ inline void basic_db_inode_deleter<INode, Db>::operator()(
     INode* inode_ptr) noexcept {
   static_assert(std::is_trivially_destructible_v<INode>);
 
-  free_aligned(inode_ptr);
+  const auto& alloc = db.get_allocator();
+  alloc.dealloc(inode_ptr, sizeof(INode), alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   db.template decrement_inode_count<INode>();
@@ -852,8 +847,10 @@ struct basic_art_policy final {
   [[nodiscard]] static auto make_db_inode_unique_ptr(db_type& db_instance
                                                      UNODB_DETAIL_LIFETIMEBOUND,
                                                      Args&&... args) {
-    auto* const inode_mem = static_cast<std::byte*>(
-        allocate_aligned(sizeof(INode), alignment_for_new<INode>()));
+    auto* const inode_mem =
+        static_cast<std::byte*>(db_instance.get_allocator().alloc(
+            sizeof(INode), alignment_for_new<INode>(),
+            db_instance.get_allocator().ctx));
 
 #ifdef UNODB_DETAIL_WITH_STATS
     db_instance.template increment_inode_count<INode>();

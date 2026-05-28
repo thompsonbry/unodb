@@ -1,4 +1,4 @@
-// Copyright (C) 2019-2025 UnoDB contributors
+// Copyright 2019-2026 UnoDB contributors
 
 /// \file
 /// QSBR implementation details.
@@ -15,6 +15,7 @@
 // IWYU pragma: no_include <__hash_table>
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -22,6 +23,7 @@
 #include <new>  // IWYU pragma: keep
 #include <utility>
 
+#include "art_allocator.hpp"
 #include "qsbr.hpp"
 
 #ifdef UNODB_DETAIL_WITH_STATS
@@ -124,7 +126,7 @@ UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=cold")
 
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 
-#ifndef NDEBUG
+#ifdef UNODB_DETAIL_QSBR_DEBUG
 
 namespace detail {
 
@@ -132,6 +134,10 @@ namespace detail {
 constinit std::atomic<std::uint64_t> deallocation_request::instance_count{0};
 
 }  // namespace detail
+
+#endif  // UNODB_DETAIL_QSBR_DEBUG
+
+#ifndef NDEBUG
 
 void qsbr_per_thread::register_active_ptr(const void* ptr) {
   UNODB_DETAIL_ASSERT(ptr != nullptr);
@@ -533,3 +539,34 @@ qsbr_epoch qsbr::change_epoch(qsbr_epoch current_global_epoch,
 }
 
 }  // namespace unodb
+
+// OLC default allocator — defined here so that olc_art.hpp does not pull
+// QSBR link dependencies into TUs that use olc_db with a custom allocator.
+
+namespace unodb::detail {
+
+namespace {
+
+void qsbr_defer_dealloc(void* ptr, std::size_t size,
+                        destroy_callback_type destroy_callback,
+                        void* ctx) noexcept(false) {
+  this_thread().on_next_epoch_deallocate(ptr, size, destroy_callback, ctx
+#ifndef NDEBUG
+                                         ,
+                                         nullptr
+#endif
+  );
+}
+
+}  // namespace
+
+// Declared in olc_art.hpp, defined here to keep QSBR out of art_allocator.hpp.
+extern const allocator_type olc_default_allocator;
+
+extern const allocator_type olc_default_allocator{
+    .alloc = &default_alloc,
+    .dealloc = &default_dealloc,
+    .defer_dealloc = &qsbr_defer_dealloc,
+    .ctx = nullptr};
+
+}  // namespace unodb::detail
