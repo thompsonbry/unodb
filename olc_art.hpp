@@ -3418,7 +3418,9 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
           if (UNODB_DETAIL_UNLIKELY(
                   !node_critical_section.try_read_unlock()))  // unlock node
             return false;                                     // LCOV_EXCL_LINE
-          if (!empty()) pop();
+          // Note: The current node (where gte_key_byte failed) was
+          // never pushed, so the stack top is already the first
+          // ancestor to check for a right-sibling.
           while (!empty()) {
             const auto& centry = top();
             const auto cnode{centry.node};  // a possible parent from the stack.
@@ -3495,7 +3497,9 @@ bool olc_db<Key, Value>::iterator::try_seek(art_key_type search_key,
         if (UNODB_DETAIL_UNLIKELY(
                 !node_critical_section.try_read_unlock()))  // unlock node
           return false;                                     // LCOV_EXCL_LINE
-        if (!empty()) pop();
+        // Note: The current node (where lte_key_byte failed) was
+        // never pushed, so the stack top is already the first
+        // ancestor to check for a left-sibling.
         while (!empty()) {
           const auto& centry = top();
           const auto cnode{centry.node};  // a possible parent from stack

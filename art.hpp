@@ -2335,7 +2335,10 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
           // do a left-most descent under that right-sibling. If there
           // is no such parent, we will wind up with an empty stack
           // (iterator at the end) and return that state.
-          if (!empty()) pop();
+          //
+          // Note: The current node (where gte_key_byte failed) was
+          // never pushed, so the stack top is already the first
+          // ancestor to check for a right-sibling.
           while (!empty()) {
             const auto& centry = top();
             const auto cnode{centry.node};  // possible parent from the stack
@@ -2364,11 +2367,14 @@ typename db<Key, Value>::iterator& db<Key, Value>::iterator::seek(
       // immediate predecessor of the desired key in the data.
       auto nxt = inode->lte_key_byte(node_type, remaining_key[0]);
       if (!nxt) {
-        // Pop off the current entry until we find one with a
-        // left-sibling and then do a right-most descent under that
-        // left-sibling.  In the extreme case there is no such
-        // previous entry and we will wind up with an empty stack.
-        if (!empty()) pop();
+        // Pop off entries until we find one with a left-sibling and
+        // then do a right-most descent under that left-sibling.  In
+        // the extreme case there is no such previous entry and we
+        // will wind up with an empty stack.
+        //
+        // Note: The current node (where lte_key_byte failed) was
+        // never pushed, so the stack top is already the first
+        // ancestor to check for a left-sibling.
         while (!empty()) {
           const auto& centry = top();
           const auto cnode{centry.node};  // possible parent from stack
