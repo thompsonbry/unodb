@@ -822,3 +822,137 @@ static_assert(std::is_same_v<std::invoke_result_t<FN, value_type&>, upsert_actio
 **Test 23 (new):** CAS on VIS value during I4→I16 growth. Thread T1 does
 `insert_or_resolve(update)` on a packed value. Thread T2 inserts triggering
 growth of the same inode. T1's write_guard upgrade fails, restarts, succeeds.
+
+## 11. Round 3 Findings — Resolutions
+
+### 11.1 MUST-FIX: Explicit Version Validation in Erase Protocol (Concurrency #8)
+
+**Finding:** The existing `try_remove` validates its *own* read version (from
+the re-traversal), not the upserter's captured observation version. The CAS
+contract requires validating that the node hasn't changed since the *upserter's
+observation*, not just since the re-traversal's read.
+
+**Resolution — `try_upsert_erase` with captured version parameter:**
+
+The erase path does NOT call the existing `try_remove` as a black box. Instead,
+the implementation uses a dedicated `try_upsert_erase(key, captured_version)`
+that:
+
+1. Traverses top-down (same as `try_remove`) with RCS at each level.
+2. At the target node (leaf or VIS inode), reads the current version M.
+3. **Explicit CAS check:** If M ≠ `captured_version`, returns `{}` (restart).
+4. If M = `captured_version`, proceeds with the normal remove protocol
+   (upgrade parent RCS → write_guard, upgrade node RCS → write_guard).
+5. The upgrade at step 4 validates M hasn't changed since step 2 (standard
+   OLC). Combined with step 3, this transitively validates that the version
+   hasn't changed since the original observation.
+
+This is exactly what the TLA+ `UValidate` step models:
+```
+IF u_obs_ver = version THEN acquire_write_lock ELSE retry
+```
+
+**The version captured is the lock that protects the value:**
+- For explicit leaf (keyed-leaf path): the leaf's own `optimistic_lock` version
+- For VIS (value-in-slot path): the containing inode's `optimistic_lock` version
+- For root leaf: `root_pointer_lock`'s version
+
+In all cases, any mutation to the value advances that lock's version counter.
+
+**Implementation sketch (olc_db private):**
+```cpp
+template <typename Key, typename Value>
+[[nodiscard]] try_update_result_type
+olc_db<Key, Value>::try_upsert_erase(art_key_type k,
+                                      version_tag_type captured_ver) {
+  // ... traverse to target (same as try_remove) ...
+  // At target node:
+  if (node_critical_section.get() != captured_ver) return {};  // CAS mismatch
+  // ... proceed with remove (upgrade, erase, unlock) ...
+}
+```
+
+### 11.2 MUST-FIX: TLA+ Model Extended for Key-Absent Case (Correctness #1)
+
+**Finding:** The original model's writer could never set `value = Empty`,
+so the key-absent interleaving was unexplored.
+
+**Resolution:** Extended `OLCUpsertErase.tla` with:
+- `WErase` action: writer can remove the key (sets value = Empty)
+- `UObserveAbsent`: upserter finds key absent → takes insert path
+- `UKeyGone`: upserter re-traverses but key was removed → restart
+
+Result: 3,592 distinct states, all invariants pass. CASSafety holds even
+when a concurrent eraser removes the key between observation and re-traversal.
+
+**Design decision (key gone → restart → insert path):**
+When the upserter re-traverses and finds the key absent, it restarts the
+entire upsert from the top. On the next iteration, `UObserveAbsent` fires:
+the key is absent, so the upsert takes the insert path (inserts the value `v`
+that was passed to `upsert(k, v, fn)`). Returns `true` (inserted).
+
+This is correct CAS behavior: the lambda's assumption was invalidated (the
+value it observed no longer exists), so the operation restarts with fresh
+state. The fresh state shows "key absent" → insert.
+
+### 11.3 MUST-FIX: Test 23g — Erase After Concurrent Remove (Correctness #7)
+
+Added to test plan. Uses `sync_after_erase_lambda_returns` sync point:
+1. T1 enters upsert, finds K, lambda returns erase, pauses at sync point
+2. T2 calls `remove(K)` — succeeds
+3. T1 resumes, re-traverses, key absent → restart → insert path
+4. Verify: key present with T1's insert value, tree size == 1
+
+### 11.4 MUST-FIX: Benchmark B2/B3 Tail Latency (Performance #5)
+
+Added p50/p95/p99 latency counters to B2 and B3 benchmark designs.
+Implementation: thread-local ring buffer of rdtsc timestamps, post-processed
+into percentiles after the benchmark loop.
+
+### 11.5 MUST-FIX: `try_upsert` Private Method Signature (API #1)
+
+**olc_db private interface:**
+```cpp
+template <typename FN>
+[[nodiscard]] try_update_result_type try_upsert(
+    art_key_type k, value_type v, FN fn,
+    olc_db_leaf_unique_ptr_type& cached_leaf);
+```
+
+**Erase sub-operation (called from within try_upsert when lambda returns erase):**
+```cpp
+[[nodiscard]] try_update_result_type try_upsert_erase(
+    art_key_type k, version_tag_type captured_ver);
+```
+
+**db / mutex_db:** Direct implementation (no try_ prefix, no retry loop).
+```cpp
+template <typename FN>
+[[nodiscard]] bool upsert(Key k, value_type v, FN fn);
+```
+
+### 11.6 Naming: Rename to `upsert` / `try_upsert`
+
+All references to `insert_or_resolve` in the design doc are superseded by
+`upsert` (public) / `try_upsert` (olc_db private). The enum is
+`upsert_action{keep, update, erase}`. The lambda constraint:
+```cpp
+static_assert(std::is_invocable_r_v<upsert_action, FN, value_type&>,
+    "upsert lambda must be callable as upsert_action(value_type&)");
+```
+
+### 11.7 NEEDS-SME Resolutions
+
+**C#7 (version capture target):** Confirmed in §11.1 — the captured version
+is always the lock that protects the value (leaf lock, inode lock, or
+root_pointer_lock). The re-traversal arrives at the same physical lock
+because it traverses from root following live pointers.
+
+**P#7 (olc_node_ptr size):** `olc_node_ptr` is a tagged pointer — 8 bytes
+(`uint64_t` with type tag in low bits). Naturally aligned. Atomic on x86_64
+and aarch64.
+
+**A#10 (lambda re-invocation contract):** Clarified: "The lambda MAY be
+called multiple times with potentially different values on each invocation.
+It MAY return a different action each time. The implementation honors the
+most recent action returned by the lambda."

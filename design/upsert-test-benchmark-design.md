@@ -56,7 +56,8 @@ Test `keep` and `erase` only.
 | 23c | Erase root leaf | Single-entry tree, upsert-erase | Tree becomes empty |
 | 23d | Erase VIS value | Packed value in inode slot, upsert-erase | Slot cleared, bitmask updated |
 | 23e | Erase + re-insert | Upsert-erase K, then upsert K (insert path) | Key re-inserted with new value |
-| 23f | Concurrent erase × erase | Two threads upsert-erase same key | Exactly one succeeds, other retries (finds key absent → insert path) |
+| 23f | Concurrent erase × erase | Two threads upsert-erase same key | Exactly one succeeds, other retries (finds key absent → insert path). Post: key present with insert value, tree size == 1. No ASAN errors. |
+| 23g | Erase after concurrent remove (sync point) | T1 upserts(erase) on K, pauses after lambda returns erase. T2 removes K. T1 resumes. | T1's try_remove finds key absent → version mismatch → restart → UObserveAbsent → takes insert path. Final: key present with T1's insert value. Verified via sync_after_erase_lambda_returns. |
 
 ### OOM Tests (GCC debug builds)
 
@@ -103,7 +104,7 @@ Work:  Each thread: upsert(hot_keys[i % 64], val, [](auto& v){ v += 1; return up
 Vary:  Thread count: 1, 2, 4, 8, 16, 32
 ```
 
-**Counters:** ops/sec, OLC restart count (via STATS build), restarts/op ratio
+**Counters:** ops/sec, OLC restart count (via STATS build), restarts/op ratio, p50/p95/p99 latency (ns, via thread-local rdtsc sampling)
 
 #### B3: Upsert Erase — Shared Hot Keys (Erase Retry)
 
@@ -117,7 +118,7 @@ Work:  Half threads: upsert(key, val, [](auto&){ return erase; })
 Post:  Re-insert erased keys each iteration to sustain contention
 ```
 
-**Counters:** ops/sec, erase retry count, erase success rate
+**Counters:** ops/sec, erase retry count, erase success rate, p50/p95/p99 latency (ns, via thread-local rdtsc sampling)
 
 #### B4: Upsert Insert Path — Disjoint (Insert Overhead)
 

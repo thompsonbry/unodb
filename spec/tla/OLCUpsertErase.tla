@@ -7,15 +7,19 @@
    value — but ONLY if the value hasn't changed since the lambda observed it.
 
    Hazard H9: Between releasing RCS and re-acquiring write locks, a
-   concurrent writer can change the value. The version counter must detect
-   this and force the upserter to retry (re-observe, re-invoke lambda).
+   concurrent writer can change the value OR remove the key entirely.
+   The version counter must detect this and force the upserter to retry.
 
    Key CAS invariant: if the upserter successfully erases, the value at
    the moment of erasure == the value the lambda observed.
 
    Processes:
    - 1 upserter: observe → lambda(erase) → release → retraverse → validate → remove|retry
-   - 1 concurrent writer: can change the value at any time (models insert/update/other-upsert)
+   - 1 concurrent writer: can change the value, remove the key, or re-insert
+
+   Round 3 extension: WErase action models concurrent removal (key absent
+   on re-traverse). Upserter detects key-absent and restarts (takes insert
+   path on next iteration since key is gone).
 *)
 
 EXTENDS Naturals
@@ -46,10 +50,11 @@ TypeOK ==
     /\ value \in Values \cup {Empty}
     /\ version \in Nat
     /\ upc \in {"idle", "observed", "released", "retraversing",
-                "validate", "write_locked", "erased", "done"}
+                "validate", "write_locked", "erased", "done",
+                "key_absent", "insert_unlock"}
     /\ u_observed \in Values \cup {Empty}
     /\ u_obs_ver \in Nat
-    /\ wpc \in {"idle", "locked", "written", "done"}
+    /\ wpc \in {"idle", "locked", "written", "erased_w", "done"}
     /\ w_new_val \in Values
 
 Init ==
@@ -63,10 +68,6 @@ Init ==
 
 (* ================================================================== *)
 (* --- Upserter actions ---                                           *)
-(*                                                                    *)
-(* Protocol: find duplicate → read value under RCS → lambda returns   *)
-(* erase → release RCS → re-traverse → try upgrade → validate        *)
-(* version → if match: erase; if mismatch: retry from idle.           *)
 (* ================================================================== *)
 
 (* Step 1: Upserter finds the key and observes value under RCS.
@@ -80,27 +81,51 @@ UObserve ==
     /\ upc' = "observed"
     /\ UNCHANGED <<value, version, wpc, w_new_val>>
 
-(* Step 2: Lambda returns "erase". Upserter releases RCS.
-   This is the critical moment — after this, the value can change. *)
+(* Step 1b: Upserter finds key ABSENT — takes insert path.
+   This happens on retry after a concurrent erase removed the key. *)
+UObserveAbsent ==
+    /\ upc = "idle"
+    /\ version % 2 = 0
+    /\ value = Empty             \* key is gone
+    /\ upc' = "key_absent"
+    /\ UNCHANGED <<value, version, u_observed, u_obs_ver, wpc, w_new_val>>
+
+(* Step 1c: Key absent → upserter takes insert path (inserts default value).
+   Models the insert path of upsert when key is not found.
+   Lock, write, unlock — simplified to two steps. *)
+UInsertOnAbsent ==
+    /\ upc = "key_absent"
+    /\ version % 2 = 0
+    /\ version' = version + 1   \* acquire write lock
+    /\ value' = w_new_val       \* insert some value (stand-in for the upsert's v param)
+    /\ upc' = "insert_unlock"
+    /\ UNCHANGED <<u_observed, u_obs_ver, wpc, w_new_val>>
+
+(* Step 1d: Unlock after insert. *)
+UInsertUnlock ==
+    /\ upc = "insert_unlock"
+    /\ version' = version + 1   \* even = unlocked
+    /\ upc' = "done"
+    /\ UNCHANGED <<value, u_observed, u_obs_ver, wpc, w_new_val>>
+
+(* Step 2: Lambda returns "erase". Upserter releases RCS. *)
 URelease ==
     /\ upc = "observed"
     /\ upc' = "released"
     /\ UNCHANGED <<value, version, u_observed, u_obs_ver, wpc, w_new_val>>
 
-(* Step 3: Re-traverse from root. Arrives at the node.
-   Models the re-traversal as a single step (we don't model tree structure,
-   only the lock protocol at the target node). *)
+(* Step 3: Re-traverse from root. Arrives at the node. *)
 URetraverse ==
     /\ upc = "released"
     /\ upc' = "retraversing"
     /\ UNCHANGED <<value, version, u_observed, u_obs_ver, wpc, w_new_val>>
 
-(* Step 4: Attempt to upgrade to write lock (acquire parent + node).
-   Can only succeed if version is even (no one else holds write lock).
-   If the node is currently write-locked, must restart. *)
+(* Step 4: Validate version. Key still exists and version matches → proceed.
+   Version mismatch → retry from idle. Key absent → retry from idle. *)
 UValidate ==
     /\ upc = "retraversing"
     /\ version % 2 = 0          \* can acquire write lock
+    /\ value # Empty             \* key still exists
     /\ IF u_obs_ver = version
        THEN                      \* Version matches — value unchanged, proceed
             /\ version' = version + 1   \* acquire write lock (odd)
@@ -110,12 +135,20 @@ UValidate ==
             /\ UNCHANGED version
     /\ UNCHANGED <<value, u_observed, u_obs_ver, wpc, w_new_val>>
 
-(* Step 4b: Upserter arrives at node but it's write-locked. Restart.
-   Models the case where try_upgrade fails because writer holds the lock. *)
+(* Step 4b: Upserter arrives but node is write-locked. Restart. *)
 URestartOnLocked ==
     /\ upc = "retraversing"
     /\ version % 2 = 1          \* write-locked by someone else
     /\ upc' = "idle"
+    /\ UNCHANGED <<value, version, u_observed, u_obs_ver, wpc, w_new_val>>
+
+(* Step 4c: Upserter arrives but key is ABSENT (concurrent erase).
+   Restart from idle — next iteration will take insert path. *)
+UKeyGone ==
+    /\ upc = "retraversing"
+    /\ version % 2 = 0
+    /\ value = Empty             \* key was removed by concurrent writer
+    /\ upc' = "idle"            \* restart — will hit UObserveAbsent next
     /\ UNCHANGED <<value, version, u_observed, u_obs_ver, wpc, w_new_val>>
 
 (* Step 5: Erase the value (under write lock). *)
@@ -125,14 +158,14 @@ UErase ==
     /\ upc' = "erased"
     /\ UNCHANGED <<version, u_observed, u_obs_ver, wpc, w_new_val>>
 
-(* Step 6: Unlock (version becomes even again). *)
+(* Step 6: Unlock. *)
 UUnlock ==
     /\ upc = "erased"
     /\ version' = version + 1   \* even = unlocked
     /\ upc' = "done"
     /\ UNCHANGED <<value, u_observed, u_obs_ver, wpc, w_new_val>>
 
-(* Step 7: Upserter cycles back to idle (models repeated upsert calls). *)
+(* Step 7: Upserter cycles back to idle. *)
 UDone ==
     /\ upc = "done"
     /\ upc' = "idle"
@@ -141,8 +174,7 @@ UDone ==
 (* ================================================================== *)
 (* --- Concurrent writer actions ---                                  *)
 (*                                                                    *)
-(* Models any concurrent mutation: another upsert-update, a standalone *)
-(* insert (re-inserting after erase), or another upsert-erase.        *)
+(* Models any concurrent mutation: update, remove, or re-insert.      *)
 (* ================================================================== *)
 
 (* Writer acquires write lock. *)
@@ -153,24 +185,38 @@ WLock ==
     /\ wpc' = "locked"
     /\ UNCHANGED <<value, upc, u_observed, u_obs_ver, w_new_val>>
 
-(* Writer changes the value (or re-inserts after erase). *)
+(* Writer changes the value (update or re-insert). *)
 WWrite ==
     /\ wpc = "locked"
     /\ value' = w_new_val
     /\ wpc' = "written"
     /\ UNCHANGED <<version, upc, u_observed, u_obs_ver, w_new_val>>
 
-(* Writer unlocks. *)
-WUnlock ==
+(* Writer ERASES the key (concurrent remove). *)
+WErase ==
+    /\ wpc = "locked"
+    /\ value' = Empty
+    /\ wpc' = "erased_w"
+    /\ UNCHANGED <<version, upc, u_observed, u_obs_ver, w_new_val>>
+
+(* Writer unlocks after write. *)
+WUnlockWrite ==
     /\ wpc = "written"
     /\ version' = version + 1
     /\ wpc' = "done"
     /\ UNCHANGED <<value, upc, u_observed, u_obs_ver, w_new_val>>
 
-(* Writer cycles back (models repeated concurrent mutations). *)
+(* Writer unlocks after erase. *)
+WUnlockErase ==
+    /\ wpc = "erased_w"
+    /\ version' = version + 1
+    /\ wpc' = "done"
+    /\ UNCHANGED <<value, upc, u_observed, u_obs_ver, w_new_val>>
+
+(* Writer cycles back. *)
 WDone ==
     /\ wpc = "done"
-    /\ w_new_val' \in Values     \* pick a new value for next write
+    /\ w_new_val' \in Values
     /\ wpc' = "idle"
     /\ UNCHANGED <<value, version, upc, u_observed, u_obs_ver>>
 
@@ -179,9 +225,10 @@ WDone ==
 (* ================================================================== *)
 
 Step ==
-    \/ UObserve \/ URelease \/ URetraverse \/ UValidate
-    \/ URestartOnLocked \/ UErase \/ UUnlock \/ UDone
-    \/ WLock \/ WWrite \/ WUnlock \/ WDone
+    \/ UObserve \/ UObserveAbsent \/ UInsertOnAbsent \/ UInsertUnlock
+    \/ URelease \/ URetraverse \/ UValidate
+    \/ URestartOnLocked \/ UKeyGone \/ UErase \/ UUnlock \/ UDone
+    \/ WLock \/ WWrite \/ WErase \/ WUnlockWrite \/ WUnlockErase \/ WDone
 
 Spec == Init /\ [][Step]_vars /\ WF_vars(Step)
 
@@ -189,25 +236,21 @@ Spec == Init /\ [][Step]_vars /\ WF_vars(Step)
 (* --- Safety Properties ---                                          *)
 (* ================================================================== *)
 
-(* CAS SAFETY: The core invariant. If the upserter is about to erase
-   (holds write lock, about to set value=Empty), then the current value
-   MUST be the value the lambda observed. No stale-assumption erase. *)
+(* CAS SAFETY: If the upserter holds write lock (about to erase),
+   the current value MUST be the value the lambda observed. *)
 CASSafety ==
     upc = "write_locked" => value = u_observed
 
 (* MUTUAL EXCLUSION: Upserter and writer never both hold write lock. *)
 MutualExclusion ==
-    ~(upc = "write_locked" /\ wpc = "locked")
-    /\ ~(upc = "write_locked" /\ wpc = "written")
-    /\ ~(upc = "erased" /\ wpc = "locked")
-    /\ ~(upc = "erased" /\ wpc = "written")
+    ~(upc \in {"write_locked", "erased", "insert_unlock"} /\ wpc \in {"locked", "written", "erased_w"})
 
 (* VERSION CONSISTENCY: version is odd iff exactly one process holds
    the write lock. *)
 VersionConsistency ==
     version % 2 = 1 <=>
-        ( upc \in {"write_locked", "erased"}
-        \/ wpc \in {"locked", "written"} )
+        ( upc \in {"write_locked", "erased", "insert_unlock"}
+        \/ wpc \in {"locked", "written", "erased_w"} )
 
 (* NO ERASE OF EMPTY: upserter never erases an already-empty slot. *)
 NoEraseOfEmpty ==
@@ -217,10 +260,7 @@ NoEraseOfEmpty ==
 (* --- Liveness Properties ---                                        *)
 (* ================================================================== *)
 
-(* PROGRESS: Under weak fairness, the upserter eventually reaches "done"
-   or "erased" — it doesn't loop forever. Note: this requires the writer
-   to eventually stop (otherwise the upserter can be starved). We check
-   this as a temporal property, not an invariant. *)
+(* PROGRESS: Under weak fairness, the upserter eventually reaches "done". *)
 UpsertProgress == <>(upc = "done")
 
 (* State constraint to keep version counter bounded for model checking. *)
