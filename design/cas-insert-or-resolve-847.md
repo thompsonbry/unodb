@@ -668,3 +668,157 @@ knows the action because they returned it from the lambda. A richer return
 type can be added in Phase 2 if needed.
 
 **Q4 (Naming):** See §9.5 — keep `insert_or_resolve`.
+
+## 10. Round 2 Findings — Resolutions
+
+### 10.1 MUST-FIX: Double-Apply Bug — Parent RCS After Committed Write (§4.5.2, §4.5.3)
+
+**Finding:** After the write_guard is acquired and the value is written back,
+the code checks `parent_critical_section.try_read_unlock()`. If this fails,
+`{}` is returned, triggering a retry. But the write was already committed —
+the retry re-reads the updated value and applies the lambda again, causing
+a double-increment for lambdas like `v += 1`.
+
+**Root cause:** The parent RCS is irrelevant once the write_guard is held.
+The node cannot be unlinked without first write-locking it (impossible since
+we hold the write_guard). The parent's version advancing only means a sibling
+was modified — the current node is still reachable and exclusively ours.
+
+**Resolution — Corrected protocol for both paths:**
+
+**Keyed-leaf path (§4.5.2):**
+```cpp
+if (action == upsert_action::update) {
+    optimistic_lock::write_guard leaf_guard{std::move(node_critical_section)};
+    if (UNODB_DETAIL_UNLIKELY(leaf_guard.must_restart())) {
+        spin_wait_loop_body();  // contention mitigation (§10.3)
+        return {};
+    }
+    // Parent RCS no longer needed — leaf is exclusively ours.
+    // Best-effort release; ignore failure.
+    std::ignore = parent_critical_section.try_read_unlock();
+    leaf->template set_value<Value>(existing_value);
+    return false;  // committed — do NOT restart
+}
+```
+
+**VIS path (§4.5.3):**
+```cpp
+if (action == upsert_action::update) {
+    optimistic_lock::write_guard inode_guard{std::move(node_critical_section)};
+    if (UNODB_DETAIL_UNLIKELY(inode_guard.must_restart())) {
+        spin_wait_loop_body();  // contention mitigation (§10.3)
+        return {};
+    }
+    std::ignore = parent_critical_section.try_read_unlock();
+    *child_in_parent = art_policy::pack_value(existing_value);
+    return false;  // committed — do NOT restart
+}
+```
+
+**Why this is safe:** The write_guard CAS (`try_upgrade_to_write_lock`)
+validates the node's version — if any concurrent writer modified this node
+since our read, the CAS fails and we restart (before writing). Once the CAS
+succeeds, we have exclusive access. The parent's state is irrelevant to the
+correctness of our write.
+
+### 10.2 SHOULD-FIX: Strengthen Idempotency Contract (§9.1 addendum)
+
+**Addendum to §9.1 contract:**
+
+> The lambda MAY receive **different input values** across re-executions,
+> reflecting concurrent mutations by other threads between retries. Lambdas
+> MUST NOT use captured mutable state to conditionally skip work across
+> invocations (e.g., a `seen` flag that suppresses the update on retry).
+>
+> This applies to ALL action paths — even `keep` invocations may be retried
+> if the subsequent lock release fails.
+>
+> **DO:**
+> ```cpp
+> // Safe: pure function of input, no external state
+> tree.insert_or_resolve(k, v, [](auto& existing) {
+>     existing += delta;
+>     return upsert_action::update;
+> });
+> ```
+>
+> **DON'T:**
+> ```cpp
+> // UNSAFE: captured mutable state skips work on retry
+> bool seen = false;
+> tree.insert_or_resolve(k, v, [&seen](auto& existing) {
+>     if (!seen) { seen = true; existing = 42; }
+>     return upsert_action::update;
+> });
+> ```
+
+### 10.3 SHOULD-FIX: Contention Mitigation — spin_wait at Upgrade Failure
+
+**Resolution:** Add `spin_wait_loop_body()` at the write_guard upgrade
+failure point in the CAS path only. This adds a single PAUSE instruction
+(~5-10 cycles) that reduces pipeline resource consumption during spin and
+gives the winning thread time to complete its write.
+
+```cpp
+if (UNODB_DETAIL_UNLIKELY(leaf_guard.must_restart())) {
+    spin_wait_loop_body();  // CAS path only — reduces thundering herd
+    return {};
+}
+```
+
+This is already reflected in the corrected protocol in §10.1.
+
+### 10.4 SHOULD-FIX: set_value Defense-in-Depth
+
+**Resolution:** Add `static_assert` inside `set_value` itself:
+
+```cpp
+template <typename Value>
+constexpr void set_value(const Value& v) noexcept {
+    static_assert(std::is_trivially_copyable_v<Value>);
+    static_assert(!std::is_same_v<Value, value_view>,
+        "set_value cannot be used with value_view — leaf size is fixed");
+    std::memcpy(data + key_size, &v, sizeof(v));
+}
+```
+
+This provides defense-in-depth independent of the `insert_or_resolve` API.
+
+### 10.5 SHOULD-FIX: Lambda Constraint — Return Type Check
+
+**Resolution:** Replace `std::invocable` with a requires-expression that
+also constrains the return type. This avoids the `<concepts>` header
+dependency and catches wrong return types at the call site:
+
+```cpp
+template <typename FN>
+  requires requires(FN fn, value_type& v) {
+    { fn(v) } -> std::same_as<upsert_action>;
+  }
+[[nodiscard]] bool insert_or_resolve(Key k, value_type v, FN fn);
+
+template <typename FN>
+  requires requires(FN fn, Key k, value_type& v) {
+    { fn(k, v) } -> std::same_as<upsert_action>;
+  }
+[[nodiscard]] bool insert_or_resolve(Key k, value_type v, FN fn);
+```
+
+Note: `std::same_as` requires `<concepts>`. If avoiding that header entirely,
+use a `static_assert` inside the function body as fallback:
+```cpp
+static_assert(std::is_same_v<std::invoke_result_t<FN, value_type&>, upsert_action>,
+    "Lambda must return upsert_action");
+```
+
+### 10.6 Test Plan Corrections
+
+**Test 13 (corrected):** For `<key_view, value_view>`:
+- `insert_or_resolve` with `keep` action: lambda called, value unchanged ✓
+- `insert_or_resolve` with `update` action: **compile error** (static_assert) ✓
+- Insert path (key absent): works normally ✓
+
+**Test 23 (new):** CAS on VIS value during I4→I16 growth. Thread T1 does
+`insert_or_resolve(update)` on a packed value. Thread T2 inserts triggering
+growth of the same inode. T1's write_guard upgrade fails, restarts, succeeds.
