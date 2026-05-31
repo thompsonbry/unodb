@@ -478,3 +478,193 @@ This keeps the complex traversal logic in one place.
 3. **Return type enrichment**: Should `insert_or_resolve` return more than `bool`? E.g., `std::pair<bool, upsert_action>` to tell the caller what happened? The issue spec says `bool` (true = inserted). The action is known to the caller since they returned it from the lambda.
 
 4. **Naming**: `insert_or_resolve` vs `upsert` vs `uprase_fn`. The issue uses `insert_or_resolve` which is descriptive. libcuckoo uses `uprase_fn`. Recommend: keep `insert_or_resolve` for clarity.
+
+## 9. Round 1 Findings — Resolutions
+
+This section addresses the critical and high-priority findings from the
+Round 1 adversarial design review (2026-04-25).
+
+### 9.1 CRITICAL: Lambda Re-execution on OLC Restart (Correctness A.1.1, Concurrency §1.1)
+
+**Finding:** The lambda may execute multiple times with stale values when
+the OLC write_guard upgrade fails. If the lambda has side effects (logging,
+external counters), those side effects are not rolled back.
+
+**Resolution — Document the contract explicitly:**
+
+> **CONTRACT:** The resolver lambda MUST be idempotent with respect to
+> external side effects. It MAY be invoked multiple times on the same
+> `insert_or_resolve` call due to OLC optimistic lock restarts. Each
+> invocation receives the value as it existed at the time of the optimistic
+> read; if the read is stale (concurrent writer intervened), the write-back
+> is suppressed and the operation restarts with a fresh read.
+>
+> Lambdas that only mutate the `existing` parameter and return an action
+> are inherently safe — the local copy is discarded on restart. Lambdas
+> with external side effects (logging, counters, secondary index updates)
+> must be designed to tolerate re-execution.
+
+**Design change:** Add this contract to the `insert_or_resolve` Doxygen
+comment (§4.1) and to the public API header documentation.
+
+**Why not restructure to call lambda under write_guard?** Calling the lambda
+after acquiring the write_guard would eliminate re-execution but would hold
+the write lock for the duration of the lambda. This blocks all concurrent
+readers on the same node (OLC readers spin on locked nodes). For short
+lambdas (the common case), the current design — lambda on local copy, then
+upgrade — minimizes write-lock hold time. The tradeoff is documented
+re-execution vs. longer lock hold time. We choose shorter lock hold time
+with documented re-execution, matching the OLC philosophy of optimistic
+reads with validation.
+
+**Test requirement added to §7:** Test A.1.1 — concurrent `insert_or_resolve`
+on the same key with incrementing lambda. Verify final value equals
+`original + sum_of_all_increments` (no lost updates).
+
+### 9.2 CRITICAL: `value_view` Update Size Constraint (Correctness A.1.4)
+
+**Finding:** If `Value = value_view` and the lambda changes the value to a
+different size, `set_value` writes past the leaf boundary → memory corruption.
+For VIS values, size change is impossible (packed into `node_ptr`). For
+keyed-leaf values with `value_view`, the leaf allocation is fixed-size.
+
+**Resolution — Compile-time and runtime constraints:**
+
+1. **Phase 1 constraint (compile-time):** `insert_or_resolve` with `update`
+   action is only supported for fixed-size `Value` types where
+   `sizeof(Value)` is known at compile time. For `value_view` values,
+   the `update` action is a **compile error** in Phase 1.
+
+   Implementation: `static_assert(!std::is_same_v<value_type, value_view>)`
+   in the `update` branch, with a clear error message:
+   ```cpp
+   static_assert(!std::is_same_v<value_type, value_view>,
+       "insert_or_resolve with update action requires fixed-size values. "
+       "For value_view, use erase + re-insert with the new value.");
+   ```
+
+2. **Phase 2 (future):** If `value_view` update is needed, the `update`
+   path must allocate a new leaf, copy the key, write the new value, and
+   atomically swap the parent's child pointer (same as insert). This is
+   equivalent to erase + insert but atomic under the write_guard.
+
+3. **VIS path:** No constraint needed — VIS values are always
+   `sizeof(Value) <= sizeof(uint64_t)`, packed/unpacked via XOR. Size
+   cannot change.
+
+**Design change:** Add the `static_assert` to §4.5.2 and §4.3. Update §8
+Open Question 1 to mark it as resolved.
+
+### 9.3 HIGH: Test Plan Gaps — Concurrent CAS Scenarios (Correctness A.1.1–A.1.3)
+
+**Finding:** The test plan (§7) lacks tests for:
+- Concurrent `insert_or_resolve` on the same key (A.1.1)
+- `insert_or_resolve` during node growth (A.1.2)
+- `insert_or_resolve` on a key being concurrently removed (A.1.3)
+
+**Resolution — Add tests 17–22 to §7:**
+
+17. **Concurrent CAS same key (increment):** N threads each call
+    `insert_or_resolve(K, V, [](auto& v) { v += 1; return update; })`.
+    Final value == original + N. Tests OLC restart correctness.
+
+18. **CAS during I4→I16 growth:** Thread T1 does `insert_or_resolve(update)`
+    on key K in an I4 node. Thread T2 inserts a new key triggering growth.
+    Use `sync_before_insert_grow_guard` to control interleaving. T1 must
+    restart and succeed after growth completes.
+
+19. **CAS on key being removed:** Pre-insert K. T1 pauses at duplicate
+    detection (sync point). T2 removes K. T1 resumes — upgrade fails,
+    restarts, takes insert path. Final: `get(K) == V` (the insert value).
+
+20. **CAS + concurrent scan:** T1 does `insert_or_resolve(update)` while
+    T2 does `scan_range`. Scan must see either the old or new value, never
+    a torn read. (OLC write_guard prevents torn reads by design.)
+
+21. **CAS stress (random ops):** Add `insert_or_resolve` as a 5th operation
+    in `random_op_thread` (existing concurrency test infrastructure).
+
+22. **CAS idempotency under contention:** Lambda that logs invocation count
+    to a thread-local counter. After N concurrent CAS operations on the same
+    key, verify that the lambda was called ≥ N times (due to restarts) but
+    the value reflects exactly N successful updates.
+
+### 9.4 HIGH: Branch Prediction Hint for CAS Path (Performance §2.1)
+
+**Finding:** The `UNODB_DETAIL_UNLIKELY` hint on the duplicate-detection
+branch is wrong for `insert_or_resolve` where duplicates are the expected
+case.
+
+**Resolution:** Use the template policy tag to select the hint:
+
+```cpp
+if constexpr (std::is_same_v<InsertPolicy, insert_or_resolve_tag>) {
+    if (k.cmp(existing_key) == 0) {  // no UNLIKELY — duplicates expected
+        // invoke lambda
+    }
+} else {
+    if (UNODB_DETAIL_UNLIKELY(k.cmp(existing_key) == 0)) {
+        return false;  // plain insert — duplicates rare
+    }
+}
+```
+
+This is a zero-cost change — the `if constexpr` is resolved at compile time.
+
+### 9.5 MEDIUM: API Naming — `insert_or_resolve` vs `upsert` (API §1)
+
+**Finding:** "resolve" is misleading — it implies arbitration between two
+values. The industry-standard term is "upsert."
+
+**Resolution — Keep `insert_or_resolve` for now, add alias later:**
+
+Rationale: The GitHub issue (#847) uses `insert_or_resolve` and the
+maintainer chose it deliberately. The name is more descriptive than `upsert`
+for this specific API where the lambda *resolves* what to do with the
+existing entry. We will not rename at this stage to avoid churn on the
+issue tracker. A `using upsert = insert_or_resolve` alias can be added
+post-merge if discoverability is a concern.
+
+**Status:** Deferred — not blocking.
+
+### 9.6 MEDIUM: Lambda Signature — Key Availability (API §2)
+
+**Finding:** The lambda cannot see which key it is resolving without
+capturing it.
+
+**Resolution — Provide two overloads via concepts (C++20):**
+
+```cpp
+// Overload 1: key-blind (common case)
+template <typename FN>
+  requires std::invocable<FN, value_type&>
+[[nodiscard]] bool insert_or_resolve(Key k, value_type v, FN fn);
+
+// Overload 2: key-aware
+template <typename FN>
+  requires std::invocable<FN, const Key&, value_type&>
+[[nodiscard]] bool insert_or_resolve(Key k, value_type v, FN fn);
+```
+
+The key-aware overload passes `k` (the original key argument) to the lambda.
+This is zero-cost — the key is already on the stack. SFINAE/concepts
+disambiguate at compile time.
+
+**Design change:** Update §4.1 to show both overloads.
+
+### 9.7 Resolved Open Questions (§8 Updates)
+
+**Q1 (`value_view` update):** Resolved — compile-time restriction in Phase 1.
+See §9.2.
+
+**Q2 (Lambda exception safety):** Confirmed safe. The lambda operates on a
+local copy. If it throws, the local copy is destroyed, read locks unwind via
+RAII (`read_critical_section` destructor is a no-op — it doesn't release
+anything, just stops checking). No write has occurred. The tree is unchanged.
+Add a note to §4.5.2 confirming this.
+
+**Q3 (Return type):** Keep `bool` for Phase 1 per issue spec. The caller
+knows the action because they returned it from the lambda. A richer return
+type can be added in Phase 2 if needed.
+
+**Q4 (Naming):** See §9.5 — keep `insert_or_resolve`.
