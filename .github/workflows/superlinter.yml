@@ -36,5 +36,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VALIDATE_ANSIBLE: false
-          VALIDATE_GITHUB_ACTIONS_ZIZMOR: true
           LINTER_RULES_PATH: .
