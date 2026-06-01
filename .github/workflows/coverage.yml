@@ -29,7 +29,7 @@ jobs:
             BUILD_TYPE: Release
 
     steps:
-      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
+      - uses: actions/checkout@v6
         with:
           submodules: true
           persist-credentials: false
@@ -76,13 +76,13 @@ jobs:
           make -j3 -k coverage
 
       - name: Upload lcov artifact
-        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
+        uses: actions/upload-artifact@v4
         with:
           name: lcov-${{matrix.BUILD_TYPE}}
           path: ${{github.workspace}}/build/test/coverage-*.info
 
       - name: Upload coverage data
-        uses: codecov/codecov-action@v5 # zizmor: ignore[unpinned-uses]
+        uses: codecov/codecov-action@v5
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           flags: ${{matrix.BUILD_TYPE}}

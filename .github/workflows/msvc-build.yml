@@ -56,13 +56,13 @@ jobs:
             preset: "msvc-static-analysis-release"
 
     steps:
-      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
+      - uses: actions/checkout@v6
         with:
           submodules: false
           persist-credentials: false
 
       - name: Setup command line tools
-        uses: ilammy/msvc-dev-cmd@v1 # zizmor: ignore[unpinned-uses]
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install cppcheck
         run: |
@@ -114,7 +114,7 @@ jobs:
               -ErrorAction SilentlyContinue
 
       - name: Upload SARIF as an Artifact
-        uses: actions/upload-artifact@v4 # zizmor: ignore[unpinned-uses]
+        uses: actions/upload-artifact@v4
         with:
           name: sarif-file-${{matrix.preset}}
           path: "${{github.workspace}}\\build\\${{matrix.preset}}\\msvc-${{matrix.preset}}.sarif"

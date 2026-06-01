@@ -32,7 +32,7 @@ jobs:
             arch: arm64
 
     steps:
-      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
+      - uses: actions/checkout@v6
         with:
           submodules: true
           persist-credentials: false
@@ -69,7 +69,7 @@ jobs:
             benchmark_n48.json benchmark_n256.json > benchmark_results.json
 
       - name: Analyze benchmark results with Nyrkiö
-        uses: nyrkio/change-detection@v2 # zizmor: ignore[unpinned-uses]
+        uses: nyrkio/change-detection@v2
         with:
           name: UnoDB Benchmarks (${{matrix.arch}})
           tool: "googlecpp"

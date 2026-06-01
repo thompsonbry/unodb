@@ -12,7 +12,7 @@ jobs:
   build-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6 # zizmor: ignore[unpinned-uses]
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - name: Install Doxygen
@@ -20,7 +20,7 @@ jobs:
       - name: Generate docs
         run: doxygen Doxyfile
       - name: Deploy docs
-        uses: peaceiris/actions-gh-pages@v4 # zizmor: ignore[unpinned-uses]
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs/html/
