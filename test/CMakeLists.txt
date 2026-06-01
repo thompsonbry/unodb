@@ -64,6 +64,7 @@ add_db_test_target(test_art_key_view_full_chain)
 add_db_test_target(test_art_iter)
 add_db_test_target(test_art_scan)
 add_db_test_target(test_art_concurrency)
+add_db_test_target(test_art_upsert)
 add_db_test_target(test_art_allocator)
 # - Google Test with MSVC standard library tries to allocate memory in the
 # exception-thrown-as-expected-path.
@@ -77,6 +78,7 @@ if (NOT MSVC AND NOT SANITIZE_ADDRESS AND NOT SANITIZE_THREAD
   target_link_libraries(test_qsbr_oom PRIVATE qsbr_test_utils)
 endif()
 target_link_libraries(test_art_concurrency PRIVATE qsbr_test_utils)
+target_link_libraries(test_art_upsert PRIVATE qsbr_test_utils)
 
 # Regression test: olc_db with custom allocator must link without libunodb_qsbr.
 # Intentionally links only unodb_util (header-only) and Threads, NOT unodb or

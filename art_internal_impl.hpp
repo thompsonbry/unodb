@@ -316,6 +316,20 @@ class [[nodiscard]] basic_leaf final : public Header {
     }
   }
 
+  /// Overwrite the value stored in this leaf.
+  ///
+  /// \pre Value must be trivially copyable and not value_view (leaf size is
+  /// fixed at allocation time).
+  template <typename Value>
+  constexpr void set_value(const Value& v) noexcept {
+    static_assert(!std::is_same_v<Value, value_view>,
+                  "set_value cannot be used with value_view — leaf size is "
+                  "fixed");
+    static_assert(std::is_trivially_copyable_v<Value>);
+    // cppcheck-suppress memsetClass
+    std::memcpy(data + key_size, &v, sizeof(v));
+  }
+
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
@@ -421,6 +435,16 @@ class [[nodiscard]] basic_leaf<no_key_tag, Header> final : public Header {
       return v;
       // LCOV_EXCL_STOP
     }
+  }
+
+  /// Overwrite the value stored in this leaf.
+  template <typename Value>
+  constexpr void set_value(const Value& v) noexcept {
+    static_assert(!std::is_same_v<Value, value_view>,
+                  "set_value cannot be used with value_view — leaf size is "
+                  "fixed");
+    static_assert(std::is_trivially_copyable_v<Value>);
+    std::memcpy(data, &v, sizeof(v));
   }
 
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()

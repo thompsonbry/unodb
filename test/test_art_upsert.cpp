@@ -26,6 +26,8 @@
 
 namespace {
 
+using namespace unodb::test;  // NOLINT(google-build-using-namespace)
+
 // ===================================================================
 // Helper lambdas shared across tests.
 // ===================================================================
@@ -85,7 +87,7 @@ UNODB_TYPED_TEST_SUITE(UpsertTest, UpsertTypes)
 // ===================================================================
 
 // ID-1: Returns true, get(k)==v, lambda not called.
-UNODB_TYPED_TEST(UpsertTest, insert_path_key_absent) {
+UNODB_TYPED_TEST(UpsertTest, InsertPathKeyAbsent) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -104,7 +106,7 @@ UNODB_TYPED_TEST(UpsertTest, insert_path_key_absent) {
 }
 
 // ID-2: Returns false, get(k)==v0 (original value unchanged).
-UNODB_TYPED_TEST(UpsertTest, keep_key_present) {
+UNODB_TYPED_TEST(UpsertTest, KeepKeyPresent) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -119,7 +121,7 @@ UNODB_TYPED_TEST(UpsertTest, keep_key_present) {
 }
 
 // ID-3: Returns false, get(k)==42 (lambda mutated value).
-UNODB_TYPED_TEST(UpsertTest, update_key_present) {
+UNODB_TYPED_TEST(UpsertTest, UpdateKeyPresent) {
   if constexpr (std::is_same_v<typename TypeParam::value_type,
                                unodb::value_view>) {
     GTEST_SKIP() << "update not supported for value_view types";
@@ -143,7 +145,7 @@ UNODB_TYPED_TEST(UpsertTest, update_key_present) {
 }
 
 // ID-4: Returns false both times, get(k)==v0+20.
-UNODB_TYPED_TEST(UpsertTest, update_idempotency) {
+UNODB_TYPED_TEST(UpsertTest, UpdateIdempotency) {
   if constexpr (std::is_same_v<typename TypeParam::value_type,
                                unodb::value_view>) {
     GTEST_SKIP() << "update not supported for value_view types";
@@ -165,7 +167,7 @@ UNODB_TYPED_TEST(UpsertTest, update_idempotency) {
 }
 
 // ID-5: Returns false, get(k) empty.
-UNODB_TYPED_TEST(UpsertTest, erase_key_present) {
+UNODB_TYPED_TEST(UpsertTest, EraseKeyPresent) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -181,7 +183,7 @@ UNODB_TYPED_TEST(UpsertTest, erase_key_present) {
 }
 
 // ID-6: Mixed operations across 100 keys.
-UNODB_TYPED_TEST(UpsertTest, mixed_operations) {
+UNODB_TYPED_TEST(UpsertTest, MixedOperations) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   // Insert keys 0..99 with value = get_test_value(i)
@@ -215,7 +217,7 @@ UNODB_TYPED_TEST(UpsertTest, mixed_operations) {
 }
 
 // ID-14: Single-entry tree, all three actions verified sequentially.
-UNODB_TYPED_TEST(UpsertTest, root_leaf_all_actions) {
+UNODB_TYPED_TEST(UpsertTest, RootLeafAllActions) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -236,7 +238,7 @@ UNODB_TYPED_TEST(UpsertTest, root_leaf_all_actions) {
 }
 
 // ID-15: Empty tree, insert path returns true.
-UNODB_TYPED_TEST(UpsertTest, empty_tree) {
+UNODB_TYPED_TEST(UpsertTest, EmptyTree) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(42);
@@ -246,7 +248,7 @@ UNODB_TYPED_TEST(UpsertTest, empty_tree) {
 }
 
 // ID-16: Tree cleared, insert path returns true.
-UNODB_TYPED_TEST(UpsertTest, after_clear) {
+UNODB_TYPED_TEST(UpsertTest, AfterClear) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -262,7 +264,7 @@ UNODB_TYPED_TEST(UpsertTest, after_clear) {
 // ===================================================================
 
 // ID-11: uint64_t key + uint64_t value (VIS), keep/update/erase.
-UNODB_TYPED_TEST(UpsertTest, type_coverage_u64_u64) {
+UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64U64) {
   // This test applies only to u64-key + u64-value types (none in current suite).
   // Exercised via key_view_u64val types which are the VIS types available.
   if constexpr (!std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
@@ -291,7 +293,7 @@ UNODB_TYPED_TEST(UpsertTest, type_coverage_u64_u64) {
 }
 
 // ID-12: key_view key + uint64_t value (VIS), keep/update/erase.
-UNODB_TYPED_TEST(UpsertTest, type_coverage_key_view_u64) {
+UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewU64) {
   if constexpr (!std::is_same_v<typename TypeParam::key_type, unodb::key_view> ||
                 !std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
     GTEST_SKIP() << "Only applies to key_view + u64 value types";
@@ -319,7 +321,7 @@ UNODB_TYPED_TEST(UpsertTest, type_coverage_key_view_u64) {
 }
 
 // ID-13: key_view key + value_view value, keep/erase only.
-UNODB_TYPED_TEST(UpsertTest, type_coverage_key_view_value_view) {
+UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewValueView) {
   if constexpr (!std::is_same_v<typename TypeParam::key_type, unodb::key_view> ||
                 !std::is_same_v<typename TypeParam::value_type, unodb::value_view>) {
     GTEST_SKIP() << "Only applies to key_view + value_view types";
@@ -341,7 +343,7 @@ UNODB_TYPED_TEST(UpsertTest, type_coverage_key_view_value_view) {
 }
 
 // ID-13b: uint64_t key + value_view value, keep/erase only.
-UNODB_TYPED_TEST(UpsertTest, type_coverage_u64_value_view) {
+UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64ValueView) {
   if constexpr (!std::is_same_v<typename TypeParam::key_type, std::uint64_t> ||
                 !std::is_same_v<typename TypeParam::value_type, unodb::value_view>) {
     GTEST_SKIP() << "Only applies to u64 key + value_view types";
@@ -367,7 +369,7 @@ UNODB_TYPED_TEST(UpsertTest, type_coverage_u64_value_view) {
 // ===================================================================
 
 // ID-23a: Erase triggers I16→I4 shrink.
-UNODB_TYPED_TEST(UpsertTest, erase_triggers_shrink) {
+UNODB_TYPED_TEST(UpsertTest, EraseTriggersShrink) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   // Insert 5 keys to create an I16 node, then erase one to trigger shrink to I4
@@ -395,7 +397,7 @@ UNODB_TYPED_TEST(UpsertTest, erase_triggers_shrink) {
 }
 
 // ID-23b: Erase triggers chain cut (key_view types).
-UNODB_TYPED_TEST(UpsertTest, erase_triggers_chain_cut) {
+UNODB_TYPED_TEST(UpsertTest, EraseTriggersChainCut) {
   if constexpr (!std::is_same_v<typename TypeParam::key_type, unodb::key_view>) {
     GTEST_SKIP() << "Chain cut only applies to key_view types";
   } else {
@@ -425,7 +427,7 @@ UNODB_TYPED_TEST(UpsertTest, erase_triggers_chain_cut) {
 }
 
 // ID-23c: Erase root leaf, tree becomes empty.
-UNODB_TYPED_TEST(UpsertTest, erase_root_leaf) {
+UNODB_TYPED_TEST(UpsertTest, EraseRootLeaf) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -439,7 +441,7 @@ UNODB_TYPED_TEST(UpsertTest, erase_root_leaf) {
 }
 
 // ID-23d: Erase packed VIS value, slot cleared.
-UNODB_TYPED_TEST(UpsertTest, erase_vis_value) {
+UNODB_TYPED_TEST(UpsertTest, EraseVisValue) {
   if constexpr (!std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
     GTEST_SKIP() << "Only applies to VIS (u64 value) types";
   } else {
@@ -456,7 +458,7 @@ UNODB_TYPED_TEST(UpsertTest, erase_vis_value) {
 }
 
 // ID-23e: Erase then re-upsert inserts with new value.
-UNODB_TYPED_TEST(UpsertTest, erase_then_reinsert) {
+UNODB_TYPED_TEST(UpsertTest, EraseThenReinsert) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -480,7 +482,7 @@ UNODB_TYPED_TEST(UpsertTest, erase_then_reinsert) {
 // ID-C1: static_assert rejects bad lambda (compile-time negative test).
 // Note: This is a negative compilation test; verified via build system.
 // Placeholder test documents the requirement.
-UNODB_TYPED_TEST(UpsertTest, static_assert_rejects_bad_lambda) {
+UNODB_TYPED_TEST(UpsertTest, StaticAssertRejectsBadLambda) {
   // Compile-time verification: a lambda returning int or void instead of
   // upsert_action would fail the static_assert in db::upsert. This cannot
   // be tested at runtime. The build system's negative compilation tests
@@ -489,7 +491,7 @@ UNODB_TYPED_TEST(UpsertTest, static_assert_rejects_bad_lambda) {
 }
 
 // ID-C3: Mutations discarded on erase.
-UNODB_TYPED_TEST(UpsertTest, mutations_discarded_on_erase) {
+UNODB_TYPED_TEST(UpsertTest, MutationsDiscardedOnErase) {
   if constexpr (!std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
     GTEST_SKIP() << "Mutation test requires mutable u64 value type";
   } else {
@@ -518,7 +520,7 @@ UNODB_TYPED_TEST(UpsertTest, mutations_discarded_on_erase) {
 }
 
 // ID-C4: Throwing lambda leaves tree unchanged.
-UNODB_TYPED_TEST(UpsertTest, throwing_lambda_tree_unchanged) {
+UNODB_TYPED_TEST(UpsertTest, ThrowingLambdaTreeUnchanged) {
   unodb::test::tree_verifier<TypeParam> verifier;
   auto& db = verifier.get_db();
   const auto k = verifier.coerce_key(1);
@@ -527,9 +529,11 @@ UNODB_TYPED_TEST(UpsertTest, throwing_lambda_tree_unchanged) {
   // Lambda throws
   with_qsbr<TypeParam>([&] {
     UNODB_ASSERT_THROW(
-        std::ignore = db.upsert(k, v, [](auto& /*x*/) -> unodb::upsert_action {
-          throw std::runtime_error("test");
-        }),
+        std::ignore = db.upsert(k, v,
+                                [](auto& /*x*/) {
+                                  throw std::runtime_error("test");
+                                  return unodb::upsert_action::keep;  // unreachable
+                                }),
         std::runtime_error);
   });
   // Tree unchanged
@@ -606,53 +610,53 @@ UNODB_TYPED_TEST_SUITE(UpsertConcurrencyTest, UpsertConcurrencyTypes)
 // ===================================================================
 
 // ID-7: No crashes, all get(k) return valid values, tree size==N.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, upsert_plus_get) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertPlusGet) {
+  // TODO(laurynas): implement
 }
 
 // ID-8: All keys present, get(k)==expected for each range, size==sum.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, upsert_disjoint) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertDisjoint) {
+  // TODO(laurynas): implement
 }
 
 // ID-9: get(k)==final_value, lambda applied exactly once, size unchanged.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, olc_restart) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, OlcRestart) {
+  // TODO(laurynas): implement
 }
 
 // ID-10: get(k) returns updated value OR empty, size==0 or 1.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, upsert_vs_remove) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertVsRemove) {
+  // TODO(laurynas): implement
 }
 
 // ID-17: Final value == N (all increments applied).
-UNODB_TYPED_TEST(UpsertConcurrencyTest, cas_increment) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, CasIncrement) {
+  // TODO(laurynas): implement
 }
 
 // ID-18: Both keys present, T1's value==lambda result, node counts correct.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, cas_during_growth) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, CasDuringGrowth) {
+  // TODO(laurynas): implement
 }
 
 // ID-19: T1 inserts, get(k)==v.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, cas_key_removed) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, CasKeyRemoved) {
+  // TODO(laurynas): implement
 }
 
 // ID-20: Scan sees old or new value, never torn.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, cas_plus_scan) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, CasPlusScan) {
+  // TODO(laurynas): implement
 }
 
 // ID-21: No crashes, tree size>=0, all get(k) valid, no ASAN/TSan errors.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, random_ops_stress) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, RandomOpsStress) {
+  // TODO(laurynas): implement
 }
 
 // ID-22: Value==N updates, lambda called>=N.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, idempotency_under_contention) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, IdempotencyUnderContention) {
+  // TODO(laurynas): implement
 }
 
 // ===================================================================
@@ -660,18 +664,18 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, idempotency_under_contention) {
 // ===================================================================
 
 // ID-23: Version mismatch → retry → erase or re-invoke.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, erase_cas_retry) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseCasRetry) {
+  // TODO(laurynas): implement
 }
 
 // ID-23f: Exactly one erases, other inserts. Post: key present, size==1.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, concurrent_erase_x_erase) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, ConcurrentEraseXErase) {
+  // TODO(laurynas): implement
 }
 
 // ID-23g: T1 erase paused, T2 removes, T1 resumes → insert path.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, erase_after_concurrent_remove) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseAfterConcurrentRemove) {
+  // TODO(laurynas): implement
 }
 
 // ===================================================================
@@ -679,18 +683,18 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, erase_after_concurrent_remove) {
 // ===================================================================
 
 // ID-C2: Lambda's second invocation receives a different value.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, lambda_sees_different_values) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, LambdaSeesDifferentValues) {
+  // TODO(laurynas): implement
 }
 
 // ID-C5: upsert_erase_retry_count increments (STATS build only).
-UNODB_TYPED_TEST(UpsertConcurrencyTest, stats_counter_increments) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, StatsCounterIncrements) {
+  // TODO(laurynas): implement
 }
 
 // ID-C6: Value committed even when parent RCS fails after write_guard.
-UNODB_TYPED_TEST(UpsertConcurrencyTest, parent_rcs_fail_after_commit) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
+  // TODO(laurynas): implement
 }
 
 // ===================================================================
@@ -713,13 +717,13 @@ using UpsertOOMTypes =
 UNODB_TYPED_TEST_SUITE(UpsertOOMTest, UpsertOOMTypes)
 
 // ID-OOM-1: Insert path OOM — std::bad_alloc, tree unchanged.
-UNODB_TYPED_TEST(UpsertOOMTest, insert_path_oom) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertOOMTest, InsertPathOom) {
+  // TODO(laurynas): implement
 }
 
 // ID-OOM-2: Erase shrink OOM — std::bad_alloc, key still present.
-UNODB_TYPED_TEST(UpsertOOMTest, erase_shrink_oom) {
-  // TODO: implement
+UNODB_TYPED_TEST(UpsertOOMTest, EraseShrinkOom) {
+  // TODO(laurynas): implement
 }
 
 #endif  // NDEBUG
