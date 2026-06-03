@@ -58,6 +58,12 @@ inline sync_point sync_before_remove_write_guard;
 inline sync_point sync_before_insert_grow_guard;
 inline sync_point sync_before_nonfull_chain_guard;
 
+/// Sync point: fires in try_upsert after duplicate detected and value read,
+/// before version checks. Allows tests to interleave writers at the CAS
+/// observation point regardless of the lambda's return action.
+inline sync_point sync_after_upsert_dup_found;
+
+
 /// OLC ART node header contains an unodb::optimistic_lock object for this node.
 ///
 /// The node type is constant throughout the node lifetime, is stored outside of
@@ -2732,6 +2738,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
         UNODB_DETAIL_ASSERT(remaining_key.size() == 0);
         auto* const leaf{node.template ptr<leaf_type*>()};
         auto local = leaf->template get_value<value_type>();
+        detail::sync(detail::sync_after_upsert_dup_found);
         if (!parent_critical_section.check()) return {};
         if (!node_critical_section.check()) return {};
         const auto action = fn(local);
@@ -2785,6 +2792,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
         if (k.cmp(existing_key) == 0) {
           // Duplicate found — keyed leaf.
           auto local = leaf->template get_value<value_type>();
+          detail::sync(detail::sync_after_upsert_dup_found);
           if (!parent_critical_section.check()) return {};
           if (!node_critical_section.check()) return {};
           const auto action = fn(local);
@@ -3013,6 +3021,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
         // VIS duplicate — unpack, call lambda, handle action.
         UNODB_DETAIL_ASSERT(remaining_key.size() == 1);
         auto local = art_policy::unpack_value(child_in_parent->load());
+        detail::sync(detail::sync_after_upsert_dup_found);
         if (!node_critical_section.check()) return {};
         const auto action = fn(local);
         switch (action) {

@@ -815,6 +815,13 @@ class [[nodiscard]] tree_verifier final {
 
   const bool parallel_test;
 
+ public:
+  /// Pre-allocate storage for key_views to prevent reallocation.
+  /// Call before using coerce_key() when multiple keys will be created and
+  /// their key_view spans must remain valid simultaneously.
+  void reserve_keys(std::size_t n) { key_views.reserve(n); }
+
+ private:
   /// Arrays backing unodb::key_view objects.
   std::vector<std::array<std::byte, sizeof(std::uint64_t)>> key_views{};
 };

@@ -3,6 +3,7 @@
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -30,6 +31,27 @@
 namespace {
 
 using namespace unodb::test;  // NOLINT(google-build-using-namespace)
+
+// ===================================================================
+// Thread-safe key encoding for parallel tests.
+// ===================================================================
+
+/// Encode a key into caller-owned storage. For key_view dbs, encodes into
+/// buf and returns a key_view backed by it. For u64 dbs, returns the key
+/// directly (buf unused).
+template <class Db>
+typename Db::key_type make_local_key(
+    std::size_t i, [[maybe_unused]] unodb::key_encoder& enc,
+    [[maybe_unused]] std::array<std::byte, sizeof(std::uint64_t)>& buf) {
+  if constexpr (std::is_same_v<typename Db::key_type, unodb::key_view>) {
+    const auto kv =
+        enc.reset().encode(static_cast<std::uint64_t>(i)).get_key_view();
+    std::ranges::copy(kv, buf.begin());
+    return {buf.data(), buf.size()};
+  } else {
+    return static_cast<typename Db::key_type>(i);
+  }
+}
 
 // ===================================================================
 // Helper lambdas shared across tests.
@@ -579,6 +601,7 @@ class UpsertConcurrencyTest : public ::testing::Test {
   // NOLINTNEXTLINE(bugprone-exception-escape)
   UpsertConcurrencyTest() noexcept {
     if constexpr (unodb::test::is_olc_db<Db>) unodb::test::expect_idle_qsbr();
+    verifier.reserve_keys(128);
   }
 
   template <std::size_t ThreadCount, std::size_t OpsPerThread, typename TestFn>
@@ -626,8 +649,11 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertPlusGet) {
       [](unodb::test::tree_verifier<TypeParam>* tv, std::size_t thread_i,
          std::size_t ops_per_thread) {
         auto& d = tv->get_db();
+        unodb::key_encoder enc;
+        std::array<std::byte, sizeof(std::uint64_t)> buf{};
         for (std::size_t i = 0; i < ops_per_thread; ++i) {
-          const auto key = tv->coerce_key(thread_i * ops_per_thread + i);
+          const auto key =
+              make_local_key<TypeParam>(thread_i * ops_per_thread + i, enc, buf);
           auto v = unodb::test::get_test_value<TypeParam>(i);
           const unodb::quiescent_state_on_scope_exit q{};
           if (thread_i < 2) {
@@ -657,9 +683,11 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertDisjoint) {
       [](unodb::test::tree_verifier<TypeParam>* tv, std::size_t thread_i,
          std::size_t ops_per_thread) {
         auto& d = tv->get_db();
+        unodb::key_encoder enc;
+        std::array<std::byte, sizeof(std::uint64_t)> buf{};
         const auto base = thread_i * 1000;
         for (std::size_t i = 0; i < ops_per_thread; ++i) {
-          const auto key = tv->coerce_key(base + i);
+          const auto key = make_local_key<TypeParam>(base + i, enc, buf);
           auto v = unodb::test::get_test_value<TypeParam>(i);
           const unodb::quiescent_state_on_scope_exit q{};
           std::ignore = d.upsert(key, v, keep_fn);
@@ -682,6 +710,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertDisjoint) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, OlcRestart) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(42);
+  const auto other_key = this->verifier.coerce_key(99);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
   auto v1 = unodb::test::get_test_value<TypeParam>(1);
 
@@ -692,14 +721,12 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, OlcRestart) {
   }
 
   // Arm sync point to force upgrade failure on first attempt
-  const sync_point_guard guard{unodb::detail::sync_before_remove_write_guard};
-  unodb::detail::sync_before_remove_write_guard.arm([&]() {
-    unodb::detail::sync_before_remove_write_guard.disarm();
+  const sync_point_guard guard{unodb::detail::sync_after_upsert_dup_found};
+  unodb::detail::sync_after_upsert_dup_found.arm([&]() {
+    unodb::detail::sync_after_upsert_dup_found.disarm();
     unodb::detail::thread_syncs[0].notify();
     unodb::detail::thread_syncs[1].wait();
   });
-
-  const auto other_key = this->verifier.coerce_key(99);
 
   unodb::this_thread().qsbr_pause();
 
@@ -784,7 +811,9 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, CasIncrement) {
       [](unodb::test::tree_verifier<TypeParam>* tv, std::size_t /*thread_i*/,
          std::size_t /*ops_per_thread*/) {
         auto& d = tv->get_db();
-        const auto k = tv->coerce_key(1);
+        unodb::key_encoder enc;
+        std::array<std::byte, sizeof(std::uint64_t)> buf{};
+        const auto k = make_local_key<TypeParam>(1, enc, buf);
         auto v = unodb::test::get_test_value<TypeParam>(0);
         const unodb::quiescent_state_on_scope_exit q{};
         std::ignore = d.upsert(k, v, increment_fn);
@@ -804,21 +833,24 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, CasIncrement) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, CasDuringGrowth) {
   auto& db = this->verifier.get_db();
 
+  const auto upsert_key = this->verifier.coerce_key(0);
+  const auto growth_key = this->verifier.coerce_key(4);
+
   // Fill I4 to capacity (4 keys)
   for (std::size_t i = 0; i < 4; ++i) {
     const unodb::quiescent_state_on_scope_exit q{};
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(i),
+    unodb::key_encoder enc;
+    std::array<std::byte, sizeof(std::uint64_t)> buf{};
+    UNODB_ASSERT_TRUE(db.insert(make_local_key<TypeParam>(i, enc, buf),
                                 unodb::test::get_test_value<TypeParam>(i)));
   }
 
-  const auto upsert_key = this->verifier.coerce_key(0);
-  const auto growth_key = this->verifier.coerce_key(4);
   auto gv = unodb::test::get_test_value<TypeParam>(4);
 
-  // Arm sync point: T1 pauses before upgrade, T2 triggers I4→I16
-  const sync_point_guard guard{unodb::detail::sync_before_insert_grow_guard};
-  unodb::detail::sync_before_insert_grow_guard.arm([&]() {
-    unodb::detail::sync_before_insert_grow_guard.disarm();
+  // Arm sync point: T1 pauses at dup-found, T2 triggers I4→I16
+  const sync_point_guard guard{unodb::detail::sync_after_upsert_dup_found};
+  unodb::detail::sync_after_upsert_dup_found.arm([&]() {
+    unodb::detail::sync_after_upsert_dup_found.disarm();
     unodb::detail::thread_syncs[0].notify();
     unodb::detail::thread_syncs[1].wait();
   });
@@ -853,6 +885,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, CasDuringGrowth) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, CasKeyRemoved) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(5);
+  const auto sibling_key = this->verifier.coerce_key(99);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
   auto v1 = unodb::test::get_test_value<TypeParam>(1);
 
@@ -864,14 +897,14 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, CasKeyRemoved) {
   // Need a second key so the tree isn't just a root leaf
   {
     const unodb::quiescent_state_on_scope_exit q{};
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(99),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(2)));
   }
 
   // T1 finds duplicate, pauses. T2 removes the key.
-  const sync_point_guard guard{unodb::detail::sync_before_remove_write_guard};
-  unodb::detail::sync_before_remove_write_guard.arm([&]() {
-    unodb::detail::sync_before_remove_write_guard.disarm();
+  const sync_point_guard guard{unodb::detail::sync_after_upsert_dup_found};
+  unodb::detail::sync_after_upsert_dup_found.arm([&]() {
+    unodb::detail::sync_after_upsert_dup_found.disarm();
     unodb::detail::thread_syncs[0].notify();
     unodb::detail::thread_syncs[1].wait();
   });
@@ -957,12 +990,14 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, RandomOpsStress) {
       [](unodb::test::tree_verifier<TypeParam>* tv, std::size_t thread_i,
          std::size_t ops_per_thread) {
         auto& d = tv->get_db();
+        unodb::key_encoder enc;
+        std::array<std::byte, sizeof(std::uint64_t)> buf{};
         std::mt19937 gen{static_cast<unsigned>(thread_i * 7919)};
         std::uniform_int_distribution<std::size_t> key_dist{0, key_range - 1};
         std::uniform_int_distribution<int> op_dist{0, 3};
 
         for (std::size_t i = 0; i < ops_per_thread; ++i) {
-          const auto k = tv->coerce_key(key_dist(gen));
+          const auto k = make_local_key<TypeParam>(key_dist(gen), enc, buf);
           auto v = unodb::test::get_test_value<TypeParam>(i % 6);
           const unodb::quiescent_state_on_scope_exit q{};
           switch (op_dist(gen)) {
@@ -1006,8 +1041,10 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, IdempotencyUnderContention) {
       [](unodb::test::tree_verifier<TypeParam>* tv, std::size_t /*thread_i*/,
          std::size_t ops_per_thread) {
         auto& d = tv->get_db();
+        unodb::key_encoder enc;
+        std::array<std::byte, sizeof(std::uint64_t)> buf{};
         for (std::size_t i = 0; i < ops_per_thread; ++i) {
-          const auto k = tv->coerce_key(i);
+          const auto k = make_local_key<TypeParam>(i, enc, buf);
           auto v = unodb::test::get_test_value<TypeParam>(0);
           const unodb::quiescent_state_on_scope_exit q{};
           std::ignore = d.upsert(k, v, increment_fn);
@@ -1034,6 +1071,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, IdempotencyUnderContention) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseCasRetry) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(3);
+  const auto sibling_key = this->verifier.coerce_key(77);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
 
   // Pre-insert
@@ -1041,7 +1079,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseCasRetry) {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
     // Second key to avoid root-leaf special case
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(77),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(1)));
   }
 
@@ -1075,6 +1113,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseCasRetry) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, ConcurrentEraseXErase) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(11);
+  const auto sibling_key = this->verifier.coerce_key(88);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
   auto v1 = unodb::test::get_test_value<TypeParam>(1);
 
@@ -1082,7 +1121,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ConcurrentEraseXErase) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(88),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(2)));
   }
 
@@ -1126,6 +1165,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ConcurrentEraseXErase) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseAfterConcurrentRemove) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(13);
+  const auto sibling_key = this->verifier.coerce_key(77);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
   auto v1 = unodb::test::get_test_value<TypeParam>(1);
 
@@ -1133,7 +1173,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseAfterConcurrentRemove) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(77),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(2)));
   }
 
@@ -1180,21 +1220,22 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseAfterConcurrentRemove) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, LambdaSeesDifferentValues) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(20);
+  const auto sibling_key = this->verifier.coerce_key(55);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
 
   // Pre-insert
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(55),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(2)));
   }
 
   std::atomic<int> lambda_call_count{0};
 
-  const sync_point_guard guard{unodb::detail::sync_before_remove_write_guard};
-  unodb::detail::sync_before_remove_write_guard.arm([&]() {
-    unodb::detail::sync_before_remove_write_guard.disarm();
+  const sync_point_guard guard{unodb::detail::sync_after_upsert_dup_found};
+  unodb::detail::sync_after_upsert_dup_found.arm([&]() {
+    unodb::detail::sync_after_upsert_dup_found.disarm();
     unodb::detail::thread_syncs[0].notify();
     unodb::detail::thread_syncs[1].wait();
   });
@@ -1211,9 +1252,14 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, LambdaSeesDifferentValues) {
 
   auto t1 = unodb::qsbr_thread([&] {
     const unodb::quiescent_state_on_scope_exit q{};
-    std::ignore = db.upsert(key, v0, [&lambda_call_count](auto& /*v*/) {
+    std::ignore = db.upsert(key, v0, [&lambda_call_count](auto& v) {
       lambda_call_count.fetch_add(1, std::memory_order_relaxed);
-      return unodb::upsert_action::update;
+      if constexpr (std::is_arithmetic_v<std::remove_reference_t<decltype(v)>>) {
+        return unodb::upsert_action::update;
+      } else {
+        (void)v;
+        return unodb::upsert_action::keep;
+      }
     });
   });
 
@@ -1233,13 +1279,14 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, LambdaSeesDifferentValues) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, StatsCounterIncrements) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(30);
+  const auto sibling_key = this->verifier.coerce_key(66);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
 
   // Pre-insert
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(66),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(1)));
   }
 
@@ -1274,21 +1321,23 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, StatsCounterIncrements) {
 UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
   auto& db = this->verifier.get_db();
   const auto key = this->verifier.coerce_key(40);
+  const auto sibling_key = this->verifier.coerce_key(41);
+  const auto t2_key = this->verifier.coerce_key(42);
   auto v0 = unodb::test::get_test_value<TypeParam>(0);
 
   // Pre-insert key under a parent node
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(41),
+    UNODB_ASSERT_TRUE(db.insert(sibling_key,
                                 unodb::test::get_test_value<TypeParam>(1)));
   }
 
-  // T1 upserts key. After write_guard acquired and value written,
-  // T2 modifies parent to invalidate parent RCS.
-  const sync_point_guard guard{unodb::detail::sync_before_insert_grow_guard};
-  unodb::detail::sync_before_insert_grow_guard.arm([&]() {
-    unodb::detail::sync_before_insert_grow_guard.disarm();
+  // T1 upserts key. After dup found, T2 modifies parent to
+  // invalidate parent RCS, testing that value commit survives.
+  const sync_point_guard guard{unodb::detail::sync_after_upsert_dup_found};
+  unodb::detail::sync_after_upsert_dup_found.arm([&]() {
+    unodb::detail::sync_after_upsert_dup_found.disarm();
     unodb::detail::thread_syncs[0].notify();
     unodb::detail::thread_syncs[1].wait();
   });
@@ -1298,7 +1347,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
   auto t2 = unodb::qsbr_thread([&] {
     unodb::detail::thread_syncs[0].wait();
     const unodb::quiescent_state_on_scope_exit q{};
-    std::ignore = db.insert(this->verifier.coerce_key(42),
+    std::ignore = db.insert(t2_key,
                             unodb::test::get_test_value<TypeParam>(2));
     unodb::detail::thread_syncs[1].notify();
   });
