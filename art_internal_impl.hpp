@@ -97,15 +97,20 @@ template <bool Enabled, class T, std::size_t N>
 struct value_bitmask_field<Enabled, std::array<T, N>> {
   std::array<T, N> bits{};
 
+  // OLC reads these fields optimistically (without a write lock) and validates
+  // afterward via version check.  TSan cannot model this protocol, so suppress.
+  UNODB_DETAIL_DISABLE_TSAN
   [[nodiscard]] constexpr bool test(std::uint8_t i) const noexcept {
     return (static_cast<unsigned>(bits[static_cast<std::size_t>(i) / 8]) >>
             (static_cast<unsigned>(i) % 8U)) &
            1U;
   }
+  UNODB_DETAIL_DISABLE_TSAN
   constexpr void set(std::uint8_t i) noexcept {
     bits[static_cast<std::size_t>(i) / 8] |=
         static_cast<T>(T{1} << (static_cast<unsigned>(i) % 8U));
   }
+  UNODB_DETAIL_DISABLE_TSAN
   constexpr void clear(std::uint8_t i) noexcept {
     bits[static_cast<std::size_t>(i) / 8] &=
         static_cast<T>(~(T{1} << (static_cast<unsigned>(i) % 8U)));

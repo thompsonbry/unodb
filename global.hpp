@@ -320,6 +320,13 @@
 #endif
 #endif
 
+/// Suppress TSan for functions with benign races (e.g., OLC optimistic reads).
+#ifdef UNODB_DETAIL_THREAD_SANITIZER
+#define UNODB_DETAIL_DISABLE_TSAN __attribute__((no_sanitize("thread")))
+#else
+#define UNODB_DETAIL_DISABLE_TSAN
+#endif
+
 /// \}
 
 #define UNODB_DETAIL_DO_PRAGMA(x) _Pragma(#x)

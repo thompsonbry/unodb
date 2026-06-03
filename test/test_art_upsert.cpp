@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <new>
 #include <random>
 #include <stdexcept>
 #include <tuple>
@@ -115,14 +116,11 @@ class UpsertTest : public ::testing::Test {
 
 // All db types: u64 key + value_view, key_view + value_view,
 // key_view + u64 value (VIS types).
-using UpsertTypes =
-    ::testing::Types<unodb::test::u64_db, unodb::test::u64_mutex_db,
-                     unodb::test::u64_olc_db, unodb::test::key_view_db,
-                     unodb::test::key_view_mutex_db,
-                     unodb::test::key_view_olc_db,
-                     unodb::test::key_view_u64val_db,
-                     unodb::test::key_view_u64val_mutex_db,
-                     unodb::test::key_view_u64val_olc_db>;
+using UpsertTypes = ::testing::Types<
+    unodb::test::u64_db, unodb::test::u64_mutex_db, unodb::test::u64_olc_db,
+    unodb::test::key_view_db, unodb::test::key_view_mutex_db,
+    unodb::test::key_view_olc_db, unodb::test::key_view_u64val_db,
+    unodb::test::key_view_u64val_mutex_db, unodb::test::key_view_u64val_olc_db>;
 
 UNODB_TYPED_TEST_SUITE(UpsertTest, UpsertTypes)
 
@@ -137,13 +135,12 @@ UNODB_TYPED_TEST(UpsertTest, InsertPathKeyAbsent) {
   const auto k = verifier.coerce_key(1);
   const auto v = unodb::test::get_test_value<TypeParam>(0);
   bool lambda_called = false;
-  const auto result =
-      with_qsbr<TypeParam>([&] {
-        return db.upsert(k, v, [&lambda_called](auto& /*x*/) {
-          lambda_called = true;
-          return unodb::upsert_action::keep;
-        });
-      });
+  const auto result = with_qsbr<TypeParam>([&] {
+    return db.upsert(k, v, [&lambda_called](auto& /*x*/) {
+      lambda_called = true;
+      return unodb::upsert_action::keep;
+    });
+  });
   UNODB_ASSERT_TRUE(result);
   UNODB_ASSERT_FALSE(lambda_called);
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v);
@@ -157,9 +154,8 @@ UNODB_TYPED_TEST(UpsertTest, KeepKeyPresent) {
   const auto v0 = unodb::test::get_test_value<TypeParam>(0);
   const auto v1 = unodb::test::get_test_value<TypeParam>(1);
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
-  const auto result = with_qsbr<TypeParam>([&] {
-    return db.upsert(k, v1, keep_fn);
-  });
+  const auto result =
+      with_qsbr<TypeParam>([&] { return db.upsert(k, v1, keep_fn); });
   UNODB_ASSERT_FALSE(result);
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v0);
 }
@@ -217,13 +213,11 @@ UNODB_TYPED_TEST(UpsertTest, EraseKeyPresent) {
   const auto k = verifier.coerce_key(1);
   const auto v = unodb::test::get_test_value<TypeParam>(0);
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v)); });
-  const auto result = with_qsbr<TypeParam>([&] {
-    return db.upsert(k, v, erase_fn);
-  });
+  const auto result =
+      with_qsbr<TypeParam>([&] { return db.upsert(k, v, erase_fn); });
   UNODB_ASSERT_FALSE(result);
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-  });
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
 }
 
 // ID-6: Mixed operations across 100 keys.
@@ -241,17 +235,18 @@ UNODB_TYPED_TEST(UpsertTest, MixedOperations) {
     const auto k = verifier.coerce_key(i);
     const auto v = unodb::test::get_test_value<TypeParam>(i);
     if (i < 50) {
-      with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
+      with_qsbr<TypeParam>(
+          [&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
     } else {
-      with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, keep_fn)); });
+      with_qsbr<TypeParam>(
+          [&] { UNODB_ASSERT_FALSE(db.upsert(k, v, keep_fn)); });
     }
   }
   // Verify: keys 0..49 absent, keys 50..99 present
   for (std::size_t i = 0; i < 50; ++i) {
     const auto k = verifier.coerce_key(i);
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   }
   for (std::size_t i = 50; i < 100; ++i) {
     const auto k = verifier.coerce_key(i);
@@ -275,9 +270,8 @@ UNODB_TYPED_TEST(UpsertTest, RootLeafAllActions) {
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v0);
   // Erase
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v1, erase_fn)); });
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-  });
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.empty()); });
 }
 
@@ -309,7 +303,8 @@ UNODB_TYPED_TEST(UpsertTest, AfterClear) {
 
 // ID-11: uint64_t key + uint64_t value (VIS), keep/update/erase.
 UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64U64) {
-  if constexpr (!std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
+  if constexpr (!std::is_same_v<typename TypeParam::value_type,
+                                std::uint64_t>) {
     GTEST_SKIP() << "Only applies to u64 value types";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -318,26 +313,28 @@ UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64U64) {
     const typename TypeParam::value_type v0 = 10;
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
     // keep
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, keep_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, keep_fn)); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v0);
     // update
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(db.upsert(k, v0, increment_fn));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, increment_fn)); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k,
                          static_cast<typename TypeParam::value_type>(11));
     // erase
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, erase_fn)); });
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, erase_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   }
 }
 
 // ID-12: key_view key + uint64_t value (VIS), keep/update/erase.
 UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewU64) {
-  if constexpr (!std::is_same_v<typename TypeParam::key_type, unodb::key_view> ||
-                !std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
+  if constexpr (!std::is_same_v<typename TypeParam::key_type,
+                                unodb::key_view> ||
+                !std::is_same_v<typename TypeParam::value_type,
+                                std::uint64_t>) {
     GTEST_SKIP() << "Only applies to key_view + u64 value types";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -346,26 +343,28 @@ UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewU64) {
     const typename TypeParam::value_type v0 = 20;
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
     // keep
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, keep_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, keep_fn)); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v0);
     // update
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(db.upsert(k, v0, increment_fn));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, increment_fn)); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k,
                          static_cast<typename TypeParam::value_type>(21));
     // erase
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, erase_fn)); });
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, erase_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   }
 }
 
 // ID-13: key_view key + value_view value, keep/erase only.
 UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewValueView) {
-  if constexpr (!std::is_same_v<typename TypeParam::key_type, unodb::key_view> ||
-                !std::is_same_v<typename TypeParam::value_type, unodb::value_view>) {
+  if constexpr (!std::is_same_v<typename TypeParam::key_type,
+                                unodb::key_view> ||
+                !std::is_same_v<typename TypeParam::value_type,
+                                unodb::value_view>) {
     GTEST_SKIP() << "Only applies to key_view + value_view types";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -377,17 +376,18 @@ UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewValueView) {
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, keep_fn)); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v);
     // erase
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   }
 }
 
 // ID-13b: uint64_t key + value_view value, keep/erase only.
 UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64ValueView) {
   if constexpr (!std::is_same_v<typename TypeParam::key_type, std::uint64_t> ||
-                !std::is_same_v<typename TypeParam::value_type, unodb::value_view>) {
+                !std::is_same_v<typename TypeParam::value_type,
+                                unodb::value_view>) {
     GTEST_SKIP() << "Only applies to u64 key + value_view types";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -399,10 +399,10 @@ UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64ValueView) {
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, keep_fn)); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v);
     // erase
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   }
 }
 
@@ -418,18 +418,17 @@ UNODB_TYPED_TEST(UpsertTest, EraseTriggersShrink) {
   for (std::size_t i = 0; i < 5; ++i) {
     const auto k = verifier.coerce_key(i);
     with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_TRUE(db.insert(k, unodb::test::get_test_value<TypeParam>(i)));
+      UNODB_ASSERT_TRUE(
+          db.insert(k, unodb::test::get_test_value<TypeParam>(i)));
     });
   }
   const auto k_erase = verifier.coerce_key(std::size_t{0});
   with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(db.upsert(k_erase,
-                                  unodb::test::get_test_value<TypeParam>(0),
-                                  erase_fn));
+    UNODB_ASSERT_FALSE(db.upsert(
+        k_erase, unodb::test::get_test_value<TypeParam>(0), erase_fn));
   });
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k_erase)));
-  });
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k_erase))); });
   // Remaining 4 keys still present
   for (std::size_t i = 1; i < 5; ++i) {
     const auto k = verifier.coerce_key(i);
@@ -440,7 +439,8 @@ UNODB_TYPED_TEST(UpsertTest, EraseTriggersShrink) {
 
 // ID-23b: Erase triggers chain cut (key_view types).
 UNODB_TYPED_TEST(UpsertTest, EraseTriggersChainCut) {
-  if constexpr (!std::is_same_v<typename TypeParam::key_type, unodb::key_view>) {
+  if constexpr (!std::is_same_v<typename TypeParam::key_type,
+                                unodb::key_view>) {
     GTEST_SKIP() << "Chain cut only applies to key_view types";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -449,20 +449,20 @@ UNODB_TYPED_TEST(UpsertTest, EraseTriggersChainCut) {
     const auto k0 = verifier.coerce_key(0);
     const auto k1 = verifier.coerce_key(1);
     with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_TRUE(db.insert(k0, unodb::test::get_test_value<TypeParam>(0)));
+      UNODB_ASSERT_TRUE(
+          db.insert(k0, unodb::test::get_test_value<TypeParam>(0)));
     });
     with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_TRUE(db.insert(k1, unodb::test::get_test_value<TypeParam>(1)));
+      UNODB_ASSERT_TRUE(
+          db.insert(k1, unodb::test::get_test_value<TypeParam>(1)));
     });
     // Erase one to trigger chain cut
     with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(db.upsert(k0,
-                                    unodb::test::get_test_value<TypeParam>(0),
-                                    erase_fn));
+      UNODB_ASSERT_FALSE(
+          db.upsert(k0, unodb::test::get_test_value<TypeParam>(0), erase_fn));
     });
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k0)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k0))); });
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k1,
                          unodb::test::get_test_value<TypeParam>(1));
   }
@@ -477,14 +477,14 @@ UNODB_TYPED_TEST(UpsertTest, EraseRootLeaf) {
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v)); });
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.empty()); });
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-  });
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
 }
 
 // ID-23d: Erase packed VIS value, slot cleared.
 UNODB_TYPED_TEST(UpsertTest, EraseVisValue) {
-  if constexpr (!std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
+  if constexpr (!std::is_same_v<typename TypeParam::value_type,
+                                std::uint64_t>) {
     GTEST_SKIP() << "Only applies to VIS (u64 value) types";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -492,10 +492,10 @@ UNODB_TYPED_TEST(UpsertTest, EraseVisValue) {
     const auto k = verifier.coerce_key(5);
     const typename TypeParam::value_type v = 42;
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v)); });
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v, erase_fn)); });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   }
 }
 
@@ -509,9 +509,8 @@ UNODB_TYPED_TEST(UpsertTest, EraseThenReinsert) {
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
   // Erase
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v0, erase_fn)); });
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-  });
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
   // Re-insert via upsert with new value
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.upsert(k, v1, keep_fn)); });
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v1);
@@ -532,7 +531,8 @@ UNODB_TYPED_TEST(UpsertTest, StaticAssertRejectsBadLambda) {
 
 // ID-C3: Mutations discarded on erase.
 UNODB_TYPED_TEST(UpsertTest, MutationsDiscardedOnErase) {
-  if constexpr (!std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
+  if constexpr (!std::is_same_v<typename TypeParam::value_type,
+                                std::uint64_t>) {
     GTEST_SKIP() << "Mutation test requires mutable u64 value type";
   } else {
     unodb::test::tree_verifier<TypeParam> verifier;
@@ -542,16 +542,15 @@ UNODB_TYPED_TEST(UpsertTest, MutationsDiscardedOnErase) {
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
     // Lambda mutates value AND returns erase
     with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(db.upsert(k, typename TypeParam::value_type{0},
-                                    [](auto& x) {
-                                      x = 99;
-                                      return unodb::upsert_action::erase;
-                                    }));
+      UNODB_ASSERT_FALSE(
+          db.upsert(k, typename TypeParam::value_type{0}, [](auto& x) {
+            x = 99;
+            return unodb::upsert_action::erase;
+          }));
     });
     // Key must be gone — mutation discarded
-    with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k)));
-    });
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k))); });
     // Re-insert and verify value is NOT 99
     const typename TypeParam::value_type v_new = 50;
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v_new)); });
@@ -568,13 +567,13 @@ UNODB_TYPED_TEST(UpsertTest, ThrowingLambdaTreeUnchanged) {
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v)); });
   // Lambda throws
   with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_THROW(
-        std::ignore = db.upsert(k, v,
-                                [](auto& /*x*/) {
-                                  throw std::runtime_error("test");
-                                  return unodb::upsert_action::keep;  // unreachable
-                                }),
-        std::runtime_error);
+    UNODB_ASSERT_THROW(std::ignore = db.upsert(
+                           k, v,
+                           [](auto& /*x*/) {
+                             throw std::runtime_error("test");
+                             return unodb::upsert_action::keep;  // unreachable
+                           }),
+                       std::runtime_error);
   });
   // Tree unchanged
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v);
@@ -651,8 +650,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertPlusGet) {
         unodb::key_encoder enc;
         std::array<std::byte, sizeof(std::uint64_t)> buf{};
         for (std::size_t i = 0; i < ops_per_thread; ++i) {
-          const auto key =
-              make_local_key<TypeParam>(thread_i * ops_per_thread + i, enc, buf);
+          const auto key = make_local_key<TypeParam>(
+              thread_i * ops_per_thread + i, enc, buf);
           auto v = unodb::test::get_test_value<TypeParam>(i);
           const unodb::quiescent_state_on_scope_exit q{};
           if (thread_i < 2) {
@@ -896,8 +895,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, CasKeyRemoved) {
   // Need a second key so the tree isn't just a root leaf
   {
     const unodb::quiescent_state_on_scope_exit q{};
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(2)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(2)));
   }
 
   // T1 finds duplicate, pauses. T2 removes the key.
@@ -1031,9 +1030,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, IdempotencyUnderContention) {
   // Pre-insert hot keys
   for (std::size_t i = 0; i < hot_keys; ++i) {
     const unodb::quiescent_state_on_scope_exit q{};
-    UNODB_ASSERT_TRUE(
-        db.insert(this->verifier.coerce_key(i),
-                  unodb::test::get_test_value<TypeParam>(0)));
+    UNODB_ASSERT_TRUE(db.insert(this->verifier.coerce_key(i),
+                                unodb::test::get_test_value<TypeParam>(0)));
   }
 
   this->template parallel_test<N, hot_keys>(
@@ -1078,8 +1076,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseCasRetry) {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
     // Second key to avoid root-leaf special case
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(1)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(1)));
   }
 
   unodb::this_thread().qsbr_pause();
@@ -1120,8 +1118,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ConcurrentEraseXErase) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(2)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(2)));
   }
 
   // Use sync point: first eraser pauses after lambda returns erase
@@ -1172,8 +1170,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseAfterConcurrentRemove) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(2)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(2)));
   }
 
   // T1 pauses after erase lambda returns, T2 removes the key
@@ -1226,8 +1224,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, LambdaSeesDifferentValues) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(2)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(2)));
   }
 
   std::atomic<int> lambda_call_count{0};
@@ -1253,7 +1251,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, LambdaSeesDifferentValues) {
     const unodb::quiescent_state_on_scope_exit q{};
     std::ignore = db.upsert(key, v0, [&lambda_call_count](auto& v) {
       lambda_call_count.fetch_add(1, std::memory_order_relaxed);
-      if constexpr (std::is_arithmetic_v<std::remove_reference_t<decltype(v)>>) {
+      if constexpr (std::is_arithmetic_v<
+                        std::remove_reference_t<decltype(v)>>) {
         return unodb::upsert_action::update;
       } else {
         (void)v;
@@ -1285,8 +1284,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, StatsCounterIncrements) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(1)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(1)));
   }
 
   // Force contention to trigger erase retries
@@ -1328,8 +1327,8 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
   {
     const unodb::quiescent_state_on_scope_exit q{};
     UNODB_ASSERT_TRUE(db.insert(key, v0));
-    UNODB_ASSERT_TRUE(db.insert(sibling_key,
-                                unodb::test::get_test_value<TypeParam>(1)));
+    UNODB_ASSERT_TRUE(
+        db.insert(sibling_key, unodb::test::get_test_value<TypeParam>(1)));
   }
 
   // T1 upserts key. After dup found, T2 modifies parent to
@@ -1346,8 +1345,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
   auto t2 = unodb::qsbr_thread([&] {
     unodb::detail::thread_syncs[0].wait();
     const unodb::quiescent_state_on_scope_exit q{};
-    std::ignore = db.insert(t2_key,
-                            unodb::test::get_test_value<TypeParam>(2));
+    std::ignore = db.insert(t2_key, unodb::test::get_test_value<TypeParam>(2));
     unodb::detail::thread_syncs[1].notify();
   });
 
@@ -1365,6 +1363,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
   auto result = db.get(key);
   UNODB_ASSERT_TRUE(TypeParam::key_found(result));
   if constexpr (std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
+    UNODB_ASSERT_TRUE(result.has_value());
     UNODB_ASSERT_EQ(*result, 1);
   }
 }
@@ -1410,9 +1409,8 @@ UNODB_TYPED_TEST(UpsertOOMTest, InsertPathOom) {
   unodb::test::allocation_failure_injector::reset();
 
   // Verify key 1 absent, key 0 still present
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k1)));
-  });
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(TypeParam::key_found(db.get(k1))); });
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k0, v0);
 }
 
@@ -1425,7 +1423,8 @@ UNODB_TYPED_TEST(UpsertOOMTest, EraseShrinkOom) {
   for (std::size_t i = 0; i < 5; ++i) {
     const auto k = verifier.coerce_key(i);
     with_qsbr<TypeParam>([&] {
-      UNODB_ASSERT_TRUE(db.insert(k, unodb::test::get_test_value<TypeParam>(i)));
+      UNODB_ASSERT_TRUE(
+          db.insert(k, unodb::test::get_test_value<TypeParam>(i)));
     });
   }
 
@@ -1434,10 +1433,10 @@ UNODB_TYPED_TEST(UpsertOOMTest, EraseShrinkOom) {
   // Inject failure, upsert-erase key 2 (triggers shrink allocation)
   unodb::test::allocation_failure_injector::fail_on_nth_allocation(1);
   with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_THROW(std::ignore = db.upsert(
-                           k_erase, unodb::test::get_test_value<TypeParam>(2),
-                           erase_fn),
-                       std::bad_alloc);
+    UNODB_ASSERT_THROW(
+        std::ignore = db.upsert(
+            k_erase, unodb::test::get_test_value<TypeParam>(2), erase_fn),
+        std::bad_alloc);
   });
   unodb::test::allocation_failure_injector::reset();
 
