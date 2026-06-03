@@ -601,7 +601,6 @@ class UpsertConcurrencyTest : public ::testing::Test {
   // NOLINTNEXTLINE(bugprone-exception-escape)
   UpsertConcurrencyTest() noexcept {
     if constexpr (unodb::test::is_olc_db<Db>) unodb::test::expect_idle_qsbr();
-    verifier.reserve_keys(128);
   }
 
   template <std::size_t ThreadCount, std::size_t OpsPerThread, typename TestFn>

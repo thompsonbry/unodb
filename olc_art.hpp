@@ -259,11 +259,6 @@ class olc_db final {
   /// \sa key_encoder, which provides for encoding text and multi-field records
   /// when Key is unodb::key_view.
   [[nodiscard]] bool insert(Key insert_key, value_type v) {
-    // TODO(thompsonbry) There should be a lambda variant of this to
-    // handle conflicts and support upsert or delete-upsert
-    // semantics. This would call the caller's lambda once the method
-    // was positioned on the leaf.  The caller could then update the
-    // value or perhaps delete the entry under the key.
     const auto k = art_key_type{insert_key};
     return insert_internal(k, v);
   }
