@@ -63,7 +63,6 @@ inline sync_point sync_before_nonfull_chain_guard;
 /// observation point regardless of the lambda's return action.
 inline sync_point sync_after_upsert_dup_found;
 
-
 /// OLC ART node header contains an unodb::optimistic_lock object for this node.
 ///
 /// The node type is constant throughout the node lifetime, is stored outside of
@@ -2652,8 +2651,7 @@ bool olc_db<Key, Value>::upsert(Key k, value_type v, FN fn) {
       throw std::length_error("Key must not be empty");
     }
     if (UNODB_DETAIL_UNLIKELY(
-            art_k.size() >
-            std::numeric_limits<unodb::key_size_type>::max())) {
+            art_k.size() > std::numeric_limits<unodb::key_size_type>::max())) {
       throw std::length_error("Key length must fit in std::uint32_t");
     }
   }
@@ -2742,8 +2740,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
             if (UNODB_DETAIL_UNLIKELY(
                     !parent_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
-            if (UNODB_DETAIL_UNLIKELY(
-                    !node_critical_section.try_read_unlock()))
+            if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
             if (UNODB_DETAIL_UNLIKELY(cached_leaf != nullptr))
               cached_leaf.reset();
@@ -2772,8 +2769,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
             if (UNODB_DETAIL_UNLIKELY(
                     !parent_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
-            if (UNODB_DETAIL_UNLIKELY(
-                    !node_critical_section.try_read_unlock()))
+            if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
             if (UNODB_DETAIL_UNLIKELY(cached_leaf != nullptr))
               cached_leaf.reset();
@@ -3024,8 +3020,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
             if (UNODB_DETAIL_UNLIKELY(
                     !parent_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
-            if (UNODB_DETAIL_UNLIKELY(
-                    !node_critical_section.try_read_unlock()))
+            if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
             if (UNODB_DETAIL_UNLIKELY(cached_leaf != nullptr))
               cached_leaf.reset();
@@ -3056,8 +3051,7 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
             if (UNODB_DETAIL_UNLIKELY(
                     !parent_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
-            if (UNODB_DETAIL_UNLIKELY(
-                    !node_critical_section.try_read_unlock()))
+            if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
               return {};  // LCOV_EXCL_LINE
             if (UNODB_DETAIL_UNLIKELY(cached_leaf != nullptr))
               cached_leaf.reset();
@@ -3133,8 +3127,7 @@ olc_db<Key, Value>::try_upsert_erase(art_key_type k,
 
         if constexpr (std::is_same_v<Key, key_view>) {
           // For key_view, delegate to try_remove after version validation.
-          if (UNODB_DETAIL_UNLIKELY(
-                  !parent_critical_section.try_read_unlock()))
+          if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
             return {};  // LCOV_EXCL_LINE
           if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
             return {};  // LCOV_EXCL_LINE
@@ -3194,8 +3187,7 @@ olc_db<Key, Value>::try_upsert_erase(art_key_type k,
           // VIS target — version check on the containing inode.
           if (node_critical_section.get() != captured_ver) return {};
           // Version matches — release locks and delegate to try_remove.
-          if (UNODB_DETAIL_UNLIKELY(
-                  !parent_critical_section.try_read_unlock()))
+          if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
             return {};  // LCOV_EXCL_LINE
           if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
             return {};  // LCOV_EXCL_LINE
@@ -3233,8 +3225,7 @@ olc_db<Key, Value>::try_upsert_erase(art_key_type k,
         // Found the target leaf — validate version.
         if (node_critical_section.get() != captured_ver) return {};
         // Version matches — release locks and delegate to try_remove.
-        if (UNODB_DETAIL_UNLIKELY(
-                !parent_critical_section.try_read_unlock()))
+        if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE
         if (UNODB_DETAIL_UNLIKELY(!node_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE

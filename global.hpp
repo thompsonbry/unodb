@@ -1,4 +1,4 @@
-// Copyright 2019-2025 Laurynas Biveinis
+// Copyright 2019-2026 UnoDB contributors
 #ifndef UNODB_DETAIL_GLOBAL_HPP
 #define UNODB_DETAIL_GLOBAL_HPP
 
