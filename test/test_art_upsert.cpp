@@ -651,7 +651,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, UpsertPlusGet) {
         std::array<std::byte, sizeof(std::uint64_t)> buf{};
         for (std::size_t i = 0; i < ops_per_thread; ++i) {
           const auto key = make_local_key<TypeParam>(
-              thread_i * ops_per_thread + i, enc, buf);
+              (thread_i * ops_per_thread) + i, enc, buf);
           auto v = unodb::test::get_test_value<TypeParam>(i);
           const unodb::quiescent_state_on_scope_exit q{};
           if (thread_i < 2) {
