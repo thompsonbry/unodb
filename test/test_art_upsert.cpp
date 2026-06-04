@@ -822,6 +822,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, CasIncrement) {
   auto result = db.get(key);
   UNODB_ASSERT_TRUE(TypeParam::key_found(result));
   if constexpr (std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     UNODB_ASSERT_EQ(*result, N);
   }
 }
@@ -1055,7 +1056,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, IdempotencyUnderContention) {
     UNODB_ASSERT_TRUE(TypeParam::key_found(result));
     if constexpr (std::is_same_v<typename TypeParam::value_type,
                                  std::uint64_t>) {
-      UNODB_ASSERT_TRUE(result.has_value());
+      // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
       UNODB_ASSERT_EQ(*result, N);
     }
   }
@@ -1364,7 +1365,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, ParentRcsFailAfterCommit) {
   auto result = db.get(key);
   UNODB_ASSERT_TRUE(TypeParam::key_found(result));
   if constexpr (std::is_same_v<typename TypeParam::value_type, std::uint64_t>) {
-    UNODB_ASSERT_TRUE(result.has_value());
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     UNODB_ASSERT_EQ(*result, 1);
   }
 }
