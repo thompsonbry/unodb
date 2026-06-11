@@ -118,6 +118,6 @@ implementation typos — not catchable by TLA+.
 |-------|------|----------|--------|
 | 0 | T-d693d16a | — | done |
 | 1 | T-78f6239d | — | done |
-| 3 | NEW: VIS TOCTOU | high | ready |
-| 5 | NEW: Root pointer + emptying | medium | backlog |
-| — | NEW: Bug injection suite validation | medium | after Phase 3 |
+| 3 | T-61829475 | high | done |
+| 5 | T-1d41fb6a | medium | done |
+| — | T-ef029958 | medium | done |
