@@ -1119,7 +1119,7 @@ union [[nodiscard]] key_prefix_snapshot {
     /// The prefix bytes.
     key_prefix_data key_prefix;
     /// Number of bytes in prefix.
-    key_prefix_size key_prefix_length;
+    key_prefix_size key_prefix_length{};
   };
 
   /// Structured access to prefix.
@@ -1426,7 +1426,7 @@ struct iter_result {
   /// for child_index can occur for basic_inode_48 and basic_inode_256. When
   /// overflow happens, the iter_result is undefined and the wrapping
   /// std::optional returns false.
-  std::uint8_t child_index;
+  std::uint8_t child_index{};
 
   /// Snapshot of key prefix for node.
   key_prefix_snapshot prefix;

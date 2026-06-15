@@ -55,6 +55,7 @@
 
 #include <mutex>
 
+UNODB_DETAIL_DISABLE_MSVC_WARNING(4723)
 #include <boost/accumulators/accumulators_fwd.hpp>  // IWYU pragma: keep
 #include <boost/accumulators/framework/accumulator_set.hpp>
 #include <boost/accumulators/framework/extractor.hpp>
@@ -62,6 +63,7 @@
 #include <boost/accumulators/statistics/mean.hpp>
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/variance.hpp>
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 #endif  // UNODB_DETAIL_WITH_STATS
 
@@ -649,7 +651,7 @@ struct dealloc_vector_list_node {
   /// Orphaned deallocation requests.
   detail::dealloc_request_vector requests;
   /// Next linked list node.
-  dealloc_vector_list_node* next;
+  dealloc_vector_list_node* next{nullptr};
 };
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
