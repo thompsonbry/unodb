@@ -164,11 +164,20 @@ set(MSVC_CXX_WARNING_FLAGS "/Wall" "/wd4324" "/wd5030" "/wd5072" "/wd4623"
 # Flags for both MSVC cl and clang-cl compilers
 set(ANY_MSVC_CXX_FLAGS "/permissive-")
 
-# clang-cl warning flags that cl does not understand
+# clang-cl warning flags that cl does not understand. clang-cl maps /Wall to
+# -Weverything, so these disable -Weverything warnings that do not apply:
+# - "-Wpadded": informational; much of our padding is deliberate
+#   alignas(hardware_destructive_interference_size) cache-line separation. The cl
+#   equivalents C4820 and C4324 are already disabled above.
+# - "-Wunique-object-duplication": fires on inline/function-local-static mutable
+#   externals that could be duplicated across a shared library boundary. UnoDB
+#   links as a static library on Windows (PE/COFF), so this is a false positive
+#   here. Remove this suppression if UnoDB is ever built as a Windows DLL.
 set(MSVC_CLANG_WARNING_FLAGS "-Wno-c++20-compat" "-Wno-c++98-compat"
   "-Wno-c++98-compat-pedantic" "-Wno-exit-time-destructors"
   "-Wno-ctad-maybe-unsupported" "-Wno-global-constructors"
-  "-Wno-unsafe-buffer-usage" "-Wno-switch-default")
+  "-Wno-unsafe-buffer-usage" "-Wno-switch-default" "-Wno-padded"
+  "-Wno-unique-object-duplication")
 
 # cl flags that clang-cl does not understand
 set(MSVC_CXX_FLAGS "/external:anglebrackets" "/external:W0")
