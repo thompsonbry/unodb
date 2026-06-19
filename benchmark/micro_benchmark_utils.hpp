@@ -30,16 +30,33 @@
 
 // TODO(laurynas): std::uint64_t-specific
 
+// Google Benchmark's BENCHMARK() macro expands __COUNTER__, which clang 21
+// flags as a C2y extension (-Wc2y-extensions) under clang-cl /Wall. Suppress it
+// around the benchmark registrations these macros bracket; the third-party
+// macro is not ours to change. The clang-21-specific macro avoids
+// -Wunknown-warning-option on older clang.
 #define UNODB_START_BENCHMARKS()           \
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26409) \
-  UNODB_DETAIL_DISABLE_MSVC_WARNING(26426)
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26426) \
+  UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wc2y-extensions")
 
-#define UNODB_BENCHMARK_MAIN()         \
-  UNODB_DETAIL_RESTORE_MSVC_WARNINGS() \
-  UNODB_DETAIL_RESTORE_MSVC_WARNINGS() \
+#define UNODB_BENCHMARK_MAIN()             \
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()     \
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()     \
+  UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS() \
   BENCHMARK_MAIN()
 
 namespace unodb::benchmark {
+
+// Google Benchmark 1.9.0 promoted internal::Benchmark to the public
+// benchmark::Benchmark and deprecated this spelling. The bundled submodule and
+// distro packages (<= 1.8.3) only provide the internal name, so we keep using
+// it via this alias; referencing the deprecated name once here, with the
+// warning suppressed, keeps all use sites clean across every supported
+// Benchmark version.
+UNODB_DETAIL_DISABLE_CLANG_WARNING("-Wdeprecated-declarations")
+using Benchmark = ::benchmark::internal::Benchmark;
+UNODB_DETAIL_RESTORE_CLANG_WARNINGS()
 
 // Benchmarked tree types (u64 keys)
 

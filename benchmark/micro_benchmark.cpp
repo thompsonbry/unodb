@@ -198,7 +198,7 @@ void dense_iter_keyrange_fwd_scan(benchmark::State& state) {
 #endif  // UNODB_DETAIL_WITH_STATS
 }
 
-void dense_tree_sparse_deletes_args(benchmark::internal::Benchmark* b) {
+void dense_tree_sparse_deletes_args(unodb::benchmark::Benchmark* b) {
   for (auto i = 1000; i <= 5000000; i *= 8) {
     b->Args({i, 800});
     b->Args({i, i});
@@ -287,7 +287,7 @@ void dense_tree_increasing_keys(benchmark::State& state) {
                           dense_tree_increasing_keys_delete_insert_pairs * 2);
 }
 
-void dense_insert_value_lengths_args(benchmark::internal::Benchmark* b) {
+void dense_insert_value_lengths_args(unodb::benchmark::Benchmark* b) {
   for (auto i = 100; i <= 1000000; i *= 8)
     for (auto j = 0; j < static_cast<int64_t>(unodb::benchmark::values.size());
          ++j)

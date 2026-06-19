@@ -280,15 +280,15 @@ key_view_set gen_kl256(std::size_t n) {
 
 // Sizes
 
-void kv_sizes(benchmark::internal::Benchmark* b) {
+void kv_sizes(unodb::benchmark::Benchmark* b) {
   for (auto n : {1 << 10, 1 << 14, 1 << 18}) b->Arg(n);
 }
 
-void u64_sizes(benchmark::internal::Benchmark* b) {
+void u64_sizes(unodb::benchmark::Benchmark* b) {
   for (auto n : {1 << 12, 1 << 15, 1 << 18}) b->Arg(n);
 }
 
-void kl_sizes(benchmark::internal::Benchmark* b) { b->Arg(1024); }
+void kl_sizes(unodb::benchmark::Benchmark* b) { b->Arg(1024); }
 
 // Registration: db
 
