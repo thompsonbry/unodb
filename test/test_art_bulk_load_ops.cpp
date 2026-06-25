@@ -18,6 +18,8 @@
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "node_type.hpp"
+#include "qsbr.hpp"
+#include "qsbr_test_utils.hpp"
 
 namespace {
 
@@ -204,6 +206,42 @@ TEST(BulkLoadOps, OlcDbParallel) {
     const auto result = db.get(k);
     ASSERT_TRUE(result.has_value()) << "key " << k << " not found";
   }
+}
+
+// T44: olc_db concurrent readers after parallel bulk_load
+// Verifies that optimistic locks are correctly initialized after bulk_load so
+// concurrent readers can traverse the tree without deadlock or data corruption.
+TEST(BulkLoadOps, OlcDbConcurrentReaders) {
+  u64_olc_db db;
+  constexpr std::size_t n_keys = 10000;
+  std::vector<std::pair<std::uint64_t, value_view>> kv;
+  kv.reserve(n_keys);
+  for (std::uint64_t i = 0; i < n_keys; ++i) {
+    kv.emplace_back(i << 40U, val);
+  }
+  std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
+  db.bulk_load(std::execution::par, kv.begin(), kv.end());
+
+  // Pause main thread QSBR so reader threads can register
+  unodb::this_thread().qsbr_pause();
+
+  constexpr std::size_t n_threads = 4;
+  std::array<unodb::qsbr_thread, n_threads> threads;
+  for (std::size_t t = 0; t < n_threads; ++t) {
+    threads[t] = unodb::qsbr_thread([&kv, &db] {
+      for (const auto& [k, v] : kv) {
+        const unodb::quiescent_state_on_scope_exit qsbr{};
+        const auto result = db.get(k);
+        EXPECT_TRUE(result.has_value()) << "key " << k << " not found";
+      }
+      unodb::this_thread().quiescent();
+    });
+  }
+  for (auto& t : threads) t.join();
+
+  unodb::this_thread().qsbr_resume();
+  unodb::this_thread().quiescent();
+  unodb::test::expect_idle_qsbr();
 }
 
 }  // namespace

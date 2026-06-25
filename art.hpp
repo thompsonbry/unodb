@@ -2840,8 +2840,13 @@ void db<Key, Value>::bulk_load(ExecutionPolicy&& policy, RandomIt first,
     throw std::invalid_argument("bulk_load requires empty tree");
   }
   if (first == last) return;
-  detail::bulk_load_impl(*this, std::forward<ExecutionPolicy>(policy), first,
-                         last);
+  try {
+    detail::bulk_load_impl(*this, std::forward<ExecutionPolicy>(policy), first,
+                           last);
+  } catch (...) {
+    clear();
+    throw;
+  }
 }
 
 }  // namespace unodb

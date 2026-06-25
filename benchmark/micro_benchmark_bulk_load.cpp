@@ -82,8 +82,7 @@ void BM_Insert_seq(benchmark::State& state) {
   const auto kv = sequential_keys(state.range(0));
   for (const auto _ : state) {
     Db test_db;
-    for (const auto& [k, v] : kv)
-      static_cast<void>(test_db.insert(k, v));
+    for (const auto& [k, v] : kv) static_cast<void>(test_db.insert(k, v));
     benchmark::DoNotOptimize(test_db);
     state.PauseTiming();
     test_db.clear();
@@ -117,8 +116,7 @@ void BM_Insert_rand(benchmark::State& state) {
   const auto kv = random_keys(state.range(0));
   for (const auto _ : state) {
     Db test_db;
-    for (const auto& [k, v] : kv)
-      static_cast<void>(test_db.insert(k, v));
+    for (const auto& [k, v] : kv) static_cast<void>(test_db.insert(k, v));
     benchmark::DoNotOptimize(test_db);
     state.PauseTiming();
     test_db.clear();
@@ -161,8 +159,7 @@ void BM_Insert_kv(benchmark::State& state) {
 
   for (const auto _ : state) {
     Db test_db;
-    for (const auto& [k, v] : kv)
-      static_cast<void>(test_db.insert(k, v));
+    for (const auto& [k, v] : kv) static_cast<void>(test_db.insert(k, v));
     benchmark::DoNotOptimize(test_db);
     state.PauseTiming();
     test_db.clear();
@@ -261,8 +258,7 @@ void BM_BulkLoad_memory(benchmark::State& state) {
     {
       state.PauseTiming();
       Db insert_db;
-      for (const auto& [k, v] : kv)
-        static_cast<void>(insert_db.insert(k, v));
+      for (const auto& [k, v] : kv) static_cast<void>(insert_db.insert(k, v));
       insert_mem = insert_db.get_current_memory_use();
       insert_db.clear();
       state.ResumeTiming();
@@ -312,8 +308,7 @@ void BM_Insert_first_scan(benchmark::State& state) {
   for (const auto _ : state) {
     state.PauseTiming();
     Db test_db;
-    for (const auto& [k, v] : kv)
-      static_cast<void>(test_db.insert(k, v));
+    for (const auto& [k, v] : kv) static_cast<void>(test_db.insert(k, v));
     state.ResumeTiming();
 
     std::size_t count = 0;
