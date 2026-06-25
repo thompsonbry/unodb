@@ -59,6 +59,10 @@ add_db_test_target(test_key_encode_decode)
 add_db_test_target(test_art)
 target_compile_options(test_art PRIVATE "$<${is_msvc}:/bigobj>")
 
+add_db_test_target(test_art_bulk_load)
+add_db_test_target(test_art_bulk_load_structural)
+add_db_test_target(test_art_bulk_load_ops)
+
 add_db_test_target(test_art_key_view)
 add_db_test_target(test_art_key_view_full_chain)
 add_db_test_target(test_art_iter)
