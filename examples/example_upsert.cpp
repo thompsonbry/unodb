@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string_view>
+#include <tuple>
 
 #include "art_common.hpp"
 #include "olc_art.hpp"
@@ -43,6 +44,34 @@ int main() {
     });
     std::cout << "upsert(1, keep): inserted=" << inserted << "\n";
     // Value is still "hello".
+  }
+
+  // --- Update: key present, lambda modifies value, returns update ---
+  // Note: update requires a typed value (not value_view).  Demonstrate
+  // with a separate integer-valued tree.
+  {
+    unodb::olc_db<std::uint64_t, std::uint64_t> idb;
+    {
+      unodb::quiescent_state_on_scope_exit qstate{};
+      std::ignore = idb.upsert(42, std::uint64_t{100}, [](auto& /*v*/) {
+        return unodb::upsert_action::keep;  // inserts 100
+      });
+    }
+    {
+      unodb::quiescent_state_on_scope_exit qstate{};
+      const bool inserted = idb.upsert(42, std::uint64_t{0}, [](auto& v) {
+        // v is the existing value (100); modify it and return update
+        // to write the new value back.
+        v += 50;
+        return unodb::upsert_action::update;
+      });
+      std::cout << "upsert(42, update v+=50): inserted=" << inserted << "\n";
+    }
+    {
+      unodb::quiescent_state_on_scope_exit qstate{};
+      const auto val = idb.get(42);
+      std::cout << "  get(42) after update=" << (val ? *val : 0) << "\n";
+    }
   }
 
   // --- Erase: key present, lambda returns erase → CAS remove ---

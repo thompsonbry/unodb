@@ -1210,6 +1210,74 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseAfterConcurrentRemove) {
 }
 #endif  // NDEBUG
 
+// ID-23h: CAS-erase bypass regression — remove_or_choose_subtree terminal
+// delete must check captured_ver.  T1 upsert(erase) pauses inside
+// remove_or_choose_subtree, T2 modifies the same key, T1 resumes.
+// Without the captured_ver check, T1 would erase the wrong value.
+#ifndef NDEBUG
+UNODB_TYPED_TEST(UpsertConcurrencyTest, EraseBypassInRemoveOrChooseSubtree) {
+  auto& db = this->verifier.get_db();
+  // Use 3 sibling keys so the inode has >1 child, forcing the non-chain
+  // path in try_remove_key_view (where the bug lived).
+  const auto key = this->verifier.coerce_key(10);
+  const auto sib1 = this->verifier.coerce_key(11);
+  const auto sib2 = this->verifier.coerce_key(12);
+  auto v0 = unodb::test::get_test_value<TypeParam>(0);
+  auto v1 = unodb::test::get_test_value<TypeParam>(1);
+
+  {
+    const unodb::quiescent_state_on_scope_exit q{};
+    UNODB_ASSERT_TRUE(db.insert(key, v0));
+    UNODB_ASSERT_TRUE(db.insert(sib1, v0));
+    UNODB_ASSERT_TRUE(db.insert(sib2, v0));
+  }
+
+  // Track how many times the lambda fires.
+  std::atomic<int> lambda_calls{0};
+
+  // Arm sync point inside remove_or_choose_subtree's VIS/leaf terminal
+  // delete path.  T1 pauses BEFORE the write lock (and before the new
+  // captured_ver check).
+  const sync_point_guard guard{unodb::detail::sync_before_remove_write_guard};
+  unodb::detail::sync_before_remove_write_guard.arm([&]() {
+    unodb::detail::sync_before_remove_write_guard.disarm();
+    unodb::detail::thread_syncs[0].notify();
+    unodb::detail::thread_syncs[1].wait();
+  });
+
+  unodb::this_thread().qsbr_pause();
+
+  // T2: modify the target key while T1 is paused.
+  auto t2 = unodb::qsbr_thread([&] {
+    unodb::detail::thread_syncs[0].wait();
+    const unodb::quiescent_state_on_scope_exit q{};
+    // Remove and reinsert with a different value to bump the version.
+    std::ignore = db.remove(key);
+    std::ignore = db.insert(key, v1);
+    unodb::detail::thread_syncs[1].notify();
+  });
+
+  // T1: upsert with erase lambda.  On retry after CAS rejection,
+  // the lambda fires again for the new value.
+  auto t1 = unodb::qsbr_thread([&] {
+    const unodb::quiescent_state_on_scope_exit q{};
+    std::ignore = db.upsert(key, v1, [&](auto& /*v*/) {
+      lambda_calls.fetch_add(1, std::memory_order_relaxed);
+      return unodb::upsert_action::erase;
+    });
+  });
+
+  t1.join();
+  t2.join();
+  unodb::this_thread().qsbr_resume();
+
+  // The CAS gate must have rejected T1's first erase attempt (stale version)
+  // forcing a retry.  The lambda must have been invoked more than once.
+  EXPECT_GT(lambda_calls.load(), 1)
+      << "CAS gate should have forced at least one retry";
+}
+#endif  // NDEBUG
+
 // ===================================================================
 // Contract Verification — concurrency (IDs C2, C5, C6)
 // ===================================================================

@@ -19,14 +19,13 @@ namespace unodb::test {
 /// RAII guard that disarms a sync_point on destruction.
 struct sync_point_guard {
   /// The sync point being guarded.
-  unodb::detail::sync_point* pt_;
+  unodb::detail::sync_point& pt_;
 
   /// Construct from a sync point reference.
-  explicit sync_point_guard(unodb::detail::sync_point& pt) noexcept
-      : pt_{&pt} {}
+  explicit sync_point_guard(unodb::detail::sync_point& pt) noexcept : pt_{pt} {}
 
   /// Disarm the sync point on destruction.
-  ~sync_point_guard() { pt_->disarm(); }
+  ~sync_point_guard() { pt_.disarm(); }
 
   sync_point_guard(const sync_point_guard&) = delete;
   sync_point_guard& operator=(const sync_point_guard&) = delete;

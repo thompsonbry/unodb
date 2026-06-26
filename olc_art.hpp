@@ -580,8 +580,8 @@ class olc_db final {
     ///
     /// post-condition: The iterator is !valid().
     iterator& invalidate() noexcept {
-      while (!stack_.empty()) stack_.pop();  // clear the stack
-      keybuf_.reset();                       // clear the key buffer
+      while (!stack_.empty()) stack_.pop();
+      keybuf_.reset();
       return *this;
     }
 
@@ -1179,6 +1179,12 @@ struct olc_impl_helpers {
 
   UNODB_DETAIL_RESTORE_GCC_10_WARNINGS()
 
+  /// \param captured_ver Version observed by the upsert lambda.
+  ///   Default (0) means no CAS check — used by plain remove().
+  ///   Note: version 0 is a valid lock state (newly-created inode, never
+  ///   write-locked). If a lambda observes version 0, the CAS gate is
+  ///   skipped, but correctness is still guaranteed by write_guard's own
+  ///   version validation (must_restart).
   template <typename Key, typename Value, class INode>
   [[nodiscard]] static std::optional<bool> remove_or_choose_subtree(
       INode& inode, std::byte key_byte, basic_art_key<Key> k,
@@ -1188,7 +1194,8 @@ struct olc_impl_helpers {
       in_critical_section<olc_node_ptr>* node_in_parent,
       in_critical_section<olc_node_ptr>** child_in_parent,
       optimistic_lock::read_critical_section* child_critical_section,
-      node_type* child_type, olc_node_ptr* child);
+      node_type* child_type, olc_node_ptr* child,
+      version_tag_type captured_ver = version_tag_type{});
 
   olc_impl_helpers() = delete;
 };
@@ -1867,7 +1874,7 @@ template <typename Key, typename Value, class INode>
     in_critical_section<olc_node_ptr>* node_in_parent,
     in_critical_section<olc_node_ptr>** child_in_parent,
     optimistic_lock::read_critical_section* child_critical_section,
-    node_type* child_type, olc_node_ptr* child) {
+    node_type* child_type, olc_node_ptr* child, version_tag_type captured_ver) {
   const auto [child_i, found_child]{inode.find_child(key_byte)};
 
   if (found_child == nullptr) {
@@ -1888,6 +1895,12 @@ template <typename Key, typename Value, class INode>
       *child_in_parent = nullptr;
       const auto is_node_min_size{inode.is_min_size()};
       detail::sync(detail::sync_before_remove_write_guard);
+
+      // CAS version gate: if called from try_upsert_erase, verify the
+      // inode version matches what the lambda observed.
+      if (UNODB_DETAIL_UNLIKELY(captured_ver != version_tag_type{}) &&
+          node_critical_section.get() != captured_ver)
+        return {};
 
       if (UNODB_DETAIL_LIKELY(!is_node_min_size)) {
         if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
@@ -1970,6 +1983,12 @@ template <typename Key, typename Value, class INode>
     const auto is_node_min_size{inode.is_min_size()};
 
     detail::sync(detail::sync_before_remove_write_guard);
+
+    // CAS version gate: if called from try_upsert_erase, verify the
+    // leaf version matches what the lambda observed.
+    if (UNODB_DETAIL_UNLIKELY(captured_ver != version_tag_type{}) &&
+        child_critical_section->get() != captured_ver)
+      return {};
 
     if (UNODB_DETAIL_LIKELY(!is_node_min_size)) {
       if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
@@ -3112,13 +3131,6 @@ template <typename Key, typename Value>
 typename olc_db<Key, Value>::try_update_result_type
 olc_db<Key, Value>::try_upsert_erase(art_key_type k,
                                      version_tag_type captured_ver) {
-  // Note: TLA+ model is SC; implementation uses acq/rel.
-  // Safe: version counter total order via atomic RMW provides the needed
-  // happens-before (acquire on read_lock, release on write_guard dtor).
-  //
-  // Note: Fixed-width path may lock parent before leaf
-  // version check (remove_or_choose_subtree). Safe: parent write lock
-  // prevents concurrent structural changes; stale RCS upgrade would fail.
   // Version-validated erase.  Traverses top-down to find the target node,
   // validates that its version matches captured_ver (ensuring the value
   // the lambda observed hasn't been modified), then performs the removal.
@@ -3325,7 +3337,7 @@ olc_db<Key, Value>::try_upsert_erase(art_key_type k,
           inode->template remove_or_choose_subtree<std::optional<bool>>(
               node_type, remaining_key[0], k, *this, parent_critical_section,
               node_critical_section, node_in_parent, &child_in_parent,
-              &child_critical_section, &child_type, &child)};
+              &child_critical_section, &child_type, &child, captured_ver)};
 
       if (UNODB_DETAIL_UNLIKELY(!opt_remove_result)) return {};
 
@@ -3427,8 +3439,8 @@ olc_db<Key, Value>::try_remove_key_view(art_key_type k,
 
         // CAS version gate: if called from try_upsert_erase, verify the
         // leaf version matches what the lambda observed.
-        if (captured_ver != version_tag_type{} &&
-            node_critical_section.get() != captured_ver)
+        if (UNODB_DETAIL_UNLIKELY(captured_ver != version_tag_type{} &&
+                                  node_critical_section.get() != captured_ver))
           return {};
 
         optimistic_lock::write_guard node_guard{
@@ -3509,8 +3521,9 @@ olc_db<Key, Value>::try_remove_key_view(art_key_type k,
           // Write-lock parent and chain node, then remove.
           optimistic_lock::write_guard pg{std::move(parent_critical_section)};
           if (UNODB_DETAIL_UNLIKELY(pg.must_restart())) return {};
-          if (captured_ver != version_tag_type{} &&
-              node_critical_section.get() != captured_ver)
+          if (UNODB_DETAIL_UNLIKELY(captured_ver != version_tag_type{} &&
+                                    node_critical_section.get() !=
+                                        captured_ver))
             return {};  // LCOV_EXCL_LINE
           optimistic_lock::write_guard ng{std::move(node_critical_section)};
           if (UNODB_DETAIL_UNLIKELY(ng.must_restart())) return {};
@@ -3548,7 +3561,8 @@ olc_db<Key, Value>::try_remove_key_view(art_key_type k,
         if (UNODB_DETAIL_UNLIKELY(lcs.must_restart())) return {};
         // CAS version gate: for leaf-case captures, verify the leaf
         // version matches what the lambda observed.
-        if (captured_ver != version_tag_type{} && lcs.get() != captured_ver)
+        if (UNODB_DETAIL_UNLIKELY(captured_ver != version_tag_type{} &&
+                                  lcs.get() != captured_ver))
           return {};  // LCOV_EXCL_LINE
         optimistic_lock::write_guard lg{std::move(lcs)};
         if (UNODB_DETAIL_UNLIKELY(lg.must_restart())) return {};
@@ -3596,7 +3610,7 @@ olc_db<Key, Value>::try_remove_key_view(art_key_type k,
         inode->template remove_or_choose_subtree<std::optional<bool>>(
             node_type, remaining_key[0], k, *this, parent_critical_section,
             node_critical_section, node_in_parent, &child_in_parent,
-            &child_critical_section, &child_type, &child)};
+            &child_critical_section, &child_type, &child, captured_ver)};
 
     if (UNODB_DETAIL_UNLIKELY(!opt_remove_result)) return {};
 
