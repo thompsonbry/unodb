@@ -7,7 +7,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <execution>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -18,6 +17,7 @@
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "node_type.hpp"
+#include "portability_execution.hpp"
 #include "qsbr.hpp"
 #include "qsbr_test_utils.hpp"
 

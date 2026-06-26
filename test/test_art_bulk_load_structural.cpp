@@ -174,9 +174,11 @@ TEST(BulkLoadStructural, BulkLoadLarge) {
   std::mt19937 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(100000);
+  UNODB_DETAIL_DISABLE_GCC_WARNING("-Wuseless-cast")
   for (int i = 0; i < 100000; ++i)
     kv.emplace_back(  // NOLINT(performance-inefficient-vector-operation)
         (static_cast<std::uint64_t>(rng()) << 32U) | rng(), sval);
+  UNODB_DETAIL_RESTORE_GCC_WARNINGS()
   std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
   kv.erase(std::unique(  // NOLINT(modernize-use-ranges)
                kv.begin(), kv.end(),
@@ -192,7 +194,9 @@ TEST(BulkLoadStructural, BulkLoadLarge) {
     unodb::key_decoder dec{visitor.get_key()};
     std::uint64_t k{};
     dec.decode(k);
-    if (!first) EXPECT_GE(k, prev);
+    if (!first) {
+      EXPECT_GE(k, prev);
+    }
     prev = k;
     first = false;
     return false;
@@ -270,7 +274,9 @@ TEST(BulkLoadStructural, BulkLoadScanOrder) {
     unodb::key_decoder dec{visitor.get_key()};
     std::uint64_t k{};
     dec.decode(k);
-    if (count > 0) EXPECT_GT(k, prev);
+    if (count > 0) {
+      EXPECT_GT(k, prev);
+    }
     prev = k;
     ++count;
     return false;

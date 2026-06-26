@@ -38,13 +38,13 @@ constexpr auto val = value_view{val_bytes};
     std::size_t n) {
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(n);
-  for (std::size_t i = 0; i < n && i < 256; ++i) {
-    const auto key = static_cast<std::uint64_t>(i) << 56U;
+  for (std::uint64_t i = 0; i < n && i < 256; ++i) {
+    const auto key = i << 56U;
     kv.emplace_back(key, val);
   }
   // Overflow keys: share byte 0 == 0x00, differ at byte 1
-  for (std::size_t i = 256; i < n; ++i) {
-    const auto key = static_cast<std::uint64_t>(i - 255) << 48U;
+  for (std::uint64_t i = 256; i < n; ++i) {
+    const auto key = (i - 255) << 48U;
     kv.emplace_back(key, val);
   }
   std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);

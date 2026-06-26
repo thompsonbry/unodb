@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <execution>
 #include <random>
 #include <utility>
 #include <vector>
@@ -18,6 +17,7 @@
 #include "micro_benchmark_utils.hpp"
 #include "mutex_art.hpp"
 #include "olc_art.hpp"
+#include "portability_execution.hpp"
 
 namespace {
 

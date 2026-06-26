@@ -17,7 +17,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <execution>
 #include <future>
 #include <iostream>
 #include <iterator>
@@ -36,6 +35,7 @@
 #include "assert.hpp"
 #include "in_fake_critical_section.hpp"
 #include "node_type.hpp"
+#include "portability_execution.hpp"
 
 namespace unodb {
 

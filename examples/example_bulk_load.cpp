@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <execution>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -15,6 +14,7 @@
 #include "art.hpp"
 #include "art_common.hpp"
 #include "mutex_art.hpp"
+#include "portability_execution.hpp"
 
 namespace {
 

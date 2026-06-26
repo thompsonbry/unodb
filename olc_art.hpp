@@ -13,7 +13,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <execution>
 #include <future>
 #include <iostream>
 #include <optional>
@@ -32,6 +31,7 @@
 #include "node_type.hpp"
 #include "optimistic_lock.hpp"
 #include "portability_arch.hpp"
+#include "portability_execution.hpp"
 #include "qsbr.hpp"
 #include "sync.hpp"
 
