@@ -225,6 +225,40 @@ UNODB_TYPED_TEST(UpsertTest, UpdateIdempotency) {
   }
 }
 
+// ID-4b: Update with multiple keys (forces inode traversal for value_view).
+UNODB_TYPED_TEST(UpsertTest, UpdateMultipleKeys) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  auto& db = verifier.get_db();
+  const auto k0 = verifier.coerce_key(0);
+  const auto k1 = verifier.coerce_key(1);
+  const auto k2 = verifier.coerce_key(2);
+  const auto v0 = unodb::test::get_test_value<TypeParam>(0);
+  const auto v1 = unodb::test::get_test_value<TypeParam>(1);
+  const auto v2 = unodb::test::get_test_value<TypeParam>(2);
+  // Insert 3 keys to force inode creation.
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k0, v0)); });
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k1, v1)); });
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k2, v2)); });
+  // Update the middle key.
+  auto update_fn = [](auto& x) {
+    if constexpr (std::is_arithmetic_v<std::remove_reference_t<decltype(x)>>)
+      x = 99;
+    return unodb::upsert_action::update;
+  };
+  with_qsbr<TypeParam>(
+      [&] { UNODB_ASSERT_FALSE(db.upsert(k1, v0, update_fn)); });
+  if constexpr (std::is_same_v<typename TypeParam::value_type,
+                               unodb::value_view>) {
+    ASSERT_VALUE_FOR_KEY(TypeParam, db, k1, v0);  // proposed value installed
+  } else {
+    ASSERT_VALUE_FOR_KEY(TypeParam, db, k1,
+                         static_cast<typename TypeParam::value_type>(99));
+  }
+  // Other keys unchanged.
+  ASSERT_VALUE_FOR_KEY(TypeParam, db, k0, v0);
+  ASSERT_VALUE_FOR_KEY(TypeParam, db, k2, v2);
+}
+
 // ID-5: Returns false, get(k) empty.
 UNODB_TYPED_TEST(UpsertTest, EraseKeyPresent) {
   unodb::test::tree_verifier<TypeParam> verifier;
