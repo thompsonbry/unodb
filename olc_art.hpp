@@ -2789,7 +2789,25 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
             return false;
           case upsert_action::update: {
             if constexpr (std::is_same_v<value_type, value_view>) {
-              UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+              // Replace leaf: allocate new leaf with the proposed value,
+              // swap the pointer in the parent under write lock, and
+              // defer-reclaim the old leaf.
+              create_leaf_if_needed(cached_leaf, k, v, *this);
+              optimistic_lock::write_guard parent_guard{
+                  std::move(parent_critical_section)};
+              if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) {
+                spin_wait_loop_body();
+                return {};
+              }
+              if (UNODB_DETAIL_UNLIKELY(
+                      !node_critical_section.try_read_unlock())) {
+                spin_wait_loop_body();
+                return {};
+              }
+              const auto r{art_policy::reclaim_leaf_on_scope_exit(leaf, *this)};
+              *node_in_parent =
+                  detail::olc_node_ptr{cached_leaf.release(), node_type::LEAF};
+              return false;
             } else {
               optimistic_lock::write_guard node_guard{
                   std::move(node_critical_section)};
@@ -2842,7 +2860,26 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
               return false;
             case upsert_action::update: {
               if constexpr (std::is_same_v<value_type, value_view>) {
-                UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+                // Replace leaf with one containing the proposed value.
+                create_leaf_if_needed(cached_leaf, k, v, *this);
+                optimistic_lock::write_guard parent_guard{
+                    std::move(parent_critical_section)};
+                if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) {
+                  spin_wait_loop_body();
+                  return {};
+                }
+                if (UNODB_DETAIL_UNLIKELY(
+                        !node_critical_section.try_read_unlock())) {
+                  spin_wait_loop_body();
+                  return {};
+                }
+                const auto r{art_policy::reclaim_leaf_on_scope_exit(
+                    // const_cast safe: we hold parent write lock, leaf is
+                    // being replaced and will be deferred-reclaimed.
+                    const_cast<leaf_type*>(leaf), *this)};
+                *node_in_parent = detail::olc_node_ptr{cached_leaf.release(),
+                                                       node_type::LEAF};
+                return false;
               } else {
                 optimistic_lock::write_guard node_guard{
                     std::move(node_critical_section)};

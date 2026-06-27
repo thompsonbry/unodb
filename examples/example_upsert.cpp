@@ -46,9 +46,22 @@ int main() {
     // Value is still "hello".
   }
 
-  // --- Update: key present, lambda modifies value, returns update ---
-  // Note: update requires a typed value (not value_view).  Demonstrate
-  // with a separate integer-valued tree.
+  // --- Update: key present, lambda returns update → replace with proposed ---
+  // For value_view: the proposed value (second arg) replaces the existing one.
+  {
+    unodb::quiescent_state_on_scope_exit qstate{};
+    const bool inserted = db.upsert(1, from_sv("updated"), [](auto& /*v*/) {
+      // Lambda observes existing value ("hello") and decides to update.
+      // The proposed value "updated" is installed in the tree.
+      return unodb::upsert_action::update;
+    });
+    std::cout << "upsert(1, \"updated\", update): inserted=" << inserted
+              << "\n";
+    // Value is now "updated".
+  }
+
+  // --- Update with typed value: lambda modifies the local copy ---
+  // For typed values (e.g., uint64_t), the lambda can mutate the value.
   {
     unodb::olc_db<std::uint64_t, std::uint64_t> idb;
     {

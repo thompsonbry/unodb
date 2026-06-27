@@ -160,41 +160,60 @@ UNODB_TYPED_TEST(UpsertTest, KeepKeyPresent) {
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v0);
 }
 
-// ID-3: Returns false, get(k)==42 (lambda mutated value).
+// ID-3: Returns false, value is replaced by update action.
 UNODB_TYPED_TEST(UpsertTest, UpdateKeyPresent) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  auto& db = verifier.get_db();
+  const auto k = verifier.coerce_key(1);
+  const auto v0 = unodb::test::get_test_value<TypeParam>(0);
+  const auto v1 = unodb::test::get_test_value<TypeParam>(1);
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
+  const auto result = with_qsbr<TypeParam>([&] {
+    return db.upsert(k, v1, [](auto& x) {
+      if constexpr (std::is_arithmetic_v<std::remove_reference_t<decltype(x)>>)
+        x = 42;  // typed: lambda modifies the local copy
+      return unodb::upsert_action::update;
+    });
+  });
+  UNODB_ASSERT_FALSE(result);
   if constexpr (std::is_same_v<typename TypeParam::value_type,
                                unodb::value_view>) {
-    GTEST_SKIP() << "update not supported for value_view types";
+    // value_view: proposed value v1 is installed
+    ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v1);
   } else {
-    unodb::test::tree_verifier<TypeParam> verifier;
-    auto& db = verifier.get_db();
-    const auto k = verifier.coerce_key(1);
-    const typename TypeParam::value_type v0 = 10;
-    const typename TypeParam::value_type v1 = 99;
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
-    const auto result = with_qsbr<TypeParam>([&] {
-      return db.upsert(k, v1, [](auto& x) {
-        x = 42;
-        return unodb::upsert_action::update;
-      });
-    });
-    UNODB_ASSERT_FALSE(result);
+    // typed: lambda-modified value (42) is written back
     ASSERT_VALUE_FOR_KEY(TypeParam, db, k,
                          static_cast<typename TypeParam::value_type>(42));
   }
 }
 
-// ID-4: Returns false both times, get(k)==v0+20.
+// ID-4: Returns false both times — value_view replaces twice.
 UNODB_TYPED_TEST(UpsertTest, UpdateIdempotency) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  auto& db = verifier.get_db();
+  const auto k = verifier.coerce_key(1);
+  const auto v0 = unodb::test::get_test_value<TypeParam>(0);
+  const auto v1 = unodb::test::get_test_value<TypeParam>(1);
+  const auto v2 = unodb::test::get_test_value<TypeParam>(2);
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
   if constexpr (std::is_same_v<typename TypeParam::value_type,
                                unodb::value_view>) {
-    GTEST_SKIP() << "update not supported for value_view types";
+    // value_view: each upsert replaces with the proposed value
+    auto update_fn = [](auto& /*x*/) { return unodb::upsert_action::update; };
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v1, update_fn)); });
+    ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v1);
+    with_qsbr<TypeParam>(
+        [&] { UNODB_ASSERT_FALSE(db.upsert(k, v2, update_fn)); });
+    ASSERT_VALUE_FOR_KEY(TypeParam, db, k, v2);
   } else {
-    unodb::test::tree_verifier<TypeParam> verifier;
-    auto& db = verifier.get_db();
-    const auto k = verifier.coerce_key(1);
-    const typename TypeParam::value_type v0 = 100;
-    with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v0)); });
+    // typed: lambda sets to 100, then adds 10 twice → 120
+    with_qsbr<TypeParam>([&] {
+      UNODB_ASSERT_FALSE(db.upsert(k, v0, [](auto& x) {
+        x = 100;
+        return unodb::upsert_action::update;
+      }));
+    });
     auto add10 = [](auto& x) {
       x += 10;
       return unodb::upsert_action::update;

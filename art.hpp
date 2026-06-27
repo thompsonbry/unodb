@@ -2680,11 +2680,15 @@ bool db<Key, Value>::upsert(Key k, value_type v, FN fn) {
             return false;
           case upsert_action::update:
             if constexpr (std::is_same_v<value_type, value_view>) {
-              UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+              // Replace the leaf with a new one containing the proposed value.
+              [[maybe_unused]] const auto removed = remove_internal(art_k);
+              UNODB_DETAIL_ASSERT(removed);
+              [[maybe_unused]] const auto inserted = insert_internal(art_k, v);
+              UNODB_DETAIL_ASSERT(inserted);
             } else {
               leaf->template set_value<value_type>(local);
-              return false;
             }
+            return false;
           case upsert_action::erase: {
             [[maybe_unused]] const auto removed = remove_internal(art_k);
             UNODB_DETAIL_ASSERT(removed);
