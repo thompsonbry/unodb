@@ -259,6 +259,32 @@ UNODB_TYPED_TEST(UpsertTest, UpdateMultipleKeys) {
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k2, v2);
 }
 
+// ID-4c: Upsert insert triggers prefix split (VIS coverage).
+UNODB_TYPED_TEST(UpsertTest, InsertPrefixSplit) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  auto& db = verifier.get_db();
+  // Insert two keys sharing a long prefix to create an inode with prefix.
+  const auto k0 = verifier.coerce_key(0);
+  const auto k1 = verifier.coerce_key(1);
+  const auto v0 = unodb::test::get_test_value<TypeParam>(0);
+  const auto v1 = unodb::test::get_test_value<TypeParam>(1);
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k0, v0)); });
+  with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k1, v1)); });
+  // Upsert a key that diverges within the prefix → triggers prefix split.
+  const auto k_split = verifier.coerce_key(256);
+  const auto v_split = unodb::test::get_test_value<TypeParam>(2);
+  const auto result = with_qsbr<TypeParam>([&] {
+    return db.upsert(k_split, v_split, [](auto& /*x*/) {
+      ADD_FAILURE() << "lambda should not be called";  // LCOV_EXCL_LINE
+      return unodb::upsert_action::keep;               // LCOV_EXCL_LINE
+    });
+  });
+  UNODB_ASSERT_TRUE(result);  // key was absent → inserted
+  ASSERT_VALUE_FOR_KEY(TypeParam, db, k0, v0);
+  ASSERT_VALUE_FOR_KEY(TypeParam, db, k1, v1);
+  ASSERT_VALUE_FOR_KEY(TypeParam, db, k_split, v_split);
+}
+
 // ID-5: Returns false, get(k) empty.
 UNODB_TYPED_TEST(UpsertTest, EraseKeyPresent) {
   unodb::test::tree_verifier<TypeParam> verifier;

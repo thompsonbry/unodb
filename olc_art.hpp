@@ -1988,7 +1988,7 @@ template <typename Key, typename Value, class INode>
     // leaf version matches what the lambda observed.
     if (UNODB_DETAIL_UNLIKELY(captured_ver != version_tag_type{}) &&
         child_critical_section->get() != captured_ver)
-      return {};
+      return {};  // LCOV_EXCL_LINE
 
     if (UNODB_DETAIL_LIKELY(!is_node_min_size)) {
       if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
@@ -2797,12 +2797,12 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
                   std::move(parent_critical_section)};
               if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) {
                 spin_wait_loop_body();
-                return {};
+                return {};  // LCOV_EXCL_LINE
               }
               if (UNODB_DETAIL_UNLIKELY(
                       !node_critical_section.try_read_unlock())) {
                 spin_wait_loop_body();
-                return {};
+                return {};  // LCOV_EXCL_LINE
               }
               const auto r{art_policy::reclaim_leaf_on_scope_exit(leaf, *this)};
               *node_in_parent =
@@ -2866,12 +2866,12 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
                     std::move(parent_critical_section)};
                 if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) {
                   spin_wait_loop_body();
-                  return {};
+                  return {};  // LCOV_EXCL_LINE
                 }
                 if (UNODB_DETAIL_UNLIKELY(
                         !node_critical_section.try_read_unlock())) {
                   spin_wait_loop_body();
-                  return {};
+                  return {};  // LCOV_EXCL_LINE
                 }
                 UNODB_DETAIL_DISABLE_MSVC_WARNING(26492)
                 const auto r{art_policy::reclaim_leaf_on_scope_exit(
@@ -3314,7 +3314,7 @@ olc_db<Key, Value>::try_upsert_erase(art_key_type k,
       if (UNODB_DETAIL_UNLIKELY(node == nullptr)) return {};
       node_critical_section = node_ptr_lock(node).try_read_lock();
       if (UNODB_DETAIL_UNLIKELY(node_critical_section.must_restart()))
-        return {};
+        return {};  // LCOV_EXCL_LINE
       node_type = node.type();
 
       remaining_key.shift_right(1);
@@ -3398,7 +3398,8 @@ olc_db<Key, Value>::try_upsert_erase(art_key_type k,
 
       // At the target leaf level, validate version.
       if (node_type == node_type::LEAF) {
-        if (node_critical_section.get() != captured_ver) return {};
+        if (node_critical_section.get() != captured_ver)
+          return {};  // LCOV_EXCL_LINE
       }
     }
   }
