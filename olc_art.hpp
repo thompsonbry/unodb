@@ -2873,10 +2873,12 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
                   spin_wait_loop_body();
                   return {};
                 }
+                UNODB_DETAIL_DISABLE_MSVC_WARNING(26492)
                 const auto r{art_policy::reclaim_leaf_on_scope_exit(
                     // const_cast safe: we hold parent write lock, leaf is
                     // being replaced and will be deferred-reclaimed.
                     const_cast<leaf_type*>(leaf), *this)};
+                UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
                 *node_in_parent = detail::olc_node_ptr{cached_leaf.release(),
                                                        node_type::LEAF};
                 return false;
