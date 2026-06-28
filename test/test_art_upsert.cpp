@@ -74,7 +74,7 @@ typename Db::key_type make_local_key(
 // ===================================================================
 
 /// Lambda that returns keep — value unchanged.
-constexpr auto keep_fn = [](auto& /*v*/) noexcept {
+constexpr auto keep_fn = []([[maybe_unused]] auto& v) noexcept {
   return unodb::upsert_action::keep;
 };
 
@@ -91,7 +91,7 @@ constexpr auto increment_fn = [](auto& v) noexcept {
 };
 
 /// Lambda that returns erase — removes the key.
-constexpr auto erase_fn = [](auto& /*v*/) noexcept {
+constexpr auto erase_fn = []([[maybe_unused]] auto& v) noexcept {
   return unodb::upsert_action::erase;
 };
 

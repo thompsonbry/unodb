@@ -73,7 +73,7 @@ struct value_bitmask_field {
   CritSec<Storage> bits{};
 
   [[nodiscard]] bool test(std::uint8_t i) const noexcept {
-    const Storage bval = bits.load();
+    const auto bval = bits.load();
     if (UNODB_DETAIL_UNLIKELY(i >= sizeof(Storage) * 8)) return false;
     return (bval >> i) & 1U;
   }
@@ -103,7 +103,6 @@ struct value_bitmask_field {
 };
 
 /// Specialization for array-based bitmasks (I48 uses 6 bytes, I256 uses 32).
-/// Each byte is individually wrapped for TSan-clean relaxed atomic access.
 template <bool Enabled, class T, std::size_t N, template <class> class CritSec>
 struct value_bitmask_field<Enabled, std::array<T, N>, CritSec> {
   std::array<CritSec<T>, N> bits{};
