@@ -2796,13 +2796,17 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
               optimistic_lock::write_guard parent_guard{
                   std::move(parent_critical_section)};
               if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) {
+                // LCOV_EXCL_START
                 spin_wait_loop_body();
-                return {};  // LCOV_EXCL_LINE
+                return {};
+                // LCOV_EXCL_STOP
               }
               if (UNODB_DETAIL_UNLIKELY(
                       !node_critical_section.try_read_unlock())) {
+                // LCOV_EXCL_START
                 spin_wait_loop_body();
-                return {};  // LCOV_EXCL_LINE
+                return {};
+                // LCOV_EXCL_STOP
               }
               const auto r{art_policy::reclaim_leaf_on_scope_exit(leaf, *this)};
               *node_in_parent =
@@ -2865,13 +2869,17 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
                 optimistic_lock::write_guard parent_guard{
                     std::move(parent_critical_section)};
                 if (UNODB_DETAIL_UNLIKELY(parent_guard.must_restart())) {
+                  // LCOV_EXCL_START
                   spin_wait_loop_body();
-                  return {};  // LCOV_EXCL_LINE
+                  return {};
+                  // LCOV_EXCL_STOP
                 }
                 if (UNODB_DETAIL_UNLIKELY(
                         !node_critical_section.try_read_unlock())) {
+                  // LCOV_EXCL_START
                   spin_wait_loop_body();
-                  return {};  // LCOV_EXCL_LINE
+                  return {};
+                  // LCOV_EXCL_STOP
                 }
                 UNODB_DETAIL_DISABLE_MSVC_WARNING(26492)
                 const auto r{art_policy::reclaim_leaf_on_scope_exit(
@@ -3055,9 +3063,12 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
         if (UNODB_DETAIL_UNLIKELY(node_guard.must_restart())) return {};
 
         if constexpr (art_policy::can_eliminate_leaf) {
+          // LCOV_EXCL_START — dead: can_eliminate_leaf requires
+          // full_key_in_inode_path, but this else branch implies !full_key.
           new_node->init(node, shared_prefix_length, depth,
                          art_policy::pack_value(v),
                          remaining_key[shared_prefix_length]);
+          // LCOV_EXCL_STOP
         } else {
           new_node->init(node, shared_prefix_length, depth,
                          std::move(cached_leaf),
