@@ -883,7 +883,7 @@ class olc_db final {
 
   /// Erase pass for upsert when the lambda returns upsert_action::erase.
   [[nodiscard]] try_update_result_type try_upsert_erase(
-      art_key_type k, std::optional<version_tag_type> captured_ver);
+      art_key_type k, version_tag_type captured_ver);
 
   /// Build an inode chain encoding key bytes from start_depth to end.
   [[nodiscard]] detail::olc_node_ptr build_chain(
@@ -3181,8 +3181,8 @@ olc_db<Key, Value>::try_upsert(art_key_type k, value_type v, FN fn,
 
 template <typename Key, typename Value>
 typename olc_db<Key, Value>::try_update_result_type
-olc_db<Key, Value>::try_upsert_erase(
-    art_key_type k, std::optional<version_tag_type> captured_ver) {
+olc_db<Key, Value>::try_upsert_erase(art_key_type k,
+                                     version_tag_type captured_ver) {
   // Version-validated erase.  Traverses top-down to find the target node,
   // validates that its version matches captured_ver (ensuring the value
   // the lambda observed hasn't been modified), then performs the removal.
@@ -3227,7 +3227,7 @@ olc_db<Key, Value>::try_upsert_erase(
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
       if (leaf->matches(k)) {
         // Version check: the leaf's lock version must match captured_ver.
-        if (node_critical_section.get() != *captured_ver) return {};
+        if (node_critical_section.get() != captured_ver) return {};
 
         if constexpr (std::is_same_v<Key, key_view>) {
           // For key_view, delegate to try_remove after version validation.
@@ -3292,7 +3292,7 @@ olc_db<Key, Value>::try_upsert_erase(
         if (child_ptr == nullptr) return {};  // Key absent → restart.
         if (inode->is_value_in_slot(node_type, ci_chk)) {
           // VIS target — version check on the containing inode.
-          if (node_critical_section.get() != *captured_ver) return {};
+          if (node_critical_section.get() != captured_ver) return {};
           // Version matches — release locks and delegate to try_remove.
           if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
             return {};  // LCOV_EXCL_LINE
@@ -3334,7 +3334,7 @@ olc_db<Key, Value>::try_upsert_erase(
 
       if (node_type == node_type::LEAF) {
         // Found the target leaf — validate version.
-        if (node_critical_section.get() != *captured_ver) return {};
+        if (node_critical_section.get() != captured_ver) return {};
         // Version matches — release locks and delegate to try_remove.
         if (UNODB_DETAIL_UNLIKELY(!parent_critical_section.try_read_unlock()))
           return {};  // LCOV_EXCL_LINE
@@ -3375,7 +3375,7 @@ olc_db<Key, Value>::try_upsert_erase(
         if (child_ptr != nullptr &&
             inode->is_value_in_slot(node_type, ci_chk)) {
           // VIS target — version check on the containing inode.
-          if (node_critical_section.get() != *captured_ver) return {};
+          if (node_critical_section.get() != captured_ver) return {};
           // Version matches — proceed with normal remove.
         }
       }
@@ -3411,7 +3411,7 @@ olc_db<Key, Value>::try_upsert_erase(
 
       // At the target leaf level, validate version.
       if (node_type == node_type::LEAF) {
-        if (node_critical_section.get() != *captured_ver)
+        if (node_critical_section.get() != captured_ver)
           return {};  // LCOV_EXCL_LINE
       }
     }
