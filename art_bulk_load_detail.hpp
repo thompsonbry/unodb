@@ -126,6 +126,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
       }
       return {self.build_chain(ak, leaf_ptr, depth), false};
     } else {
+      static_cast<void>(depth);
       auto leaf = art_policy::make_db_leaf_ptr(ak, it->second, self);
       auto leaf_ptr = node_ptr_t{leaf.release(), node_type::LEAF};
       return {leaf_ptr, false};
