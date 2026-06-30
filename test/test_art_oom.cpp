@@ -673,6 +673,7 @@ void bulk_load_oom_test(
       unodb::test::allocation_failure_injector::reset();
       // Strong guarantee: tree must be empty after failed bulk_load
       UNODB_ASSERT_TRUE(test_db.empty());
+      UNODB_ASSERT_EQ(test_db.get_current_memory_use(), 0);
     }
   }
   FAIL() << "bulk_load did not succeed within " << fail_limit << " allocations";

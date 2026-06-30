@@ -59,12 +59,14 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     while (cur != l) {
       const art_key_type ak{cur->first};
       const auto kv = ak.get_key_view();
+      UNODB_DETAIL_ASSERT(dd < kv.size());
       const auto byte = kv[dd];
       parts.push_back({cur, byte});
       ++cur;
       while (cur != l) {
         const art_key_type ak2{cur->first};
         const auto kv2 = ak2.get_key_view();
+        UNODB_DETAIL_ASSERT(dd < kv2.size());
         if (kv2[dd] != byte) break;
         ++cur;
       }
@@ -130,6 +132,77 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     }
   };
 
+  // ─── Shared inode factory ────────────────────────────────────────────
+
+  auto make_bulk_inode =
+      [&self](std::span<const bulk_child_t> cs,
+              const boost::container::small_vector<guard_t, 16>& guards,
+              const boost::container::small_vector<bulk_child_t, 16>& children,
+              key_prefix_size inode_prefix_len, key_view prefix_kv,
+              tree_depth_type inode_depth) -> node_ptr_t {
+    const auto child_count = cs.size();
+    if (child_count <= 4) {
+      std::uint8_t vmask = 0;
+      if constexpr (art_policy::can_eliminate_leaf) {
+        for (std::size_t i = 0; i < child_count; ++i) {
+          if (guards[i].is_packed_value)
+            vmask |= static_cast<std::uint8_t>(1U << i);
+        }
+      }
+      auto ptr = inode_4::create_bulk(self, inode_prefix_len, prefix_kv,
+                                      inode_depth, cs, vmask);
+#ifdef UNODB_DETAIL_WITH_STATS
+      self.template account_growing_inode<node_type::I4>();
+#endif
+      return node_ptr_t{ptr.release(), node_type::I4};
+    }
+    if (child_count <= 16) {
+      std::uint16_t vmask = 0;
+      if constexpr (art_policy::can_eliminate_leaf) {
+        for (std::size_t i = 0; i < child_count; ++i) {
+          if (guards[i].is_packed_value)
+            vmask |= static_cast<std::uint16_t>(1U << i);
+        }
+      }
+      auto ptr = inode_16::create_bulk(self, inode_prefix_len, prefix_kv,
+                                       inode_depth, cs, vmask);
+#ifdef UNODB_DETAIL_WITH_STATS
+      self.template account_growing_inode<node_type::I16>();
+#endif
+      return node_ptr_t{ptr.release(), node_type::I16};
+    }
+    if (child_count <= 48) {
+      std::array<std::uint8_t, 6> vmask{};
+      if constexpr (art_policy::can_eliminate_leaf) {
+        for (std::size_t i = 0; i < child_count; ++i) {
+          if (guards[i].is_packed_value)
+            vmask[i / 8] |= static_cast<std::uint8_t>(1U << (i % 8));
+        }
+      }
+      auto ptr = inode_48::create_bulk(self, inode_prefix_len, prefix_kv,
+                                       inode_depth, cs, vmask);
+#ifdef UNODB_DETAIL_WITH_STATS
+      self.template account_growing_inode<node_type::I48>();
+#endif
+      return node_ptr_t{ptr.release(), node_type::I48};
+    }
+    std::array<std::uint8_t, 32> vmask{};
+    if constexpr (art_policy::can_eliminate_leaf) {
+      for (std::size_t i = 0; i < child_count; ++i) {
+        if (guards[i].is_packed_value) {
+          const auto kb = static_cast<std::uint8_t>(children[i].key_byte);
+          vmask[kb / 8] |= static_cast<std::uint8_t>(1U << (kb % 8));
+        }
+      }
+    }
+    auto ptr = inode_256::create_bulk(self, inode_prefix_len, prefix_kv,
+                                      inode_depth, cs, vmask);
+#ifdef UNODB_DETAIL_WITH_STATS
+    self.template account_growing_inode<node_type::I256>();
+#endif
+    return node_ptr_t{ptr.release(), node_type::I256};
+  };
+
   // ─── Recursive subtree builder ─────────────────────────────────────────
 
   struct subtree_builder {
@@ -138,6 +211,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     decltype(partition_by_byte)& pbb;
     decltype(build_prefix_chain)& bpc;
     decltype(build_single_leaf)& bsl;
+    decltype(make_bulk_inode)& mbi;
 
     build_result_t operator()(RandomIt f, RandomIt l,
                               tree_depth_type depth) const {
@@ -170,7 +244,9 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
       }
 
       const std::size_t chain_consumed =
-          (prefix_len > prefix_cap) ? (prefix_len / 8) * 8 : 0;
+          (prefix_len > prefix_cap)
+              ? (prefix_len / (prefix_cap + 1)) * (prefix_cap + 1)
+              : 0;
       const auto inode_prefix_len =
           static_cast<key_prefix_size>(prefix_len - chain_consumed);
       const auto inode_depth = tree_depth_type{static_cast<std::uint32_t>(
@@ -179,72 +255,10 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
       const art_key_type prefix_key{f->first};
       const auto prefix_kv = prefix_key.get_key_view();
 
-      auto make_inode = [&]() -> node_ptr_t {
-        const auto cs =
-            std::span<const bulk_child_t>{children.data(), children.size()};
-        if (child_count <= 4) {
-          std::uint8_t vmask = 0;
-          if constexpr (art_policy::can_eliminate_leaf) {
-            for (std::size_t i = 0; i < child_count; ++i) {
-              if (guards[i].is_packed_value)
-                vmask |= static_cast<std::uint8_t>(1U << i);
-            }
-          }
-          auto ptr = inode_4::create_bulk(self, inode_prefix_len, prefix_kv,
-                                          inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-          self.template account_growing_inode<node_type::I4>();
-#endif
-          return node_ptr_t{ptr.release(), node_type::I4};
-        }
-        if (child_count <= 16) {
-          std::uint16_t vmask = 0;
-          if constexpr (art_policy::can_eliminate_leaf) {
-            for (std::size_t i = 0; i < child_count; ++i) {
-              if (guards[i].is_packed_value)
-                vmask |= static_cast<std::uint16_t>(1U << i);
-            }
-          }
-          auto ptr = inode_16::create_bulk(self, inode_prefix_len, prefix_kv,
-                                           inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-          self.template account_growing_inode<node_type::I16>();
-#endif
-          return node_ptr_t{ptr.release(), node_type::I16};
-        }
-        if (child_count <= 48) {
-          std::array<std::uint8_t, 6> vmask{};
-          if constexpr (art_policy::can_eliminate_leaf) {
-            for (std::size_t i = 0; i < child_count; ++i) {
-              if (guards[i].is_packed_value)
-                vmask[i / 8] |= static_cast<std::uint8_t>(1U << (i % 8));
-            }
-          }
-          auto ptr = inode_48::create_bulk(self, inode_prefix_len, prefix_kv,
-                                           inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-          self.template account_growing_inode<node_type::I48>();
-#endif
-          return node_ptr_t{ptr.release(), node_type::I48};
-        }
-        std::array<std::uint8_t, 32> vmask{};
-        if constexpr (art_policy::can_eliminate_leaf) {
-          for (std::size_t i = 0; i < child_count; ++i) {
-            if (guards[i].is_packed_value) {
-              const auto kb = static_cast<std::uint8_t>(children[i].key_byte);
-              vmask[kb / 8] |= static_cast<std::uint8_t>(1U << (kb % 8));
-            }
-          }
-        }
-        auto ptr = inode_256::create_bulk(self, inode_prefix_len, prefix_kv,
-                                          inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-        self.template account_growing_inode<node_type::I256>();
-#endif
-        return node_ptr_t{ptr.release(), node_type::I256};
-      };
-
-      auto inode_ptr = make_inode();
+      const auto cs =
+          std::span<const bulk_child_t>{children.data(), children.size()};
+      auto inode_ptr = mbi(cs, guards, children, inode_prefix_len, prefix_kv,
+                           inode_depth);
       for (auto& g : guards) g.release();
 
       if (chain_consumed > 0) {
@@ -257,7 +271,8 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
   };
 
   subtree_builder builder{self, common_prefix_length, partition_by_byte,
-                          build_prefix_chain, build_single_leaf};
+                          build_prefix_chain, build_single_leaf,
+                          make_bulk_inode};
 
   using policy_t = std::remove_cvref_t<ExecutionPolicy>;
   constexpr bool is_parallel =
@@ -302,15 +317,31 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     children.reserve(child_count);
 
     for (std::size_t i = 0; i < child_count; ++i) {
-      auto result = futures[i].get();
-      guards.emplace_back(self);
-      guards.back().ptr = result.ptr;
-      guards.back().is_packed_value = result.is_packed_value;
-      children.push_back({parts[i].key_byte, result.ptr});
+      try {
+        auto result = futures[i].get();
+        guards.emplace_back(self);
+        guards.back().ptr = result.ptr;
+        guards.back().is_packed_value = result.is_packed_value;
+        children.push_back({parts[i].key_byte, result.ptr});
+      } catch (...) {
+        // Drain remaining futures into guards to prevent leaks.
+        for (std::size_t j = i + 1; j < child_count; ++j) {
+          try {
+            auto r = futures[j].get();
+            guards.emplace_back(self);
+            guards.back().ptr = r.ptr;
+            guards.back().is_packed_value = r.is_packed_value;
+          } catch (...) {
+          }  // LCOV_EXCL_LINE
+        }
+        throw;
+      }
     }
 
     const std::size_t chain_consumed =
-        (prefix_len > prefix_cap) ? (prefix_len / 8) * 8 : 0;
+        (prefix_len > prefix_cap)
+            ? (prefix_len / (prefix_cap + 1)) * (prefix_cap + 1)
+            : 0;
     const auto inode_prefix_len =
         static_cast<key_prefix_size>(prefix_len - chain_consumed);
     const auto inode_depth =
@@ -319,72 +350,10 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     const art_key_type prefix_key{first->first};
     const auto prefix_kv = prefix_key.get_key_view();
 
-    auto make_root_inode = [&]() -> node_ptr_t {
-      const auto cs =
-          std::span<const bulk_child_t>{children.data(), children.size()};
-      if (child_count <= 4) {
-        std::uint8_t vmask = 0;
-        if constexpr (art_policy::can_eliminate_leaf) {
-          for (std::size_t i = 0; i < child_count; ++i) {
-            if (guards[i].is_packed_value)
-              vmask |= static_cast<std::uint8_t>(1U << i);
-          }
-        }
-        auto ptr = inode_4::create_bulk(self, inode_prefix_len, prefix_kv,
-                                        inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-        self.template account_growing_inode<node_type::I4>();
-#endif
-        return node_ptr_t{ptr.release(), node_type::I4};
-      }
-      if (child_count <= 16) {
-        std::uint16_t vmask = 0;
-        if constexpr (art_policy::can_eliminate_leaf) {
-          for (std::size_t i = 0; i < child_count; ++i) {
-            if (guards[i].is_packed_value)
-              vmask |= static_cast<std::uint16_t>(1U << i);
-          }
-        }
-        auto ptr = inode_16::create_bulk(self, inode_prefix_len, prefix_kv,
-                                         inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-        self.template account_growing_inode<node_type::I16>();
-#endif
-        return node_ptr_t{ptr.release(), node_type::I16};
-      }
-      if (child_count <= 48) {
-        std::array<std::uint8_t, 6> vmask{};
-        if constexpr (art_policy::can_eliminate_leaf) {
-          for (std::size_t i = 0; i < child_count; ++i) {
-            if (guards[i].is_packed_value)
-              vmask[i / 8] |= static_cast<std::uint8_t>(1U << (i % 8));
-          }
-        }
-        auto ptr = inode_48::create_bulk(self, inode_prefix_len, prefix_kv,
-                                         inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-        self.template account_growing_inode<node_type::I48>();
-#endif
-        return node_ptr_t{ptr.release(), node_type::I48};
-      }
-      std::array<std::uint8_t, 32> vmask{};
-      if constexpr (art_policy::can_eliminate_leaf) {
-        for (std::size_t i = 0; i < child_count; ++i) {
-          if (guards[i].is_packed_value) {
-            const auto kb = static_cast<std::uint8_t>(children[i].key_byte);
-            vmask[kb / 8] |= static_cast<std::uint8_t>(1U << (kb % 8));
-          }
-        }
-      }
-      auto ptr = inode_256::create_bulk(self, inode_prefix_len, prefix_kv,
-                                        inode_depth, cs, vmask);
-#ifdef UNODB_DETAIL_WITH_STATS
-      self.template account_growing_inode<node_type::I256>();
-#endif
-      return node_ptr_t{ptr.release(), node_type::I256};
-    };
-
-    auto inode_ptr = make_root_inode();
+    const auto cs =
+        std::span<const bulk_child_t>{children.data(), children.size()};
+    auto inode_ptr = make_bulk_inode(cs, guards, children, inode_prefix_len,
+                                     prefix_kv, inode_depth);
     for (auto& g : guards) g.release();
 
     if (chain_consumed > 0) {

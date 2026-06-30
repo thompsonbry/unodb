@@ -3101,7 +3101,6 @@ class basic_inode_4
     return result;
   }
   UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
-
 };  // class basic_inode_4
 
 /// Type alias for basic_inode_16 parent class.
@@ -3760,7 +3759,6 @@ class basic_inode_16
     return result;
   }
   UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
-
 };  // class basic_inode_16
 
 /// Type alias for basic_inode_48 parent class.
@@ -4578,7 +4576,6 @@ class basic_inode_48
     return result;
   }
   UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
-
 };  // class basic_inode_48
 
 /// Type alias for basic_inode_256 parent class.
@@ -5063,7 +5060,6 @@ class basic_inode_256
     return result;
   }
   UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
-
 };  // class basic_inode_256
 
 }  // namespace unodb::detail
