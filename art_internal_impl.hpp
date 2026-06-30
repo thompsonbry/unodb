@@ -4571,7 +4571,9 @@ class basic_inode_48
       node->children.pointer_array[i] = node_ptr{nullptr};
     }
     if constexpr (ArtPolicy::can_eliminate_leaf) {
-      node->bitmask_base::bits = value_mask;
+      for (std::size_t i = 0; i < value_mask.size(); ++i) {
+        node->bitmask_base::bits[i] = value_mask[i];
+      }
     }
     return result;
   }
@@ -5055,7 +5057,9 @@ class basic_inode_256
       node->children[kb] = children_span[i].child;
     }
     if constexpr (ArtPolicy::can_eliminate_leaf) {
-      node->bitmask_base::bits = value_mask;
+      for (std::size_t i = 0; i < value_mask.size(); ++i) {
+        node->bitmask_base::bits[i] = value_mask[i];
+      }
     }
     return result;
   }
