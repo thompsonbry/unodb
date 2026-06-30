@@ -5,20 +5,20 @@ Formal models verifying the concurrency protocol for the OLC
 
 ## Stages
 
-| Stage | Module | Property |
-| ----- | ------ | -------- |
-| 1 | Inode256VIS | Sequential VIS scan correctness |
-| 2 | OLCSlot | Single-slot read/write protocol |
-| 3 | OLCInsert | Two writers race on same slot |
-| 4 | OLCChainMembership | Chain membership revalidation |
-| 5 | OLCChainCut | Chain cut Cases A/B/C |
-| 6 | OLCIterRemove | Iterator vs remove (obsolescence) |
-| 7 | OLCInsertChainVIS | Transient VIS during insert |
-| 8 | OLCDoubleCut | Two concurrent removes |
-| 9 | OLCChainMultiLevel | Multi-level chain cuts |
-| 10 | OLCChainCutFull | Root shrink and cascade |
-| 11 | OLCKeyViewChain | VIS with shared prefix (key_view) |
-| 12 | ARTTreeMaintenance | Sequential tree structure invariants |
+| Stage | Module             | Property                             |
+| ----- | ------------------ | ------------------------------------ |
+| 1     | Inode256VIS        | Sequential VIS scan correctness      |
+| 2     | OLCSlot            | Single-slot read/write protocol      |
+| 3     | OLCInsert          | Two writers race on same slot        |
+| 4     | OLCChainMembership | Chain membership revalidation        |
+| 5     | OLCChainCut        | Chain cut Cases A/B/C                |
+| 6     | OLCIterRemove      | Iterator vs remove (obsolescence)    |
+| 7     | OLCInsertChainVIS  | Transient VIS during insert          |
+| 8     | OLCDoubleCut       | Two concurrent removes               |
+| 9     | OLCChainMultiLevel | Multi-level chain cuts               |
+| 10    | OLCChainCutFull    | Root shrink and cascade              |
+| 11    | OLCKeyViewChain    | VIS with shared prefix (key_view)    |
+| 12    | ARTTreeMaintenance | Sequential tree structure invariants |
 
 ## Running
 
