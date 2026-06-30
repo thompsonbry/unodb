@@ -257,8 +257,8 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
 
       const auto cs =
           std::span<const bulk_child_t>{children.data(), children.size()};
-      auto inode_ptr = mbi(cs, guards, children, inode_prefix_len, prefix_kv,
-                           inode_depth);
+      auto inode_ptr =
+          mbi(cs, guards, children, inode_prefix_len, prefix_kv, inode_depth);
       for (auto& g : guards) g.release();
 
       if (chain_consumed > 0) {
@@ -270,8 +270,11 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     }
   };
 
-  subtree_builder builder{self, common_prefix_length, partition_by_byte,
-                          build_prefix_chain, build_single_leaf,
+  subtree_builder builder{self,
+                          common_prefix_length,
+                          partition_by_byte,
+                          build_prefix_chain,
+                          build_single_leaf,
                           make_bulk_inode};
 
   using policy_t = std::remove_cvref_t<ExecutionPolicy>;
