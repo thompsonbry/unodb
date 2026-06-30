@@ -53,3 +53,8 @@ examples/compile_commands.json
 **/*#*
 
 /docs/
+
+# Agent-local files — MUST NOT BE COMMITTED
+/AGENTS.md
+/RESTART.md
+/.unodb-work/
