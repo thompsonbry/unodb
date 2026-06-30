@@ -141,6 +141,10 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
               const boost::container::small_vector<bulk_child_t, 16>& children,
               key_prefix_size inode_prefix_len, key_view prefix_kv,
               tree_depth_type inode_depth) -> node_ptr_t {
+    if constexpr (!art_policy::can_eliminate_leaf) {
+      static_cast<void>(guards);
+      static_cast<void>(children);
+    }
     const auto child_count = cs.size();
     if (child_count <= 4) {
       std::uint8_t vmask = 0;
@@ -192,7 +196,8 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
       for (std::size_t i = 0; i < child_count; ++i) {
         if (guards[i].is_packed_value) {
           const auto kb = static_cast<std::uint8_t>(children[i].key_byte);
-          vmask[kb / 8] |= static_cast<std::uint8_t>(1U << (kb % 8));
+          vmask[static_cast<std::size_t>(kb / 8)] |=
+              static_cast<std::uint8_t>(1U << (kb % 8));
         }
       }
     }
