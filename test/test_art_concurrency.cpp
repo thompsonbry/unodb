@@ -27,7 +27,9 @@
 
 #ifndef NDEBUG
 #include "sync.hpp"
+#include "sync_point_test_utils.hpp"
 #include "thread_sync.hpp"
+using unodb::test::sync_point_guard;
 #endif
 
 namespace {
@@ -564,17 +566,6 @@ UNODB_TYPED_TEST(ARTChainConcurrencyTest, DISABLED_ChainStressTest) {
 // keys (CT2/CT4, 4 chain levels) to ensure enough chain depth that
 // pg locks a deep chain node, not the cut_point_parent.
 // ===================================================================
-
-struct sync_point_guard {
-  unodb::detail::sync_point* pt_;
-  explicit sync_point_guard(unodb::detail::sync_point& pt) noexcept
-      : pt_{&pt} {}
-  ~sync_point_guard() { pt_->disarm(); }
-  sync_point_guard(const sync_point_guard&) = delete;
-  sync_point_guard& operator=(const sync_point_guard&) = delete;
-  sync_point_guard(sync_point_guard&&) = delete;
-  sync_point_guard& operator=(sync_point_guard&&) = delete;
-};
 
 // CT1: T1 removes A (chain cut).  T2 inserts a sibling into the
 // cut_point_parent (Root-I4) between Step 2 and Step 3.

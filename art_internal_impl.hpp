@@ -62,59 +62,72 @@ namespace unodb::detail {
 /// pointers.  When \p Enabled is false the struct is empty and all operations
 /// compile away, so inodes pay zero overhead for db types that do not use
 /// value-in-slot.
-template <bool Enabled, class Storage>
+///
+/// \tparam Enabled Whether value-in-slot is active
+/// \tparam Storage Underlying storage type (e.g. std::uint8_t, std::uint16_t)
+/// \tparam CritSec Critical section wrapper (in_critical_section for OLC,
+///         in_fake_critical_section for single-threaded). Wraps the storage
+///         so that TSan observes relaxed atomic accesses under OLC.
+template <bool Enabled, class Storage, template <class> class CritSec>
 struct value_bitmask_field {
-  Storage bits{};
+  CritSec<Storage> bits{};
 
-  [[nodiscard]] constexpr bool test(std::uint8_t i) const noexcept {
-    return (bits >> i) & 1U;
+  [[nodiscard]] bool test(std::uint8_t i) const noexcept {
+    const auto bval = bits.load();
+    if (UNODB_DETAIL_UNLIKELY(i >= sizeof(Storage) * 8)) return false;
+    return (bval >> i) & 1U;
   }
-  constexpr void set(std::uint8_t i) noexcept {
-    bits |= static_cast<Storage>(Storage{1} << i);
+  void set(std::uint8_t i) noexcept {
+    bits = static_cast<Storage>(bits.load() | (Storage{1} << i));
   }
-  constexpr void clear(std::uint8_t i) noexcept {
-    bits &= static_cast<Storage>(~(Storage{1} << i));
+  void clear(std::uint8_t i) noexcept {
+    bits = static_cast<Storage>(bits.load() & ~(Storage{1} << i));
   }
   /// Remove bit at position \p i, shifting higher bits down.
-  constexpr void remove_at(std::uint8_t i) noexcept {
+  void remove_at(std::uint8_t i) noexcept {
+    const Storage bval = bits.load();
     const auto above =
-        static_cast<Storage>(bits >> static_cast<unsigned>(i + 1));
-    const auto below = static_cast<Storage>(bits & ((Storage{1} << i) - 1));
+        static_cast<Storage>(bval >> static_cast<unsigned>(i + 1));
+    const auto below = static_cast<Storage>(bval & ((Storage{1} << i) - 1));
     bits = static_cast<Storage>(below | (above << i));
   }
   /// Insert space at position \p i, shifting higher bits up.
   /// Does NOT set the new bit — caller decides whether to set or leave clear.
-  constexpr void insert_at(std::uint8_t i) noexcept {
-    const auto above = static_cast<Storage>(bits >> i);
-    const auto below = static_cast<Storage>(bits & ((Storage{1} << i) - 1));
+  void insert_at(std::uint8_t i) noexcept {
+    const Storage bval = bits.load();
+    const auto above = static_cast<Storage>(bval >> i);
+    const auto below = static_cast<Storage>(bval & ((Storage{1} << i) - 1));
     bits =
         static_cast<Storage>(below | (above << static_cast<unsigned>(i + 1)));
   }
 };
 
 /// Specialization for array-based bitmasks (I48 uses 6 bytes, I256 uses 32).
-template <bool Enabled, class T, std::size_t N>
-struct value_bitmask_field<Enabled, std::array<T, N>> {
-  std::array<T, N> bits{};
+template <bool Enabled, class T, std::size_t N, template <class> class CritSec>
+struct value_bitmask_field<Enabled, std::array<T, N>, CritSec> {
+  std::array<CritSec<T>, N> bits{};
 
-  [[nodiscard]] constexpr bool test(std::uint8_t i) const noexcept {
-    return (static_cast<unsigned>(bits[static_cast<std::size_t>(i) / 8]) >>
+  [[nodiscard]] bool test(std::uint8_t i) const noexcept {
+    const T byte_val = bits[static_cast<std::size_t>(i) / 8].load();
+    return (static_cast<unsigned>(byte_val) >>
             (static_cast<unsigned>(i) % 8U)) &
            1U;
   }
-  constexpr void set(std::uint8_t i) noexcept {
-    bits[static_cast<std::size_t>(i) / 8] |=
-        static_cast<T>(T{1} << (static_cast<unsigned>(i) % 8U));
+  void set(std::uint8_t i) noexcept {
+    const auto idx = static_cast<std::size_t>(i) / 8;
+    bits[idx] = static_cast<T>(bits[idx].load() |
+                               (T{1} << (static_cast<unsigned>(i) % 8U)));
   }
-  constexpr void clear(std::uint8_t i) noexcept {
-    bits[static_cast<std::size_t>(i) / 8] &=
-        static_cast<T>(~(T{1} << (static_cast<unsigned>(i) % 8U)));
+  void clear(std::uint8_t i) noexcept {
+    const auto idx = static_cast<std::size_t>(i) / 8;
+    bits[idx] = static_cast<T>(bits[idx].load() &
+                               ~(T{1} << (static_cast<unsigned>(i) % 8U)));
   }
 };
 
 /// Disabled specialization — empty struct, all ops are no-ops.
-template <class Storage>
-struct value_bitmask_field<false, Storage> {
+template <class Storage, template <class> class CritSec>
+struct value_bitmask_field<false, Storage, CritSec> {
   [[nodiscard]] static constexpr bool test(std::uint8_t) noexcept {
     return false;
   }
@@ -125,8 +138,8 @@ struct value_bitmask_field<false, Storage> {
 };
 
 /// Disabled specialization for array-based bitmasks.
-template <class T, std::size_t N>
-struct value_bitmask_field<false, std::array<T, N>> {
+template <class T, std::size_t N, template <class> class CritSec>
+struct value_bitmask_field<false, std::array<T, N>, CritSec> {
   [[nodiscard]] static constexpr bool test(std::uint8_t) noexcept {
     return false;
   }
@@ -316,6 +329,21 @@ class [[nodiscard]] basic_leaf final : public Header {
     }
   }
 
+  /// Overwrite the value stored in this leaf.
+  ///
+  /// \pre Value must be trivially copyable and not value_view (leaf size is
+  /// fixed at allocation time).
+  template <typename Value>
+  constexpr void set_value(const Value& v) noexcept {
+    static_assert(!std::is_same_v<Value, value_view>,
+                  "set_value cannot be used with value_view — leaf size is "
+                  "fixed");
+    static_assert(std::is_trivially_copyable_v<Value>);
+    UNODB_DETAIL_ASSERT(sizeof(Value) == value_size);
+    // cppcheck-suppress memsetClass
+    std::memcpy(data + key_size, &v, sizeof(Value));
+  }
+
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
@@ -421,6 +449,17 @@ class [[nodiscard]] basic_leaf<no_key_tag, Header> final : public Header {
       return v;
       // LCOV_EXCL_STOP
     }
+  }
+
+  /// Overwrite the value stored in this leaf.
+  template <typename Value>
+  constexpr void set_value(const Value& v) noexcept {
+    static_assert(!std::is_same_v<Value, value_view>,
+                  "set_value cannot be used with value_view — leaf size is "
+                  "fixed");
+    static_assert(std::is_trivially_copyable_v<Value>);
+    UNODB_DETAIL_ASSERT(sizeof(Value) == value_size);
+    std::memcpy(data, &v, sizeof(v));
   }
 
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
@@ -2174,12 +2213,14 @@ using basic_inode_4_parent =
 template <class ArtPolicy>
 class basic_inode_4
     : public basic_inode_4_parent<ArtPolicy>,
-      private value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint8_t> {
+      private value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint8_t,
+                                  ArtPolicy::template critical_section_policy> {
   /// Parent class type.
   using parent_class = basic_inode_4_parent<ArtPolicy>;
   /// Bitmask base (empty via EBO when can_eliminate_leaf is false).
   using bitmask_base =
-      value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint8_t>;
+      value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint8_t,
+                          ArtPolicy::template critical_section_policy>;
 
   using typename parent_class::inode16_type;
   using typename parent_class::inode4_type;
@@ -3014,13 +3055,14 @@ using basic_inode_16_parent = basic_inode<
 template <class ArtPolicy>
 class basic_inode_16
     : public basic_inode_16_parent<ArtPolicy>,
-      private value_bitmask_field<ArtPolicy::can_eliminate_leaf,
-                                  std::uint16_t> {
+      private value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint16_t,
+                                  ArtPolicy::template critical_section_policy> {
   /// Parent class type.
   using parent_class = basic_inode_16_parent<ArtPolicy>;
   /// Bitmask base (empty via EBO when can_eliminate_leaf is false).
   using bitmask_base =
-      value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint16_t>;
+      value_bitmask_field<ArtPolicy::can_eliminate_leaf, std::uint16_t,
+                          ArtPolicy::template critical_section_policy>;
 
   using typename parent_class::inode16_type;
   using typename parent_class::inode48_type;
@@ -3636,12 +3678,15 @@ template <class ArtPolicy>
 class basic_inode_48
     : public basic_inode_48_parent<ArtPolicy>,
       private value_bitmask_field<ArtPolicy::can_eliminate_leaf,
-                                  std::array<std::uint8_t, 6>> {
+                                  std::array<std::uint8_t, 6>,
+                                  ArtPolicy::template critical_section_policy> {
   /// Base class type alias.
   using parent_class = basic_inode_48_parent<ArtPolicy>;
   /// Bitmask base (empty via EBO when can_eliminate_leaf is false).
-  using bitmask_base = value_bitmask_field<ArtPolicy::can_eliminate_leaf,
-                                           std::array<std::uint8_t, 6>>;
+  using bitmask_base =
+      value_bitmask_field<ArtPolicy::can_eliminate_leaf,
+                          std::array<std::uint8_t, 6>,
+                          ArtPolicy::template critical_section_policy>;
 
   using typename parent_class::inode16_type;
   using typename parent_class::inode256_type;
@@ -4412,12 +4457,15 @@ template <class ArtPolicy>
 class basic_inode_256
     : public basic_inode_256_parent<ArtPolicy>,
       private value_bitmask_field<ArtPolicy::can_eliminate_leaf,
-                                  std::array<std::uint8_t, 32>> {
+                                  std::array<std::uint8_t, 32>,
+                                  ArtPolicy::template critical_section_policy> {
   /// Base class type alias.
   using parent_class = basic_inode_256_parent<ArtPolicy>;
   /// Bitmask base (empty via EBO when can_eliminate_leaf is false).
-  using bitmask_base = value_bitmask_field<ArtPolicy::can_eliminate_leaf,
-                                           std::array<std::uint8_t, 32>>;
+  using bitmask_base =
+      value_bitmask_field<ArtPolicy::can_eliminate_leaf,
+                          std::array<std::uint8_t, 32>,
+                          ArtPolicy::template critical_section_policy>;
 
   using typename parent_class::inode48_type;
   using typename parent_class::leaf_type;
