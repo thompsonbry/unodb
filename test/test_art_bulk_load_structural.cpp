@@ -19,6 +19,8 @@
 
 #ifdef UNODB_DETAIL_WITH_STATS
 
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26445)
+
 namespace {
 
 using unodb::as_i;
@@ -186,7 +188,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadLarge) {
            kv.end());
   u64_db db;
   db.bulk_load(kv.begin(), kv.end());
-  for (const auto& [k, v] : kv) ASSERT_TRUE(db.get(k).has_value());
+  for (const auto& [k, v] : kv) UNODB_ASSERT_TRUE(db.get(k).has_value());
   std::uint64_t prev = 0;
   bool first = true;
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
@@ -195,7 +197,11 @@ UNODB_TEST(BulkLoadStructural, BulkLoadLarge) {
     std::uint64_t k{};
     dec.decode(k);
     if (!first) {
+      UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
+      UNODB_DETAIL_DISABLE_MSVC_WARNING(26818)
       EXPECT_GE(k, prev);
+      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     prev = k;
     first = false;
@@ -224,7 +230,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadKeyView) {
         key_view{v}, large_val);
   key_view_db db;
   db.bulk_load(kv.begin(), kv.end());
-  for (const auto& [k, v] : kv) ASSERT_TRUE(db.get(k).has_value());
+  for (const auto& [k, v] : kv) UNODB_ASSERT_TRUE(db.get(k).has_value());
 }
 // T22
 UNODB_TEST(BulkLoadStructural, BulkLoadVISRootSingle) {
@@ -237,7 +243,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadVISRootSingle) {
   const auto c = db.get_node_counts();
   UNODB_ASSERT_EQ(c[as_i<node_type::I4>], 1U);
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
-  ASSERT_TRUE(db.get(key_view{s[0]}).has_value());
+  UNODB_ASSERT_TRUE(db.get(key_view{s[0]}).has_value());
 }
 // T23
 UNODB_TEST(BulkLoadStructural, BulkLoadKeylessLeafRootSingle) {
@@ -248,7 +254,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadKeylessLeafRootSingle) {
       key_view{s[0]}, large_val);
   key_view_db db;
   db.bulk_load(kv.begin(), kv.end());
-  ASSERT_TRUE(db.get(key_view{s[0]}).has_value());
+  UNODB_ASSERT_TRUE(db.get(key_view{s[0]}).has_value());
 }
 // T24
 UNODB_TEST(BulkLoadStructural, BulkLoadFullLeafRootSingle) {
@@ -275,7 +281,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadScanOrder) {
     std::uint64_t k{};
     dec.decode(k);
     if (count > 0) {
-      EXPECT_GT(k, prev);
+      UNODB_EXPECT_GT(k, prev);
     }
     prev = k;
     ++count;
@@ -286,5 +292,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadScanOrder) {
 }
 
 }  // namespace
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 #endif  // UNODB_DETAIL_WITH_STATS

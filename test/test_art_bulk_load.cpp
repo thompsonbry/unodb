@@ -66,11 +66,11 @@ UNODB_TEST(BulkLoad, Empty) {
 // T02
 UNODB_TEST(BulkLoad, Single) {
   u64_db db;
-  const std::uint64_t key = 1;
+  constexpr std::uint64_t key = 1;
   std::vector<std::pair<std::uint64_t, value_view>> kv{{key, val}};
   db.bulk_load(kv.begin(), kv.end());
   const auto result = db.get(key);
-  ASSERT_TRUE(result.has_value());
+  UNODB_ASSERT_TRUE(result.has_value());
   UNODB_ASSERT_EQ(  // NOLINT(bugprone-unchecked-optional-access)
       result.value().size(), val.size());
   const auto counts = db.get_node_counts();
@@ -84,7 +84,7 @@ UNODB_TEST(BulkLoad, Small4Keys) {
   auto kv = make_keys(4);
   db.bulk_load(kv.begin(), kv.end());
   for (const auto& [k, v] : kv) {
-    ASSERT_TRUE(db.get(k).has_value());
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
   }
   const auto counts = db.get_node_counts();
   UNODB_ASSERT_EQ(counts[as_i<node_type::LEAF>], 4U);
@@ -159,7 +159,7 @@ UNODB_TEST(BulkLoad, Growth260) {
   auto kv = make_keys(260);
   db.bulk_load(kv.begin(), kv.end());
   for (const auto& [k, v] : kv) {
-    ASSERT_TRUE(db.get(k).has_value());
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
   }
   const auto counts = db.get_node_counts();
   UNODB_ASSERT_EQ(counts[as_i<node_type::I256>], 1U);

@@ -21,6 +21,9 @@
 #include "qsbr.hpp"
 #include "qsbr_test_utils.hpp"
 
+UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26818)
+
 namespace {
 
 #ifdef UNODB_DETAIL_WITH_STATS
@@ -43,12 +46,16 @@ constexpr auto val = value_view{val_bytes};
 UNODB_TEST(BulkLoadError, NonEmpty) {
   u64_db db;
   const std::uint64_t key = 42;
-  ASSERT_TRUE(db.insert(key, val));
+  UNODB_ASSERT_TRUE(db.insert(key, val));
   std::vector<std::pair<std::uint64_t, value_view>> kv{{100, val}};
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26818)
   EXPECT_THROW(db.bulk_load(kv.begin(), kv.end()), std::invalid_argument);
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   // Original key still present
   const auto result = db.get(key);
-  ASSERT_TRUE(result.has_value());
+  UNODB_ASSERT_TRUE(result.has_value());
 }
 
 // T36: db ignores parallelism parameter
@@ -84,20 +91,20 @@ UNODB_TEST(BulkLoadOps, ThenOperations) {
 
   // get works for all keys
   for (const auto& [k, v] : kv) {
-    ASSERT_TRUE(db.get(k).has_value());
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
   }
 
   // insert new key works
   const std::uint64_t new_key = 0xFFULL << 56U;
-  ASSERT_TRUE(db.insert(new_key, val));
-  ASSERT_TRUE(db.get(new_key).has_value());
+  UNODB_ASSERT_TRUE(db.insert(new_key, val));
+  UNODB_ASSERT_TRUE(db.get(new_key).has_value());
 
   // insert duplicate fails
-  ASSERT_FALSE(db.insert(kv[0].first, val));
+  UNODB_ASSERT_FALSE(db.insert(kv[0].first, val));
 
   // remove works
-  ASSERT_TRUE(db.remove(kv[0].first));
-  ASSERT_FALSE(db.get(kv[0].first).has_value());
+  UNODB_ASSERT_TRUE(db.remove(kv[0].first));
+  UNODB_ASSERT_FALSE(db.get(kv[0].first).has_value());
 
   // scan works
   std::size_t count = 0;
@@ -178,7 +185,7 @@ UNODB_TEST(BulkLoadOps, ClearAndReload) {
   std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
   db.bulk_load(kv.begin(), kv.end());
   db.clear();
-  ASSERT_TRUE(db.empty());
+  UNODB_ASSERT_TRUE(db.empty());
   // Re-load different data
   std::vector<std::pair<std::uint64_t, value_view>> kv2;
   kv2.reserve(10);
@@ -188,7 +195,7 @@ UNODB_TEST(BulkLoadOps, ClearAndReload) {
   std::ranges::sort(kv2, {}, &decltype(kv2)::value_type::first);
   db.bulk_load(kv2.begin(), kv2.end());
   for (const auto& [k, v] : kv2) {
-    ASSERT_TRUE(db.get(k).has_value());
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
   }
 }
 
@@ -245,3 +252,6 @@ UNODB_TEST(BulkLoadOps, OlcDbConcurrentReaders) {
 }
 
 }  // namespace
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
