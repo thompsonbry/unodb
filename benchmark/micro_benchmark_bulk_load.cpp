@@ -19,6 +19,9 @@
 #include "olc_art.hpp"
 #include "portability_execution.hpp"
 
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26445)
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26496)
+
 namespace {
 
 using db = unodb::benchmark::db;
@@ -47,7 +50,7 @@ const auto value = unodb::value_view{val8};
 
 /// Generate sorted random unique keys.
 [[nodiscard]] auto random_keys(std::int64_t n) {
-  const std::mt19937_64 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
+  std::mt19937_64 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
   std::vector<std::uint64_t> keys(static_cast<std::size_t>(n));
   std::generate(keys.begin(), keys.end(), rng);
   std::sort(keys.begin(), keys.end());
@@ -451,5 +454,8 @@ BENCHMARK_TEMPLATE(BM_Insert_first_scan, mutex_db)
 BENCHMARK_TEMPLATE(BM_Insert_first_scan, olc_db)
     ->Arg(1 << 20)
     ->Unit(benchmark::kMillisecond);
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 UNODB_BENCHMARK_MAIN();

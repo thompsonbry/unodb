@@ -10,6 +10,10 @@
 #ifndef UNODB_DETAIL_ART_BULK_LOAD_DETAIL_HPP
 #define UNODB_DETAIL_ART_BULK_LOAD_DETAIL_HPP
 
+// MSVC static analysis false positive: claims pointers dangle after
+// smart-pointer release() + reassignment. Suppressed file-wide.
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+
 /// \cond UNODB_DETAIL_INTERNAL
 namespace unodb::detail {
 
@@ -376,5 +380,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
 
 }  // namespace unodb::detail
 /// \endcond
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 #endif  // UNODB_DETAIL_ART_BULK_LOAD_DETAIL_HPP
