@@ -13,6 +13,9 @@
 // MSVC static analysis false positive: claims pointers dangle after
 // smart-pointer release() + reassignment. Suppressed file-wide.
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+// C26496: vmask variables are mutated in if-constexpr branches that
+// MSVC SA doesn't track; cannot be const in the general case.
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26496)
 
 /// \cond UNODB_DETAIL_INTERNAL
 namespace unodb::detail {
@@ -383,6 +386,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
 }  // namespace unodb::detail
 /// \endcond
 
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 #endif  // UNODB_DETAIL_ART_BULK_LOAD_DETAIL_HPP
