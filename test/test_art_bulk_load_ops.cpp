@@ -40,7 +40,7 @@ constexpr auto val = value_view{val_bytes};
 // ─── Error Tests ─────────────────────────────────────────────────────────────
 
 // T26: bulk_load on non-empty tree throws
-TEST(BulkLoadError, NonEmpty) {
+UNODB_TEST(BulkLoadError, NonEmpty) {
   u64_db db;
   const std::uint64_t key = 42;
   ASSERT_TRUE(db.insert(key, val));
@@ -52,7 +52,7 @@ TEST(BulkLoadError, NonEmpty) {
 }
 
 // T36: db ignores parallelism parameter
-TEST(BulkLoadError, DbIgnoresParallelism) {
+UNODB_TEST(BulkLoadError, DbIgnoresParallelism) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(100);
@@ -72,7 +72,7 @@ TEST(BulkLoadError, DbIgnoresParallelism) {
 // ─── Operational Tests ───────────────────────────────────────────────────────
 
 // T38: Operations work correctly after bulk_load
-TEST(BulkLoadOps, ThenOperations) {
+UNODB_TEST(BulkLoadOps, ThenOperations) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(10);
@@ -110,7 +110,7 @@ TEST(BulkLoadOps, ThenOperations) {
 
 // T39: Stats are correct after bulk_load
 #ifdef UNODB_DETAIL_WITH_STATS
-TEST(BulkLoadOps, Stats) {
+UNODB_TEST(BulkLoadOps, Stats) {
   u64_db db;
   // 17 keys differing at byte 0 → should produce 1 inode48
   std::vector<std::pair<std::uint64_t, value_view>> kv;
@@ -131,7 +131,7 @@ TEST(BulkLoadOps, Stats) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
 // T40: No growth events during bulk_load (all right-sized at allocation)
-TEST(BulkLoadOps, NoGrowthEvents) {
+UNODB_TEST(BulkLoadOps, NoGrowthEvents) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(100);
@@ -151,7 +151,7 @@ TEST(BulkLoadOps, NoGrowthEvents) {
 }
 
 // T42: mutex_db bulk_load works
-TEST(BulkLoadOps, MutexDb) {
+UNODB_TEST(BulkLoadOps, MutexDb) {
   u64_mutex_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(100);
@@ -168,7 +168,7 @@ TEST(BulkLoadOps, MutexDb) {
 }
 
 // T38 extended: clear after bulk_load then re-bulk_load
-TEST(BulkLoadOps, ClearAndReload) {
+UNODB_TEST(BulkLoadOps, ClearAndReload) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(10);
@@ -193,7 +193,7 @@ TEST(BulkLoadOps, ClearAndReload) {
 }
 
 // T43: olc_db parallel bulk_load
-TEST(BulkLoadOps, OlcDbParallel) {
+UNODB_TEST(BulkLoadOps, OlcDbParallel) {
   u64_olc_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(1000);
@@ -211,7 +211,7 @@ TEST(BulkLoadOps, OlcDbParallel) {
 // T44: olc_db concurrent readers after parallel bulk_load
 // Verifies that optimistic locks are correctly initialized after bulk_load so
 // concurrent readers can traverse the tree without deadlock or data corruption.
-TEST(BulkLoadOps, OlcDbConcurrentReaders) {
+UNODB_TEST(BulkLoadOps, OlcDbConcurrentReaders) {
   u64_olc_db db;
   constexpr std::size_t n_keys = 10000;
   std::vector<std::pair<std::uint64_t, value_view>> kv;

@@ -37,7 +37,7 @@ constexpr auto sval_bytes =
 constexpr auto sval = value_view{sval_bytes};
 
 // T11
-TEST(BulkLoadStructural, BulkLoadPrefix7) {
+UNODB_TEST(BulkLoadStructural, BulkLoadPrefix7) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv{
       {0x0102030405060700ULL, sval}, {0x0102030405060701ULL, sval}};
@@ -47,7 +47,7 @@ TEST(BulkLoadStructural, BulkLoadPrefix7) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 2U);
 }
 // T12
-TEST(BulkLoadStructural, BulkLoadPrefix8) {
+UNODB_TEST(BulkLoadStructural, BulkLoadPrefix8) {
   std::vector<std::vector<std::byte>> s{
       {std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}, std::byte{5},
        std::byte{6}, std::byte{7}, std::byte{8}, std::byte{0}},
@@ -64,7 +64,7 @@ TEST(BulkLoadStructural, BulkLoadPrefix8) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 2U);
 }
 // T13
-TEST(BulkLoadStructural, BulkLoadPrefix15) {
+UNODB_TEST(BulkLoadStructural, BulkLoadPrefix15) {
   std::vector<std::vector<std::byte>> s(
       2, std::vector<std::byte>(16, std::byte{0xAA}));
   s[0][15] = std::byte{0};
@@ -80,7 +80,7 @@ TEST(BulkLoadStructural, BulkLoadPrefix15) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 2U);
 }
 // T14
-TEST(BulkLoadStructural, BulkLoadPrefix16) {
+UNODB_TEST(BulkLoadStructural, BulkLoadPrefix16) {
   std::vector<std::vector<std::byte>> s(
       2, std::vector<std::byte>(17, std::byte{0xBB}));
   s[0][16] = std::byte{0};
@@ -96,7 +96,7 @@ TEST(BulkLoadStructural, BulkLoadPrefix16) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 2U);
 }
 // T15
-TEST(BulkLoadStructural, BulkLoadVIS) {
+UNODB_TEST(BulkLoadStructural, BulkLoadVIS) {
   std::vector<std::vector<std::byte>> s{{std::byte{1}}, {std::byte{2}}};
   std::vector<std::pair<key_view, std::uint64_t>> kv;
   for (auto& v : s)
@@ -109,7 +109,7 @@ TEST(BulkLoadStructural, BulkLoadVIS) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
 }
 // T16
-TEST(BulkLoadStructural, BulkLoadVISWithChain) {
+UNODB_TEST(BulkLoadStructural, BulkLoadVISWithChain) {
   std::vector<std::vector<std::byte>> s{{std::byte{1}, std::byte{0xAA}},
                                         {std::byte{1}, std::byte{0xBB}}};
   std::vector<std::pair<key_view, std::uint64_t>> kv;
@@ -123,7 +123,7 @@ TEST(BulkLoadStructural, BulkLoadVISWithChain) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
 }
 // T17
-TEST(BulkLoadStructural, BulkLoadVISLongPrefix) {
+UNODB_TEST(BulkLoadStructural, BulkLoadVISLongPrefix) {
   std::vector<std::vector<std::byte>> s(
       2, std::vector<std::byte>(9, std::byte{0xCC}));
   s[0][8] = std::byte{0};
@@ -139,7 +139,7 @@ TEST(BulkLoadStructural, BulkLoadVISLongPrefix) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
 }
 // T18
-TEST(BulkLoadStructural, BulkLoadKeylessLeaf) {
+UNODB_TEST(BulkLoadStructural, BulkLoadKeylessLeaf) {
   std::vector<std::vector<std::byte>> s{
       {std::byte{1}, std::byte{2}, std::byte{3}},
       {std::byte{4}, std::byte{5}, std::byte{6}}};
@@ -155,7 +155,7 @@ TEST(BulkLoadStructural, BulkLoadKeylessLeaf) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 2U);
 }
 // T19
-TEST(BulkLoadStructural, BulkLoadKeylessLeafWithChain) {
+UNODB_TEST(BulkLoadStructural, BulkLoadKeylessLeafWithChain) {
   std::vector<std::vector<std::byte>> s{
       {std::byte{1}, std::byte{0xAA}, std::byte{0xFF}},
       {std::byte{1}, std::byte{0xBB}, std::byte{0xFF}}};
@@ -170,7 +170,7 @@ TEST(BulkLoadStructural, BulkLoadKeylessLeafWithChain) {
   UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 2U);
 }
 // T20
-TEST(BulkLoadStructural, BulkLoadLarge) {
+UNODB_TEST(BulkLoadStructural, BulkLoadLarge) {
   std::mt19937 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   kv.reserve(100000);
@@ -204,7 +204,7 @@ TEST(BulkLoadStructural, BulkLoadLarge) {
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 }
 // T21 — key_view bulk_load with random fixed-length keys (prefix-free).
-TEST(BulkLoadStructural, BulkLoadKeyView) {
+UNODB_TEST(BulkLoadStructural, BulkLoadKeyView) {
   constexpr std::size_t key_len =
       10;                 // Fixed length → no key is prefix of another
   std::mt19937 rng(123);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
@@ -227,7 +227,7 @@ TEST(BulkLoadStructural, BulkLoadKeyView) {
   for (const auto& [k, v] : kv) ASSERT_TRUE(db.get(k).has_value());
 }
 // T22
-TEST(BulkLoadStructural, BulkLoadVISRootSingle) {
+UNODB_TEST(BulkLoadStructural, BulkLoadVISRootSingle) {
   std::vector<std::vector<std::byte>> s{{std::byte{1}, std::byte{2}}};
   std::vector<std::pair<key_view, std::uint64_t>> kv;
   kv.emplace_back(  // NOLINT(performance-inefficient-vector-operation)
@@ -240,7 +240,7 @@ TEST(BulkLoadStructural, BulkLoadVISRootSingle) {
   ASSERT_TRUE(db.get(key_view{s[0]}).has_value());
 }
 // T23
-TEST(BulkLoadStructural, BulkLoadKeylessLeafRootSingle) {
+UNODB_TEST(BulkLoadStructural, BulkLoadKeylessLeafRootSingle) {
   std::vector<std::vector<std::byte>> s{
       {std::byte{1}, std::byte{2}, std::byte{3}}};
   std::vector<std::pair<key_view, value_view>> kv;
@@ -251,7 +251,7 @@ TEST(BulkLoadStructural, BulkLoadKeylessLeafRootSingle) {
   ASSERT_TRUE(db.get(key_view{s[0]}).has_value());
 }
 // T24
-TEST(BulkLoadStructural, BulkLoadFullLeafRootSingle) {
+UNODB_TEST(BulkLoadStructural, BulkLoadFullLeafRootSingle) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv{{0xDEADBEEFULL, sval}};
   db.bulk_load(kv.begin(), kv.end());
@@ -260,7 +260,7 @@ TEST(BulkLoadStructural, BulkLoadFullLeafRootSingle) {
   UNODB_ASSERT_EQ(c[as_i<node_type::I4>], 0U);
 }
 // T25
-TEST(BulkLoadStructural, BulkLoadScanOrder) {
+UNODB_TEST(BulkLoadStructural, BulkLoadScanOrder) {
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   for (std::uint64_t i = 0; i < 256; ++i)
     kv.emplace_back(  // NOLINT(performance-inefficient-vector-operation)

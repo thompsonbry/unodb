@@ -52,7 +52,7 @@ constexpr auto val = value_view{val_bytes};
 }
 
 // T01
-TEST(BulkLoad, Empty) {
+UNODB_TEST(BulkLoad, Empty) {
   u64_db db;
   std::vector<std::pair<std::uint64_t, value_view>> kv;
   db.bulk_load(kv.begin(), kv.end());
@@ -64,7 +64,7 @@ TEST(BulkLoad, Empty) {
 }
 
 // T02
-TEST(BulkLoad, Single) {
+UNODB_TEST(BulkLoad, Single) {
   u64_db db;
   const std::uint64_t key = 1;
   std::vector<std::pair<std::uint64_t, value_view>> kv{{key, val}};
@@ -79,7 +79,7 @@ TEST(BulkLoad, Single) {
 }
 
 // T03
-TEST(BulkLoad, Small4Keys) {
+UNODB_TEST(BulkLoad, Small4Keys) {
   u64_db db;
   auto kv = make_keys(4);
   db.bulk_load(kv.begin(), kv.end());
@@ -92,7 +92,7 @@ TEST(BulkLoad, Small4Keys) {
 }
 
 // T04
-TEST(BulkLoad, Boundary4) {
+UNODB_TEST(BulkLoad, Boundary4) {
   u64_db db;
   auto kv = make_keys(4);
   db.bulk_load(kv.begin(), kv.end());
@@ -104,7 +104,7 @@ TEST(BulkLoad, Boundary4) {
 }
 
 // T05
-TEST(BulkLoad, Boundary5) {
+UNODB_TEST(BulkLoad, Boundary5) {
   u64_db db;
   auto kv = make_keys(5);
   db.bulk_load(kv.begin(), kv.end());
@@ -114,7 +114,7 @@ TEST(BulkLoad, Boundary5) {
 }
 
 // T06
-TEST(BulkLoad, Boundary16) {
+UNODB_TEST(BulkLoad, Boundary16) {
   u64_db db;
   auto kv = make_keys(16);
   db.bulk_load(kv.begin(), kv.end());
@@ -124,7 +124,7 @@ TEST(BulkLoad, Boundary16) {
 }
 
 // T07
-TEST(BulkLoad, Boundary17) {
+UNODB_TEST(BulkLoad, Boundary17) {
   u64_db db;
   auto kv = make_keys(17);
   db.bulk_load(kv.begin(), kv.end());
@@ -134,7 +134,7 @@ TEST(BulkLoad, Boundary17) {
 }
 
 // T08
-TEST(BulkLoad, Boundary48) {
+UNODB_TEST(BulkLoad, Boundary48) {
   u64_db db;
   auto kv = make_keys(48);
   db.bulk_load(kv.begin(), kv.end());
@@ -144,7 +144,7 @@ TEST(BulkLoad, Boundary48) {
 }
 
 // T09
-TEST(BulkLoad, Boundary49) {
+UNODB_TEST(BulkLoad, Boundary49) {
   u64_db db;
   auto kv = make_keys(49);
   db.bulk_load(kv.begin(), kv.end());
@@ -154,7 +154,7 @@ TEST(BulkLoad, Boundary49) {
 }
 
 // T10
-TEST(BulkLoad, Growth260) {
+UNODB_TEST(BulkLoad, Growth260) {
   u64_db db;
   auto kv = make_keys(260);
   db.bulk_load(kv.begin(), kv.end());

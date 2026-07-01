@@ -364,8 +364,10 @@ class db final {
   ///
   /// \tparam RandomIt  Random-access iterator to std::pair<key_type,
   /// value_type>
-  /// \param first, last  Sorted range (ART byte order). No duplicates.
-  /// \param parallelism  Ignored for db (allocator not thread-safe).
+  /// \param policy     Execution policy (ignored for db — allocator not
+  ///                   thread-safe).
+  /// \param first      Start of sorted range (ART byte order, no duplicates).
+  /// \param last       End of sorted range.
   /// \pre empty() == true
   /// \throws std::invalid_argument if tree is non-empty.
   /// \throws std::bad_alloc (strong guarantee — tree left empty).

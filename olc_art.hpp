@@ -307,9 +307,9 @@ class olc_db final {
   ///
   /// \note Only legal in single-threaded context (same as clear).
   /// \tparam RandomIt Random access iterator over pairs of (key, value)
+  /// \param policy Execution policy (parallelism hint; 0=auto, 1=sequential)
   /// \param first Start of sorted range
   /// \param last End of sorted range
-  /// \param parallelism Parallelism hint (0=auto, 1=sequential)
   template <typename ExecutionPolicy, typename RandomIt>
   void bulk_load(ExecutionPolicy&& policy, RandomIt first, RandomIt last);
 
