@@ -96,7 +96,7 @@ UNODB_TEST(BulkLoadOps, ThenOperations) {
   }
 
   // insert new key works
-  const std::uint64_t new_key = 0xFFULL << 56U;
+  constexpr std::uint64_t new_key = 0xFFULL << 56U;
   UNODB_ASSERT_TRUE(db.insert(new_key, val));
   UNODB_ASSERT_TRUE(db.get(new_key).has_value());
 

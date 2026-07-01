@@ -75,7 +75,9 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
         ++cur;
       }
     }
-    return parts;  // NOLINT(performance-move-const-arg)
+    UNODB_DETAIL_DISABLE_MSVC_WARNING(26479)
+    return std::move(parts);  // NOLINT(performance-move-const-arg)
+    UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   };
 
   auto build_prefix_chain = [&self](art_key_type k, node_ptr_t child_inode,
@@ -132,7 +134,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     } else {
       static_cast<void>(depth);
       auto leaf = art_policy::make_db_leaf_ptr(ak, it->second, self);
-      auto leaf_ptr = node_ptr_t{leaf.release(), node_type::LEAF};
+      const auto leaf_ptr = node_ptr_t{leaf.release(), node_type::LEAF};
       return {leaf_ptr, false};
     }
   };

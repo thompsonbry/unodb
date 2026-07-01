@@ -4656,7 +4656,7 @@ class basic_inode_256
                             // cppcheck-suppress passedByValue
                             tree_depth_type depth,
                             typename parent_class::bulk_load_tag tag) noexcept
-      : parent_class{n_children, prefix_len, k1, depth, tag} {}
+      : parent_class{n_children, prefix_len, k1, depth, tag}, children{} {}
 
   /// Initialize by growing from basic_inode_48 and adding a child.
   ///
