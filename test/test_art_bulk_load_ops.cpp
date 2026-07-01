@@ -45,7 +45,7 @@ constexpr auto val = value_view{val_bytes};
 // T26: bulk_load on non-empty tree throws
 UNODB_TEST(BulkLoadError, NonEmpty) {
   u64_db db;
-  const std::uint64_t key = 42;
+  constexpr std::uint64_t key = 42;
   UNODB_ASSERT_TRUE(db.insert(key, val));
   std::vector<std::pair<std::uint64_t, value_view>> kv{{100, val}};
   UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)

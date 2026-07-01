@@ -19,6 +19,8 @@
 
 #ifdef UNODB_DETAIL_WITH_STATS
 
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26445)
+
 namespace {
 
 using unodb::as_i;
@@ -167,5 +169,7 @@ UNODB_TEST(BulkLoad, Growth260) {
 }
 
 }  // namespace
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 #endif  // UNODB_DETAIL_WITH_STATS

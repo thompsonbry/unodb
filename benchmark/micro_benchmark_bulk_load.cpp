@@ -47,7 +47,7 @@ const auto value = unodb::value_view{val8};
 
 /// Generate sorted random unique keys.
 [[nodiscard]] auto random_keys(std::int64_t n) {
-  std::mt19937_64 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
+  const std::mt19937_64 rng(42);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
   std::vector<std::uint64_t> keys(static_cast<std::size_t>(n));
   std::generate(keys.begin(), keys.end(), rng);
   std::sort(keys.begin(), keys.end());

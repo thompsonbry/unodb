@@ -71,7 +71,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
         ++cur;
       }
     }
-    return std::move(parts);  // NOLINT(performance-move-const-arg)
+    return parts;  // NOLINT(performance-move-const-arg)
   };
 
   auto build_prefix_chain = [&self](art_key_type k, node_ptr_t child_inode,
