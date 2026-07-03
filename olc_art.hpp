@@ -185,6 +185,9 @@ void bulk_load_impl(Db& self, ExecutionPolicy&& policy, RandomIt first,
 template <typename Key, typename Value>
 class olc_db final {
  public:
+  /// Whether this tree type supports parallel bulk_load execution.
+  static constexpr bool supports_parallel_bulk_load = true;
+
   /// The type of the keys in the index.
   using key_type = Key;
   /// The type of the value associated with the key in the index.

@@ -134,6 +134,10 @@ class db final {
   friend class mutex_db<Key, Value>;
 
  public:
+  /// Whether this tree type supports parallel bulk_load execution.
+  /// Only olc_db has thread-safe internal counters.
+  static constexpr bool supports_parallel_bulk_load = false;
+
   /// The type of the keys in the index.
   using key_type = Key;
 

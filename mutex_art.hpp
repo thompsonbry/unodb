@@ -22,6 +22,10 @@ namespace unodb {
 template <typename Key, typename Value>
 class mutex_db final {
  public:
+  /// Whether this tree type supports parallel bulk_load execution.
+  /// mutex_db wraps db which uses non-atomic counters.
+  static constexpr bool supports_parallel_bulk_load = false;
+
   /// The type of the keys in the index.
   using key_type = Key;
   /// The type of the value associated with the keys in the index.

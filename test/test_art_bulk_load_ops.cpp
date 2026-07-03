@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <gtest/gtest.h>  // NOLINT(misc-include-cleaner)
 
 #include "art_common.hpp"
 #include "db_test_utils.hpp"

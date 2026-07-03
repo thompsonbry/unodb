@@ -294,8 +294,9 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
 
   using policy_t = std::remove_cvref_t<ExecutionPolicy>;
   constexpr bool is_parallel =
-      std::is_same_v<policy_t, std::execution::parallel_policy> ||
-      std::is_same_v<policy_t, std::execution::parallel_unsequenced_policy>;
+      Db::supports_parallel_bulk_load &&
+      (std::is_same_v<policy_t, std::execution::parallel_policy> ||
+       std::is_same_v<policy_t, std::execution::parallel_unsequenced_policy>);
 
   if constexpr (!is_parallel) {
     auto result = builder(first, last, tree_depth_type{0});
