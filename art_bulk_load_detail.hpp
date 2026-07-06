@@ -24,9 +24,11 @@ namespace unodb::detail {
 ///
 /// \pre Tree must be empty (caller validates).
 /// \pre [first, last) is sorted and non-empty (caller validates).
-template <typename Db, typename ExecutionPolicy, typename RandomIt>
-void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
-                    RandomIt last) {
+/// \tparam Fork  Callable satisfying fork(Callable) -> Future<R> where
+///              Future has .get(). Ignored (nullptr_t) for sequential.
+template <typename Db, typename Fork, typename RandomIt>
+void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
+                    RandomIt first, RandomIt last) {
   using art_key_type = typename Db::art_key_type;
   using art_policy = typename Db::art_policy;
   using tree_depth_type = typename Db::tree_depth_type;
@@ -105,6 +107,8 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
 #endif
       pos = depth;
     }
+    // LCOV_EXCL_START — chain_consumed is always a multiple of (prefix_cap+1),
+    // so the while loop always decrements pos to exactly start.
     if (pos > start) {
       const auto dispatch = full_key[pos - 1];
       auto chain{inode_4::create(
@@ -115,6 +119,7 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
       self.template account_growing_inode<node_type::I4>();
 #endif
     }
+    // LCOV_EXCL_STOP
     return current;
   };
 
@@ -292,11 +297,8 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
                           build_single_leaf,
                           make_bulk_inode};
 
-  using policy_t = std::remove_cvref_t<ExecutionPolicy>;
   constexpr bool is_parallel =
-      Db::supports_parallel_bulk_load &&
-      (std::is_same_v<policy_t, std::execution::parallel_policy> ||
-       std::is_same_v<policy_t, std::execution::parallel_unsequenced_policy>);
+      !std::is_same_v<std::remove_cvref_t<Fork>, std::nullptr_t>;
 
   if constexpr (!is_parallel) {
     auto result = builder(first, last, tree_depth_type{0});
@@ -319,15 +321,49 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     const auto next_depth = tree_depth_type{static_cast<std::uint32_t>(
         static_cast<std::size_t>(dispatch_depth) + 1)};
 
-    std::vector<std::future<build_result_t>> futures;
-    futures.reserve(child_count);
-    for (std::size_t i = 0; i < child_count; ++i) {
+    // Fork up to min(child_count, max_tasks) subtrees; inline the rest.
+    const auto fork_count = std::min(child_count, max_tasks);
+
+#ifdef UNODB_DETAIL_WITH_STATS
+    struct parallel_result {
+      build_result_t build;
+      bulk_load_stats_accumulator stats;
+    };
+#else
+    using parallel_result = build_result_t;
+#endif
+
+    auto make_task = [&builder, &parts, child_count, last,
+                      next_depth](std::size_t i) {
       const auto part_begin = parts[i].begin;
       const auto part_end = (i + 1 < child_count) ? parts[i + 1].begin : last;
-      futures.push_back(std::async(
-          std::launch::async, [&builder, part_begin, part_end, next_depth] {
-            return builder(part_begin, part_end, next_depth);
-          }));
+#ifdef UNODB_DETAIL_WITH_STATS
+      bulk_load_stats_accumulator acc;
+      tls_bulk_load_stats = &acc;
+      auto result = builder(part_begin, part_end, next_depth);
+      tls_bulk_load_stats = nullptr;
+      return parallel_result{result, acc};
+#else
+      return builder(part_begin, part_end, next_depth);
+#endif
+    };
+
+    // Submit forked tasks — first fork deduces the future type.
+    auto first_future =
+        fork([&make_task] { return make_task(std::size_t{0}); });
+    using future_t = decltype(first_future);
+    std::vector<future_t> futures;
+    futures.reserve(fork_count);
+    futures.push_back(std::move(first_future));
+    for (std::size_t i = 1; i < fork_count; ++i) {
+      futures.push_back(fork([&make_task, i] { return make_task(i); }));
+    }
+
+    // Run remaining partitions inline on the calling thread.
+    std::vector<parallel_result> inline_results;
+    inline_results.reserve(child_count - fork_count);
+    for (std::size_t i = fork_count; i < child_count; ++i) {
+      inline_results.push_back(make_task(i));
     }
 
     boost::container::small_vector<guard_t, 16> guards;
@@ -335,26 +371,55 @@ void bulk_load_impl(Db& self, ExecutionPolicy&&, RandomIt first,
     boost::container::small_vector<bulk_child_t, 16> children;
     children.reserve(child_count);
 
-    for (std::size_t i = 0; i < child_count; ++i) {
+    // Gather forked results first (indices 0..fork_count-1).
+    for (std::size_t i = 0; i < fork_count; ++i) {
       try {
-        auto result = futures[i].get();
+        auto future_result = futures[i].get();
+#ifdef UNODB_DETAIL_WITH_STATS
+        const auto& result = future_result.build;
+        const auto& acc = future_result.stats;
+        self.merge_bulk_load_stats(acc);
+#else
+        const auto& result = future_result;
+#endif
         guards.emplace_back(self);
         guards.back().ptr = result.ptr;
         guards.back().is_packed_value = result.is_packed_value;
         children.push_back({parts[i].key_byte, result.ptr});
-      } catch (...) {
+      } catch (...) {  // LCOV_EXCL_START — exception drain; no reliable test
         // Drain remaining futures into guards to prevent leaks.
-        for (std::size_t j = i + 1; j < child_count; ++j) {
+        for (std::size_t j = i + 1; j < fork_count; ++j) {
           try {
             auto r = futures[j].get();
             guards.emplace_back(self);
+#ifdef UNODB_DETAIL_WITH_STATS
+            guards.back().ptr = r.build.ptr;
+            guards.back().is_packed_value = r.build.is_packed_value;
+#else
             guards.back().ptr = r.ptr;
             guards.back().is_packed_value = r.is_packed_value;
+#endif
           } catch (...) {
-          }  // LCOV_EXCL_LINE
+          }
         }
         throw;
-      }
+      }  // LCOV_EXCL_STOP
+    }
+
+    // Gather inline results (indices fork_count..child_count-1).
+    for (std::size_t i = 0; i < inline_results.size(); ++i) {
+      const auto part_idx = fork_count + i;
+#ifdef UNODB_DETAIL_WITH_STATS
+      const auto& result = inline_results[i].build;
+      const auto& acc = inline_results[i].stats;
+      self.merge_bulk_load_stats(acc);
+#else
+      const auto& result = inline_results[i];
+#endif
+      guards.emplace_back(self);
+      guards.back().ptr = result.ptr;
+      guards.back().is_packed_value = result.is_packed_value;
+      children.push_back({parts[part_idx].key_byte, result.ptr});
     }
 
     const std::size_t chain_consumed =

@@ -101,6 +101,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadPrefix16) {
 UNODB_TEST(BulkLoadStructural, BulkLoadVIS) {
   std::vector<std::vector<std::byte>> s{{std::byte{1}}, {std::byte{2}}};
   std::vector<std::pair<key_view, std::uint64_t>> kv;
+  kv.reserve(s.size());
   for (auto& v : s)
     kv.emplace_back(  // NOLINT(performance-inefficient-vector-operation)
         key_view{v}, 42ULL);
@@ -115,6 +116,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadVISWithChain) {
   std::vector<std::vector<std::byte>> s{{std::byte{1}, std::byte{0xAA}},
                                         {std::byte{1}, std::byte{0xBB}}};
   std::vector<std::pair<key_view, std::uint64_t>> kv;
+  kv.reserve(s.size());
   for (auto& v : s)
     kv.emplace_back(  // NOLINT(performance-inefficient-vector-operation)
         key_view{v}, 99ULL);
@@ -131,6 +133,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadVISLongPrefix) {
   s[0][8] = std::byte{0};
   s[1][8] = std::byte{1};
   std::vector<std::pair<key_view, std::uint64_t>> kv;
+  kv.reserve(s.size());
   for (auto& v : s)
     kv.emplace_back(  // NOLINT(performance-inefficient-vector-operation)
         key_view{v}, 77ULL);
@@ -289,6 +292,66 @@ UNODB_TEST(BulkLoadStructural, BulkLoadScanOrder) {
   });
   UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
   UNODB_ASSERT_EQ(count, 256U);
+}
+
+// T27 — VIS with 5 keys → Node16 root (covers vmask loop in dispatch_node).
+UNODB_TEST(BulkLoadStructural, BulkLoadVISNode16) {
+  std::vector<std::vector<std::byte>> s;
+  s.reserve(8);
+  for (int i = 0; i < 8; ++i) {
+    s.push_back({static_cast<std::byte>(i)});
+  }
+  std::vector<std::pair<key_view, std::uint64_t>> kv;
+  kv.reserve(s.size());
+  for (auto& v : s) kv.emplace_back(key_view{v}, 42ULL);
+  key_view_u64val_db db;
+  db.bulk_load(kv.begin(), kv.end());
+  const auto c = db.get_node_counts();
+  UNODB_ASSERT_EQ(c[as_i<node_type::I16>], 1U);
+  UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
+  for (const auto& [k, v] : kv) {
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
+  }
+}
+
+// T28 — VIS with 20 keys → Node48 root.
+UNODB_TEST(BulkLoadStructural, BulkLoadVISNode48) {
+  std::vector<std::vector<std::byte>> s;
+  s.reserve(20);
+  for (int i = 0; i < 20; ++i) {
+    s.push_back({static_cast<std::byte>(i)});
+  }
+  std::vector<std::pair<key_view, std::uint64_t>> kv;
+  kv.reserve(s.size());
+  for (auto& v : s) kv.emplace_back(key_view{v}, 42ULL);
+  key_view_u64val_db db;
+  db.bulk_load(kv.begin(), kv.end());
+  const auto c = db.get_node_counts();
+  UNODB_ASSERT_EQ(c[as_i<node_type::I48>], 1U);
+  UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
+  for (const auto& [k, v] : kv) {
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
+  }
+}
+
+// T29 — VIS with 60 keys → Node256 root.
+UNODB_TEST(BulkLoadStructural, BulkLoadVISNode256) {
+  std::vector<std::vector<std::byte>> s;
+  s.reserve(60);
+  for (int i = 0; i < 60; ++i) {
+    s.push_back({static_cast<std::byte>(i)});
+  }
+  std::vector<std::pair<key_view, std::uint64_t>> kv;
+  kv.reserve(s.size());
+  for (auto& v : s) kv.emplace_back(key_view{v}, 42ULL);
+  key_view_u64val_db db;
+  db.bulk_load(kv.begin(), kv.end());
+  const auto c = db.get_node_counts();
+  UNODB_ASSERT_EQ(c[as_i<node_type::I256>], 1U);
+  UNODB_ASSERT_EQ(c[as_i<node_type::LEAF>], 0U);
+  for (const auto& [k, v] : kv) {
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
+  }
 }
 
 }  // namespace

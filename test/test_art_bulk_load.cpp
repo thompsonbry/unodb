@@ -168,6 +168,59 @@ UNODB_TEST(BulkLoad, Growth260) {
   UNODB_ASSERT_EQ(counts[as_i<node_type::LEAF>], 260U);
 }
 
+// T11: Keys sharing a common prefix exercise the prefix chain path.
+// For uint64_t, max key length is 8, prefix_cap is 7, so we need a recursive
+// scenario where a subtree has all keys sharing a long prefix.
+// Here keys share bytes 0-5 (prefix_len=6 at depth 0), which is <= prefix_cap,
+// so chain_consumed=0. Instead, verify the prefix is handled correctly.
+UNODB_TEST(BulkLoad, SharedPrefix) {
+  u64_db db;
+  std::vector<std::pair<std::uint64_t, value_view>> kv;
+  kv.reserve(20);
+  // All keys share byte 0 = 0x01, differ at byte 1.
+  for (std::uint64_t i = 0; i < 20; ++i) {
+    kv.emplace_back((1ULL << 56U) | (i << 48U), val);
+  }
+  std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
+  db.bulk_load(kv.begin(), kv.end());
+  for (const auto& [k, v] : kv) {
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
+  }
+}
+
+// T12: Deep prefix chain — keys with long shared prefix that exceeds
+// prefix_cap (7). This requires key_view (variable-length) keys.
+// Keys share 10 prefix bytes, dispatch at byte 10.
+UNODB_TEST(BulkLoad, DeepPrefixChain) {
+  using unodb::test::key_view_db;
+  key_view_db db;
+
+  // Create keys that share 10 bytes then diverge at byte 10.
+  // Keys are 13 bytes to ensure sufficient depth beyond dispatch.
+  std::vector<std::pair<std::vector<std::byte>, value_view>> raw_keys;
+  raw_keys.reserve(10);
+  for (int i = 0; i < 10; ++i) {
+    std::vector<std::byte> k(13);
+    for (int j = 0; j < 10; ++j) {
+      k[static_cast<std::size_t>(j)] = static_cast<std::byte>(j + 1);
+    }
+    k[10] = static_cast<std::byte>(i);
+    k[11] = std::byte{0xAA};
+    k[12] = std::byte{0xBB};
+    raw_keys.emplace_back(std::move(k), val);
+  }
+  // Already sorted since they share a prefix and last byte is 0..9
+  std::vector<std::pair<unodb::key_view, value_view>> kv;
+  kv.reserve(raw_keys.size());
+  for (auto& [k, v] : raw_keys) {
+    kv.emplace_back(unodb::key_view{k.data(), k.size()}, v);
+  }
+  db.bulk_load(kv.begin(), kv.end());
+  for (const auto& [k, v] : kv) {
+    UNODB_ASSERT_TRUE(db.get(k).has_value());
+  }
+}
+
 }  // namespace
 
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()

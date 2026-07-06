@@ -87,6 +87,28 @@ inline constexpr auto internal_as_i{
         NodeType) -
     1};
 
+namespace detail {
+
+/// Thread-local stats accumulator for parallel bulk_load.
+///
+/// During parallel subtree construction on non-thread-safe db types,
+/// each thread writes stats here instead of directly to the db instance
+/// (which has non-atomic counters). After all async tasks complete,
+/// accumulators are merged single-threaded into the db.
+struct bulk_load_stats_accumulator {
+  std::size_t current_memory_use{0};
+  node_type_counter_array node_counts{};
+  inode_type_counter_array growing_inode_counts{};
+  std::uint64_t key_prefix_splits{0};
+};
+
+/// Per-thread pointer to the active stats accumulator.
+/// Null during normal operation; set per-thread during parallel bulk_load.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+inline thread_local bulk_load_stats_accumulator* tls_bulk_load_stats{nullptr};
+
+}  // namespace detail
+
 #endif  // UNODB_DETAIL_WITH_STATS
 
 }  // namespace unodb

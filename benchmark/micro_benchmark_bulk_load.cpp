@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <random>
 #include <utility>
 #include <vector>
@@ -17,7 +18,6 @@
 #include "micro_benchmark_utils.hpp"
 #include "mutex_art.hpp"
 #include "olc_art.hpp"
-#include "portability_execution.hpp"
 
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26445)
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26496)
@@ -179,7 +179,11 @@ void BM_BulkLoad_par_db(benchmark::State& state) {
   const auto kv = random_keys(state.range(0));
   for (const auto _ : state) {
     db test_db;
-    test_db.bulk_load(std::execution::par, kv.begin(), kv.end());
+    test_db.bulk_load(
+        [](auto&& f) {
+          return std::async(std::launch::async, std::forward<decltype(f)>(f));
+        },
+        256, kv.begin(), kv.end());
     benchmark::DoNotOptimize(test_db);
     state.PauseTiming();
     test_db.clear();
@@ -193,7 +197,11 @@ void BM_BulkLoad_par_mutex(benchmark::State& state) {
   const auto kv = random_keys(state.range(0));
   for (const auto _ : state) {
     mutex_db test_db;
-    test_db.bulk_load(std::execution::par, kv.begin(), kv.end());
+    test_db.bulk_load(
+        [](auto&& f) {
+          return std::async(std::launch::async, std::forward<decltype(f)>(f));
+        },
+        256, kv.begin(), kv.end());
     benchmark::DoNotOptimize(test_db);
     state.PauseTiming();
     test_db.clear();
@@ -207,7 +215,11 @@ void BM_BulkLoad_par_olc(benchmark::State& state) {
   const auto kv = random_keys(state.range(0));
   for (const auto _ : state) {
     olc_db test_db;
-    test_db.bulk_load(std::execution::par, kv.begin(), kv.end());
+    test_db.bulk_load(
+        [](auto&& f) {
+          return std::async(std::launch::async, std::forward<decltype(f)>(f));
+        },
+        256, kv.begin(), kv.end());
     benchmark::DoNotOptimize(test_db);
     state.PauseTiming();
     test_db.clear();

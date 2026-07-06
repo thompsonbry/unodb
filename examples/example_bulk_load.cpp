@@ -1,6 +1,6 @@
 // Copyright 2026 UnoDB contributors
 
-// Example: bulk_load with sequential and parallel execution policies.
+// Example: bulk_load with sequential and parallel execution.
 
 #include "global.hpp"
 
@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -15,7 +16,6 @@
 #include "art.hpp"
 #include "art_common.hpp"
 #include "mutex_art.hpp"
-#include "portability_execution.hpp"
 
 namespace {
 
@@ -41,20 +41,23 @@ int main() {
   // ─── Sequential bulk_load (default) ────────────────────────────────────────
   {
     unodb::db<std::uint64_t, unodb::value_view> tree;
-    tree.bulk_load(data.begin(), data.end());  // default: std::execution::seq
+    tree.bulk_load(data.begin(), data.end());  // sequential (default)
     std::cerr << "Sequential bulk_load: " << key_count << " keys loaded\n";
     std::cerr << "  get(42) found: " << tree.get(42).has_value() << '\n';
     tree.clear();
   }
 
   // ─── Parallel bulk_load ────────────────────────────────────────────────────
-  // std::execution::par enables concurrent subtree construction.
+  // The caller provides a fork callable to submit parallel tasks.
   // The implementation partitions at the root level and builds each
-  // subtree on a separate thread. Safe for all tree modes because
+  // subtree via the fork callable. Safe for all tree modes because
   // bulk_load operates on an unpublished tree (no concurrent readers).
+  auto async_fork = [](auto&& f) {
+    return std::async(std::launch::async, std::forward<decltype(f)>(f));
+  };
   {
     unodb::db<std::uint64_t, unodb::value_view> tree;
-    tree.bulk_load(std::execution::par, data.begin(), data.end());
+    tree.bulk_load(async_fork, 8, data.begin(), data.end());
     std::cerr << "Parallel bulk_load: " << key_count << " keys loaded\n";
     std::cerr << "  get(99999) found: " << tree.get(99999).has_value() << '\n';
     tree.clear();
@@ -63,7 +66,7 @@ int main() {
   // ─── mutex_db: same API ────────────────────────────────────────────────────
   {
     unodb::mutex_db<std::uint64_t, unodb::value_view> tree;
-    tree.bulk_load(std::execution::par, data.begin(), data.end());
+    tree.bulk_load(async_fork, 8, data.begin(), data.end());
     std::cerr << "mutex_db parallel bulk_load: " << key_count
               << " keys loaded\n";
     tree.clear();

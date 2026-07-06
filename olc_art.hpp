@@ -13,7 +13,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <future>
 #include <iostream>
 #include <optional>
 #include <stack>
@@ -31,7 +30,6 @@
 #include "node_type.hpp"
 #include "optimistic_lock.hpp"
 #include "portability_arch.hpp"
-#include "portability_execution.hpp"
 #include "qsbr.hpp"
 #include "sync.hpp"
 
@@ -170,9 +168,9 @@ using olc_leaf_unique_ptr =
     basic_db_leaf_unique_ptr<Key, Value, olc_node_header, olc_db>;
 
 /// Forward declaration of shared bulk_load algorithm.
-template <typename Db, typename ExecutionPolicy, typename RandomIt>
-void bulk_load_impl(Db& self, ExecutionPolicy&& policy, RandomIt first,
-                    RandomIt last);
+template <typename Db, typename Fork, typename RandomIt>
+void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
+                    RandomIt first, RandomIt last);
 
 }  // namespace detail
 
@@ -185,9 +183,6 @@ void bulk_load_impl(Db& self, ExecutionPolicy&& policy, RandomIt first,
 template <typename Key, typename Value>
 class olc_db final {
  public:
-  /// Whether this tree type supports parallel bulk_load execution.
-  static constexpr bool supports_parallel_bulk_load = true;
-
   /// The type of the keys in the index.
   using key_type = Key;
   /// The type of the value associated with the key in the index.
@@ -309,17 +304,20 @@ class olc_db final {
   /// Bulk-load sorted key-value pairs into an empty tree.
   ///
   /// \note Only legal in single-threaded context (same as clear).
+  /// \tparam Fork Callable: fork(Callable) -> Future<R> with .get()
   /// \tparam RandomIt Random access iterator over pairs of (key, value)
-  /// \param policy Execution policy (parallelism hint; 0=auto, 1=sequential)
+  /// \param fork Callable to submit parallel tasks
+  /// \param max_tasks Maximum tasks to fork
   /// \param first Start of sorted range
   /// \param last End of sorted range
-  template <typename ExecutionPolicy, typename RandomIt>
-  void bulk_load(ExecutionPolicy&& policy, RandomIt first, RandomIt last);
+  template <typename Fork, typename RandomIt>
+  void bulk_load(Fork&& fork, std::size_t max_tasks, RandomIt first,
+                 RandomIt last);
 
   /// Convenience overload: sequential execution.
   template <typename RandomIt>
   void bulk_load(RandomIt first, RandomIt last) {
-    bulk_load(std::execution::seq, first, last);
+    bulk_load(nullptr, 0, first, last);
   }
 
   //
@@ -906,12 +904,14 @@ class olc_db final {
     void release() noexcept { ptr = nullptr; }
 
     bulk_subtree_guard(const bulk_subtree_guard&) = delete;
+    // LCOV_EXCL_START — move ctor only called on vector reallocation
     bulk_subtree_guard(bulk_subtree_guard&& other) noexcept
         : db_{other.db_},
           ptr{other.ptr},
           is_packed_value{other.is_packed_value} {
       other.ptr = nullptr;
     }
+    // LCOV_EXCL_STOP
     auto& operator=(const bulk_subtree_guard&) = delete;
     auto& operator=(bulk_subtree_guard&&) = delete;
   };
@@ -1040,6 +1040,11 @@ class olc_db final {
   template <node_type NodeType>
   constexpr void account_shrinking_inode() noexcept;
 
+  /// Merge accumulated stats from a parallel bulk_load subtree.
+  /// For olc_db this is a no-op: atomic counters are updated directly.
+  constexpr void merge_bulk_load_stats(
+      const detail::bulk_load_stats_accumulator& /*acc*/) noexcept {}
+
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // optimistic lock guarding the [root].
@@ -1086,8 +1091,8 @@ class olc_db final {
                                                            value_type, olc_db&);
 
   /// detail::bulk_load_impl
-  template <typename Db2, typename Ep2, typename It2>
-  friend void detail::bulk_load_impl(Db2&, Ep2&&, It2, It2);
+  template <typename Db2, typename Fork2, typename It2>
+  friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
 
   template <class>
   friend class detail::basic_db_leaf_deleter;
@@ -5039,9 +5044,9 @@ olc_db<Key, Value>::try_chain_cut(
 namespace unodb {
 
 template <typename Key, typename Value>
-template <typename ExecutionPolicy, typename RandomIt>
-void olc_db<Key, Value>::bulk_load(ExecutionPolicy&& policy, RandomIt first,
-                                   RandomIt last) {
+template <typename Fork, typename RandomIt>
+void olc_db<Key, Value>::bulk_load(Fork&& fork, std::size_t max_tasks,
+                                   RandomIt first, RandomIt last) {
   UNODB_DETAIL_QSBR_ASSERT(
       qsbr_state::single_thread_mode(qsbr::instance().get_state()));
 
@@ -5050,7 +5055,7 @@ void olc_db<Key, Value>::bulk_load(ExecutionPolicy&& policy, RandomIt first,
   }
   if (first == last) return;
   try {
-    detail::bulk_load_impl(*this, std::forward<ExecutionPolicy>(policy), first,
+    detail::bulk_load_impl(*this, std::forward<Fork>(fork), max_tasks, first,
                            last);
   } catch (...) {
     clear();

@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -17,7 +18,6 @@
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "node_type.hpp"
-#include "portability_execution.hpp"
 #include "qsbr.hpp"
 #include "qsbr_test_utils.hpp"
 
@@ -59,6 +59,18 @@ UNODB_TEST(BulkLoadError, NonEmpty) {
   UNODB_ASSERT_TRUE(result.has_value());
 }
 
+// T26b: bulk_load on non-empty olc_db throws (covers olc_art.hpp error path).
+UNODB_TEST(BulkLoadError, OlcNonEmpty) {
+  u64_olc_db db;
+  constexpr std::uint64_t key = 42;
+  ASSERT_TRUE(db.insert(key, val));
+  unodb::this_thread().quiescent();
+  std::vector<std::pair<std::uint64_t, value_view>> kv{{100, val}};
+  EXPECT_THROW(db.bulk_load(kv.begin(), kv.end()), std::invalid_argument);
+  const auto result = db.get(key);
+  ASSERT_TRUE(result.has_value());
+}
+
 // T36: db ignores parallelism parameter
 UNODB_TEST(BulkLoadError, DbIgnoresParallelism) {
   u64_db db;
@@ -69,8 +81,12 @@ UNODB_TEST(BulkLoadError, DbIgnoresParallelism) {
     kv.emplace_back(key, val);
   }
   std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
-  // std::execution::par should enable parallel subtree construction
-  db.bulk_load(std::execution::par, kv.begin(), kv.end());
+  // Parallel fork callable enables concurrent subtree construction
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      256, kv.begin(), kv.end());
   for (const auto& [k, v] : kv) {
     const auto result = db.get(k);
     ASSERT_TRUE(result.has_value()) << "key " << k << " not found";
@@ -209,7 +225,11 @@ UNODB_TEST(BulkLoadOps, OlcDbParallel) {
     kv.emplace_back(i << 48U, val);
   }
   std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
-  db.bulk_load(std::execution::par, kv.begin(), kv.end());
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      256, kv.begin(), kv.end());
   for (const auto& [k, v] : kv) {
     const auto result = db.get(k);
     ASSERT_TRUE(result.has_value()) << "key " << k << " not found";
@@ -228,7 +248,11 @@ UNODB_TEST(BulkLoadOps, OlcDbConcurrentReaders) {
     kv.emplace_back(i << 40U, val);
   }
   std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
-  db.bulk_load(std::execution::par, kv.begin(), kv.end());
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      256, kv.begin(), kv.end());
 
   // Pause main thread QSBR so reader threads can register
   unodb::this_thread().qsbr_pause();
@@ -250,6 +274,123 @@ UNODB_TEST(BulkLoadOps, OlcDbConcurrentReaders) {
   unodb::this_thread().qsbr_resume();
   unodb::this_thread().quiescent();
   unodb::test::expect_idle_qsbr();
+}
+
+// ─── Coverage: parallel path with inline remainder
+// ────────────────────────────
+
+// T42: Parallel bulk_load with max_tasks < child_count exercises the inline
+// results gathering path (some partitions forked, remainder runs inline).
+UNODB_TEST(BulkLoadOps, ParallelInlineRemainder) {
+  u64_db db;
+  std::vector<std::pair<std::uint64_t, value_view>> kv;
+  kv.reserve(100);
+  for (std::uint64_t i = 0; i < 100; ++i) {
+    kv.emplace_back(i << 56U, val);
+  }
+  std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
+  // max_tasks=4 with 100 partitions: 4 forked, 96 inline
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      4, kv.begin(), kv.end());
+  for (const auto& [k, v] : kv) {
+    ASSERT_TRUE(db.get(k).has_value()) << "key " << k << " not found";
+  }
+}
+
+// T43: Parallel bulk_load with a single element exercises the n<=1 early
+// return.
+UNODB_TEST(BulkLoadOps, ParallelSingleElement) {
+  u64_db db;
+  std::vector<std::pair<std::uint64_t, value_view>> kv;
+  kv.emplace_back(42ULL << 56U, val);
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      4, kv.begin(), kv.end());
+  ASSERT_TRUE(db.get(42ULL << 56U).has_value());
+}
+
+// T44: Parallel bulk_load with keys sharing a long common prefix exercises the
+// prefix chain construction (chain_consumed > 0 path). Uses key_view for
+// keys longer than prefix_cap (7).
+UNODB_TEST(BulkLoadOps, ParallelPrefixChain) {
+  using unodb::test::key_view_db;
+  key_view_db db;
+  // Create keys that share 10 bytes then diverge at byte 10, with 2 more bytes
+  // to ensure subtree depth doesn't hit key boundary.
+  std::vector<std::vector<std::byte>> raw_keys;
+  raw_keys.reserve(20);
+  for (int i = 0; i < 20; ++i) {
+    std::vector<std::byte> k(13);
+    for (int j = 0; j < 10; ++j) {
+      k[static_cast<std::size_t>(j)] = static_cast<std::byte>(j + 1);
+    }
+    k[10] = static_cast<std::byte>(i);
+    k[11] = std::byte{0xAA};
+    k[12] = std::byte{0xBB};
+    raw_keys.push_back(std::move(k));
+  }
+  std::vector<std::pair<unodb::key_view, value_view>> kv;
+  kv.reserve(raw_keys.size());
+  for (auto& k : raw_keys) {
+    kv.emplace_back(unodb::key_view{k.data(), k.size()}, val);
+  }
+  // Already sorted (shared prefix, byte 10 is 0..19)
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      4, kv.begin(), kv.end());
+  for (const auto& [k, v] : kv) {
+    ASSERT_TRUE(db.get(k).has_value());
+  }
+}
+
+// T45: olc_db parallel with inline remainder (covers olc_art.hpp bulk_load
+// entry and bulk_subtree_guard move constructor).
+UNODB_TEST(BulkLoadOps, OlcDbParallelInline) {
+  u64_olc_db db;
+  std::vector<std::pair<std::uint64_t, value_view>> kv;
+  kv.reserve(50);
+  for (std::uint64_t i = 0; i < 50; ++i) {
+    kv.emplace_back(i << 56U, val);
+  }
+  std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
+  // max_tasks=4 with 50 partitions: 4 forked, 46 inline
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      4, kv.begin(), kv.end());
+  for (const auto& [k, v] : kv) {
+    const auto result = db.get(k);
+    ASSERT_TRUE(result.has_value()) << "key " << k << " not found";
+  }
+}
+
+// T46: olc_db parallel with shared prefix (all keys share byte 0).
+UNODB_TEST(BulkLoadOps, OlcDbParallelSharedPrefix) {
+  u64_olc_db db;
+  std::vector<std::pair<std::uint64_t, value_view>> kv;
+  kv.reserve(20);
+  // All keys share byte 0 = 0x01, differ at byte 1.
+  for (std::uint64_t i = 0; i < 20; ++i) {
+    kv.emplace_back((1ULL << 56U) | (i << 48U), val);
+  }
+  std::ranges::sort(kv, {}, &decltype(kv)::value_type::first);
+  db.bulk_load(
+      [](auto&& f) {
+        return std::async(std::launch::async, std::forward<decltype(f)>(f));
+      },
+      4, kv.begin(), kv.end());
+  for (const auto& [k, v] : kv) {
+    const auto result = db.get(k);
+    ASSERT_TRUE(result.has_value()) << "key " << k << " not found";
+  }
 }
 
 }  // namespace

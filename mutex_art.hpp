@@ -22,10 +22,6 @@ namespace unodb {
 template <typename Key, typename Value>
 class mutex_db final {
  public:
-  /// Whether this tree type supports parallel bulk_load execution.
-  /// mutex_db wraps db which uses non-atomic counters.
-  static constexpr bool supports_parallel_bulk_load = false;
-
   /// The type of the keys in the index.
   using key_type = Key;
   /// The type of the value associated with the keys in the index.
@@ -153,20 +149,23 @@ class mutex_db final {
 
   /// Bulk-load sorted key-value pairs into an empty tree.
   ///
+  /// \tparam Fork Callable: fork(Callable) -> Future<R> with .get()
   /// \tparam RandomIt Random access iterator over pairs of (key, value)
+  /// \param fork Callable to submit parallel tasks
+  /// \param max_tasks Maximum tasks to fork
   /// \param first Start of sorted range
   /// \param last End of sorted range
-  /// \param policy Execution policy (std::execution::seq or par)
-  template <typename ExecutionPolicy, typename RandomIt>
-  void bulk_load(ExecutionPolicy&& policy, RandomIt first, RandomIt last) {
+  template <typename Fork, typename RandomIt>
+  void bulk_load(Fork&& fork, std::size_t max_tasks, RandomIt first,
+                 RandomIt last) {
     const std::lock_guard guard{mutex};
-    db_.bulk_load(std::forward<ExecutionPolicy>(policy), first, last);
+    db_.bulk_load(std::forward<Fork>(fork), max_tasks, first, last);
   }
 
   /// Convenience overload: sequential execution.
   template <typename RandomIt>
   void bulk_load(RandomIt first, RandomIt last) {
-    bulk_load(std::execution::seq, first, last);
+    bulk_load(nullptr, 0, first, last);
   }
 
   //

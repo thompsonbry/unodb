@@ -17,7 +17,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <future>
 #include <iostream>
 #include <iterator>
 #include <optional>
@@ -35,7 +34,6 @@
 #include "assert.hpp"
 #include "in_fake_critical_section.hpp"
 #include "node_type.hpp"
-#include "portability_execution.hpp"
 
 namespace unodb {
 
@@ -116,9 +114,9 @@ template <typename Key, typename Value>
 class inode : public inode_base<Key, Value> {};
 
 /// Forward declaration of shared bulk_load algorithm.
-template <typename Db, typename ExecutionPolicy, typename RandomIt>
-void bulk_load_impl(Db& self, ExecutionPolicy&& policy, RandomIt first,
-                    RandomIt last);
+template <typename Db, typename Fork, typename RandomIt>
+void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
+                    RandomIt first, RandomIt last);
 
 }  // namespace detail
 
@@ -134,10 +132,6 @@ class db final {
   friend class mutex_db<Key, Value>;
 
  public:
-  /// Whether this tree type supports parallel bulk_load execution.
-  /// Only olc_db has thread-safe internal counters.
-  static constexpr bool supports_parallel_bulk_load = false;
-
   /// The type of the keys in the index.
   using key_type = Key;
 
@@ -237,12 +231,14 @@ class db final {
     void release() noexcept { ptr = nullptr; }
 
     bulk_subtree_guard(const bulk_subtree_guard&) = delete;
+    // LCOV_EXCL_START — move ctor only called on vector reallocation
     bulk_subtree_guard(bulk_subtree_guard&& other) noexcept
         : db_{other.db_},
           ptr{other.ptr},
           is_packed_value{other.is_packed_value} {
       other.ptr = nullptr;
     }
+    // LCOV_EXCL_STOP
     auto& operator=(const bulk_subtree_guard&) = delete;
     auto& operator=(bulk_subtree_guard&&) = delete;
   };
@@ -366,22 +362,30 @@ class db final {
 
   /// Bulk-load an ART tree from a pre-sorted range of key-value pairs.
   ///
+  /// Bulk-load the tree from a sorted range, with caller-provided parallelism.
+  ///
+  /// \tparam Fork      Callable satisfying: fork(Callable) -> Future<R> where
+  ///                   Future has .get(). The callable is invoked to submit
+  ///                   subtree-building tasks; the library never spawns
+  ///                   threads.
   /// \tparam RandomIt  Random-access iterator to std::pair<key_type,
-  /// value_type>
-  /// \param policy     Execution policy (ignored for db — allocator not
-  ///                   thread-safe).
+  ///                   value_type>
+  /// \param fork       Callable to submit parallel tasks.
+  /// \param max_tasks  Maximum number of tasks to fork (remaining partitions
+  ///                   run inline on the calling thread).
   /// \param first      Start of sorted range (ART byte order, no duplicates).
   /// \param last       End of sorted range.
   /// \pre empty() == true
   /// \throws std::invalid_argument if tree is non-empty.
   /// \throws std::bad_alloc (strong guarantee — tree left empty).
-  template <typename ExecutionPolicy, typename RandomIt>
-  void bulk_load(ExecutionPolicy&& policy, RandomIt first, RandomIt last);
+  template <typename Fork, typename RandomIt>
+  void bulk_load(Fork&& fork, std::size_t max_tasks, RandomIt first,
+                 RandomIt last);
 
-  /// Convenience overload: sequential execution.
+  /// Convenience overload: sequential execution (no parallelism).
   template <typename RandomIt>
   void bulk_load(RandomIt first, RandomIt last) {
-    bulk_load(std::execution::seq, first, last);
+    bulk_load(nullptr, 0, first, last);
   }
 
   /// Internal iterator for tree traversal.
@@ -976,6 +980,11 @@ class db final {
   /// Increase tracked memory usage by \a delta bytes.
   constexpr void increase_memory_use(std::size_t delta) noexcept {
     UNODB_DETAIL_ASSERT(delta > 0);
+
+    if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+      acc->current_memory_use += delta;  // LCOV_EXCL_LINE — exercised by
+      return;                            // LCOV_EXCL_LINE — parallel tests
+    }
     UNODB_DETAIL_ASSERT(
         std::numeric_limits<decltype(current_memory_use)>::max() - delta >=
         current_memory_use);
@@ -993,6 +1002,11 @@ class db final {
 
   /// Increment leaf node count and bump memory usage by \a leaf_size bytes.
   constexpr void increment_leaf_count(std::size_t leaf_size) noexcept {
+    if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+      acc->current_memory_use += leaf_size;
+      ++acc->node_counts[as_i<node_type::LEAF>];
+      return;
+    }
     increase_memory_use(leaf_size);
     ++node_counts[as_i<node_type::LEAF>];
   }
@@ -1029,6 +1043,17 @@ class db final {
   template <node_type NodeType>
   constexpr void account_shrinking_inode() noexcept;
 
+  /// Merge accumulated stats from a parallel bulk_load subtree.
+  constexpr void merge_bulk_load_stats(
+      const detail::bulk_load_stats_accumulator& acc) noexcept {
+    current_memory_use += acc.current_memory_use;
+    for (std::size_t i = 0; i < node_counts.size(); ++i)
+      node_counts[i] += acc.node_counts[i];
+    for (std::size_t i = 0; i < growing_inode_counts.size(); ++i)
+      growing_inode_counts[i] += acc.growing_inode_counts[i];
+    key_prefix_splits += acc.key_prefix_splits;
+  }
+
 #endif  // UNODB_DETAIL_WITH_STATS
 
   /// Root of the tree (nullptr if empty).
@@ -1063,8 +1088,8 @@ class db final {
                                                        db&);
 
   /// detail::bulk_load_impl
-  template <typename Db2, typename Ep2, typename It2>
-  friend void detail::bulk_load_impl(Db2&, Ep2&&, It2, It2);
+  template <typename Db2, typename Fork2, typename It2>
+  friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
 
   /// detail::basic_db_leaf_deleter
   template <class>
@@ -2687,6 +2712,11 @@ template <class INode>
 constexpr void db<Key, Value>::increment_inode_count() noexcept {
   static_assert(inode_defs_type::template is_inode<INode>());
 
+  if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+    ++acc->node_counts[as_i<INode::type>];
+    acc->current_memory_use += sizeof(INode);
+    return;
+  }
   ++node_counts[as_i<INode::type>];
   increase_memory_use(sizeof(INode));
 }
@@ -2706,6 +2736,10 @@ template <node_type NodeType>
 constexpr void db<Key, Value>::account_growing_inode() noexcept {
   static_assert(NodeType != node_type::LEAF);
 
+  if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+    ++acc->growing_inode_counts[internal_as_i<NodeType>];
+    return;
+  }
   // NOLINTNEXTLINE(google-readability-casting)
   ++growing_inode_counts[internal_as_i<NodeType>];
   UNODB_DETAIL_ASSERT(growing_inode_counts[internal_as_i<NodeType>] >=
@@ -2839,15 +2873,15 @@ bool db<Key, Value>::upsert(Key k, value_type v, FN fn) {
 }
 
 template <typename Key, typename Value>
-template <typename ExecutionPolicy, typename RandomIt>
-void db<Key, Value>::bulk_load(ExecutionPolicy&& policy, RandomIt first,
-                               RandomIt last) {
+template <typename Fork, typename RandomIt>
+void db<Key, Value>::bulk_load(Fork&& fork, std::size_t max_tasks,
+                               RandomIt first, RandomIt last) {
   if (!empty()) {
     throw std::invalid_argument("bulk_load requires empty tree");
   }
   if (first == last) return;
   try {
-    detail::bulk_load_impl(*this, std::forward<ExecutionPolicy>(policy), first,
+    detail::bulk_load_impl(*this, std::forward<Fork>(fork), max_tasks, first,
                            last);
   } catch (...) {
     clear();
