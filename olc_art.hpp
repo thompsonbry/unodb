@@ -1042,6 +1042,7 @@ class olc_db final {
 
   /// Merge accumulated stats from a parallel bulk_load subtree.
   /// For olc_db this is a no-op: atomic counters are updated directly.
+  // cppcheck-suppress functionStatic
   constexpr void merge_bulk_load_stats(
       const detail::bulk_load_stats_accumulator& /*acc*/) noexcept {}
 

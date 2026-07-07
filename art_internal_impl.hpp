@@ -4557,7 +4557,7 @@ class basic_inode_48
       db_type& db_instance, detail::key_prefix_size prefix_len,
       unodb::key_view prefix_key, tree_depth_type depth,
       std::span<const detail::bulk_child<node_ptr>> children_span,
-      std::array<std::uint8_t, 6> value_mask = {}) {
+      const std::array<std::uint8_t, 6>& value_mask = {}) {
     const auto n = static_cast<unsigned>(children_span.size());
     UNODB_DETAIL_ASSERT(n >= 17 && n <= 48);
     auto result =
@@ -5044,7 +5044,7 @@ class basic_inode_256
       db_type& db_instance, detail::key_prefix_size prefix_len,
       unodb::key_view prefix_key, tree_depth_type depth,
       std::span<const detail::bulk_child<node_ptr>> children_span,
-      std::array<std::uint8_t, 32> value_mask = {}) {
+      const std::array<std::uint8_t, 32>& value_mask = {}) {
     const auto n = static_cast<unsigned>(children_span.size());
     UNODB_DETAIL_ASSERT(n >= 49 && n <= 256);
     auto result =
