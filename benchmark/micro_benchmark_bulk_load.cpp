@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <future>
+#include <iterator>
 #include <random>
 #include <utility>
 #include <vector>
@@ -57,7 +58,8 @@ const auto value = unodb::value_view{val8};
   keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
   std::vector<std::pair<std::uint64_t, unodb::value_view>> kv;
   kv.reserve(keys.size());
-  for (auto k : keys) kv.emplace_back(k, value);
+  std::transform(keys.begin(), keys.end(), std::back_inserter(kv),
+                 [](auto k) { return std::make_pair(k, value); });
   return kv;
 }
 
@@ -139,6 +141,7 @@ void BM_BulkLoad_kv(benchmark::State& state) {
   auto keys = unodb::benchmark::key_view_set::compound(0x01, n);
   std::vector<std::pair<unodb::key_view, unodb::value_view>> kv;
   kv.reserve(n);
+  // cppcheck-suppress useStlAlgorithm
   for (std::size_t i = 0; i < n; ++i) kv.emplace_back(keys[i], value);
 
   for (const auto _ : state) {
@@ -158,6 +161,7 @@ void BM_Insert_kv(benchmark::State& state) {
   auto keys = unodb::benchmark::key_view_set::compound(0x01, n);
   std::vector<std::pair<unodb::key_view, unodb::value_view>> kv;
   kv.reserve(n);
+  // cppcheck-suppress useStlAlgorithm
   for (std::size_t i = 0; i < n; ++i) kv.emplace_back(keys[i], value);
 
   for (const auto _ : state) {
