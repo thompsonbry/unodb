@@ -80,9 +80,11 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
         ++cur;
       }
     }
+    UNODB_DETAIL_DISABLE_GCC_WARNING("-Wpessimizing-move")
     UNODB_DETAIL_DISABLE_MSVC_WARNING(26479)
     return std::move(parts);  // NOLINT(performance-move-const-arg)
     UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+    UNODB_DETAIL_RESTORE_GCC_WARNINGS()
   };
 
   auto build_prefix_chain = [&self](art_key_type k, node_ptr_t child_inode,

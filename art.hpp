@@ -206,42 +206,13 @@ class db final {
 
   /// Tagged return from build_subtree: pointer + whether it's a VIS packed
   /// value (not a real heap pointer — must not be passed to delete_subtree).
-  struct build_result {
-    detail::node_ptr ptr{nullptr};
-    bool is_packed_value{false};
-  };
+  using build_result =
+      detail::bulk_build_result<detail::art_policy<Key, Value>>;
 
   /// RAII guard for subtrees during bulk construction.
   /// Skips deallocation for VIS packed values (not heap-allocated).
-  struct bulk_subtree_guard {
-    db_type& db_;
-    detail::node_ptr ptr{nullptr};
-    bool is_packed_value{false};
-
-    constexpr explicit bulk_subtree_guard(db_type& db
-                                          UNODB_DETAIL_LIFETIMEBOUND) noexcept
-        : db_{db} {}
-
-    ~bulk_subtree_guard() noexcept {
-      if (ptr != nullptr && !is_packed_value) {
-        art_policy::delete_subtree(ptr, db_);
-      }
-    }
-
-    void release() noexcept { ptr = nullptr; }
-
-    bulk_subtree_guard(const bulk_subtree_guard&) = delete;
-    // LCOV_EXCL_START — move ctor only called on vector reallocation
-    bulk_subtree_guard(bulk_subtree_guard&& other) noexcept
-        : db_{other.db_},
-          ptr{other.ptr},
-          is_packed_value{other.is_packed_value} {
-      other.ptr = nullptr;
-    }
-    // LCOV_EXCL_STOP
-    auto& operator=(const bulk_subtree_guard&) = delete;
-    auto& operator=(bulk_subtree_guard&&) = delete;
-  };
+  using bulk_subtree_guard =
+      detail::bulk_subtree_guard<detail::art_policy<Key, Value>>;
 
   /// Extract byte at \a depth from a key. Handles big-endian uint64_t
   /// (via art_key_type bswap) and key_view (direct byte access).
@@ -1091,6 +1062,13 @@ class db final {
   template <typename Db2, typename Fork2, typename It2>
   friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
 
+  /// detail::bulk_build_chain
+  template <class ArtPolicy2>
+  friend typename ArtPolicy2::node_ptr detail::bulk_build_chain(
+      typename ArtPolicy2::db_type&, typename ArtPolicy2::art_key_type,
+      typename ArtPolicy2::node_ptr,
+      detail::tree_depth<typename ArtPolicy2::art_key_type>);
+
   /// detail::basic_db_leaf_deleter
   template <class>
   friend class detail::basic_db_leaf_deleter;
@@ -1741,73 +1719,7 @@ template <typename Key, typename Value>
 detail::node_ptr db<Key, Value>::build_chain(art_key_type k,
                                              detail::node_ptr child,
                                              tree_depth_type start_depth) {
-  constexpr std::size_t cap = detail::key_prefix_capacity;
-  const auto full_key = k.get_key_view();
-  const auto key_len = k.size();
-  const auto start = static_cast<std::size_t>(start_depth);
-  auto current = child;
-  bool child_is_value = art_policy::can_eliminate_leaf;
-  bool owns_current =
-      false;  // set true once we've built at least one chain node
-  // Build bottom-up: start from end of key, work toward start_depth.
-  // Each chain I4 consumes up to cap prefix bytes + 1 dispatch byte.
-  try {
-    std::size_t pos = key_len;
-    while (pos > start + cap) {
-      const auto depth = pos - cap - 1;
-      const auto dispatch = full_key[pos - 1];
-      auto remaining = k;
-      remaining.shift_right(depth);
-      auto chain{
-          inode_4::create(*this, full_key, remaining,
-                          tree_depth_type{static_cast<std::uint32_t>(depth)},
-                          dispatch, current)};
-      if (child_is_value) {
-        chain->set_value_bit(0);
-        child_is_value = false;
-      }
-      current = detail::node_ptr{chain.release(), node_type::I4};
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-      pos = depth;
-    }
-    // Tail: remaining bytes from start_depth to pos.
-    if (pos > start) {
-      const auto dispatch = full_key[pos - 1];
-      auto chain{inode_4::create(
-          *this, full_key, tree_depth_type{static_cast<std::uint32_t>(start)},
-          static_cast<detail::key_prefix_size>(pos - start - 1), dispatch,
-          current)};
-      if (child_is_value) {
-        chain->set_value_bit(0);
-      }
-      current = detail::node_ptr{chain.release(), node_type::I4};
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-    }
-  } catch (...) {
-    // On failure, free whatever current points to.  If owns_current is
-    // true, current is a partial chain (I4 tree).  If false, current is
-    // the original child — a leaf node_ptr on the leaf path, or a packed
-    // value on the VIS path.  delete_subtree handles both I4 and LEAF.
-    // For VIS packed values (!child_is_value is false only after the
-    // first chain node is built), the caller's packed bits are not a
-    // real pointer — but we only reach here with a packed value if
-    // owns_current is false AND child_is_value is true, meaning no
-    // chain was built and the packed value was never wrapped.  In that
-    // case we must NOT call delete_subtree on packed bits.
-    if (owns_current) {
-      art_policy::delete_subtree(current, *this);
-    } else if (!child_is_value) {
-      art_policy::delete_subtree(current, *this);
-    }
-    throw;
-  }
-  return current;
+  return detail::bulk_build_chain<art_policy>(*this, k, child, start_depth);
 }
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()

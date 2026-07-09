@@ -158,6 +158,66 @@ struct bulk_child {
   NodePtr child;
 };
 
+/// Tagged return from build_subtree: pointer + whether it's a VIS packed
+/// value (not a real heap pointer — must not be passed to delete_subtree).
+template <class ArtPolicy>
+struct bulk_build_result {
+  typename ArtPolicy::node_ptr ptr{nullptr};
+  bool is_packed_value{false};
+};
+
+/// RAII guard for subtrees during bulk construction.
+/// Skips deallocation for VIS packed values (not heap-allocated).
+template <class ArtPolicy>
+struct bulk_subtree_guard {
+  using db_type = typename ArtPolicy::db_type;
+  using node_ptr = typename ArtPolicy::node_ptr;
+
+  db_type& db_;
+  node_ptr ptr{nullptr};
+  bool is_packed_value{false};
+
+  constexpr explicit bulk_subtree_guard(db_type& db
+                                        UNODB_DETAIL_LIFETIMEBOUND) noexcept
+      : db_{db} {}
+
+  ~bulk_subtree_guard() noexcept {
+    if (ptr != nullptr && !is_packed_value) {
+      ArtPolicy::delete_subtree(ptr, db_);
+    }
+  }
+
+  void release() noexcept { ptr = nullptr; }
+
+  bulk_subtree_guard(const bulk_subtree_guard&) = delete;
+  // LCOV_EXCL_START — move ctor only called on vector reallocation
+  bulk_subtree_guard(bulk_subtree_guard&& other) noexcept
+      : db_{other.db_}, ptr{other.ptr}, is_packed_value{other.is_packed_value} {
+    other.ptr = nullptr;
+  }
+  // LCOV_EXCL_STOP
+  auto& operator=(const bulk_subtree_guard&) = delete;
+  auto& operator=(bulk_subtree_guard&&) = delete;
+};
+
+/// Build a chain of inode4 nodes for prefix compression during bulk load.
+///
+/// Constructs bottom-up from key end toward start_depth. Each chain node
+/// consumes up to key_prefix_capacity prefix bytes + 1 dispatch byte.
+///
+/// \tparam ArtPolicy Policy type (provides node_ptr, db_type, inode types)
+/// \param self Database instance
+/// \param k    Encoded key for prefix extraction
+/// \param child Child pointer to wrap in the chain
+/// \param start_depth Depth at which the chain terminates
+/// \return The top node pointer of the chain
+/// \note Defined at end of art_internal_impl.hpp (after inode types).
+template <class ArtPolicy>
+[[nodiscard]] typename ArtPolicy::node_ptr bulk_build_chain(
+    typename ArtPolicy::db_type& self, typename ArtPolicy::art_key_type k,
+    typename ArtPolicy::node_ptr child,
+    tree_depth<typename ArtPolicy::art_key_type> start_depth);
+
 #ifdef UNODB_DETAIL_X86_64
 
 /// Compare packed unsigned 8-bit integers for less-than-or-equal.
@@ -5065,6 +5125,75 @@ class basic_inode_256
   }
   UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
 };  // class basic_inode_256
+
+// ─── Bulk Load: build_chain ─────────────────────────────────────────────────
+
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+UNODB_DETAIL_DISABLE_MSVC_WARNING(4459)
+
+template <class ArtPolicy>
+[[nodiscard]] typename ArtPolicy::node_ptr bulk_build_chain(
+    typename ArtPolicy::db_type& self, typename ArtPolicy::art_key_type k,
+    typename ArtPolicy::node_ptr child,
+    tree_depth<typename ArtPolicy::art_key_type> start_depth) {
+  using node_ptr = typename ArtPolicy::node_ptr;
+  using inode_4 = typename ArtPolicy::inode4_type;
+  using tree_depth_type = tree_depth<typename ArtPolicy::art_key_type>;
+  constexpr std::size_t cap = key_prefix_capacity;
+  const auto full_key = k.get_key_view();
+  const auto key_len = k.size();
+  const auto start = static_cast<std::size_t>(start_depth);
+  auto current = child;
+  bool child_is_value = ArtPolicy::can_eliminate_leaf;
+  bool owns_current = false;
+  try {
+    std::size_t pos = key_len;
+    while (pos > start + cap) {
+      const auto depth = pos - cap - 1;
+      const auto dispatch = full_key[pos - 1];
+      auto remaining = k;
+      remaining.shift_right(depth);
+      auto chain{
+          inode_4::create(self, full_key, remaining,
+                          tree_depth_type{static_cast<std::uint32_t>(depth)},
+                          dispatch, current)};
+      if (child_is_value) {
+        chain->set_value_bit(0);
+        child_is_value = false;
+      }
+      current = node_ptr{chain.release(), node_type::I4};
+      owns_current = true;
+#ifdef UNODB_DETAIL_WITH_STATS
+      self.template account_growing_inode<node_type::I4>();
+#endif
+      pos = depth;
+    }
+    if (pos > start) {
+      const auto dispatch = full_key[pos - 1];
+      auto chain{inode_4::create(
+          self, full_key, tree_depth_type{static_cast<std::uint32_t>(start)},
+          static_cast<key_prefix_size>(pos - start - 1), dispatch, current)};
+      if (child_is_value) {
+        chain->set_value_bit(0);
+      }
+      current = node_ptr{chain.release(), node_type::I4};
+#ifdef UNODB_DETAIL_WITH_STATS
+      self.template account_growing_inode<node_type::I4>();
+#endif
+    }
+    return current;
+  } catch (...) {
+    if (owns_current) {
+      ArtPolicy::delete_subtree(current, self);
+    } else if (!child_is_value) {
+      ArtPolicy::delete_subtree(current, self);
+    }
+    throw;
+  }
+}
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 }  // namespace unodb::detail
 

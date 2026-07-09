@@ -880,41 +880,11 @@ class olc_db final {
       detail::olc_db_leaf_unique_ptr<Key, Value>;
 
   /// Result of subtree construction during bulk_load.
-  struct build_result {
-    detail::olc_node_ptr ptr{nullptr};
-    bool is_packed_value{false};
-  };
+  /// Tagged return from build_subtree.
+  using build_result = detail::bulk_build_result<art_policy>;
 
   /// RAII guard for subtrees during bulk construction.
-  struct bulk_subtree_guard {
-    olc_db& db_;
-    detail::olc_node_ptr ptr{nullptr};
-    bool is_packed_value{false};
-
-    constexpr explicit bulk_subtree_guard(olc_db& db
-                                          UNODB_DETAIL_LIFETIMEBOUND) noexcept
-        : db_{db} {}
-
-    ~bulk_subtree_guard() noexcept {
-      if (ptr != nullptr && !is_packed_value) {
-        art_policy::delete_subtree(ptr, db_);
-      }
-    }
-
-    void release() noexcept { ptr = nullptr; }
-
-    bulk_subtree_guard(const bulk_subtree_guard&) = delete;
-    // LCOV_EXCL_START — move ctor only called on vector reallocation
-    bulk_subtree_guard(bulk_subtree_guard&& other) noexcept
-        : db_{other.db_},
-          ptr{other.ptr},
-          is_packed_value{other.is_packed_value} {
-      other.ptr = nullptr;
-    }
-    // LCOV_EXCL_STOP
-    auto& operator=(const bulk_subtree_guard&) = delete;
-    auto& operator=(bulk_subtree_guard&&) = delete;
-  };
+  using bulk_subtree_guard = detail::bulk_subtree_guard<art_policy>;
 
   // If get_result is not present, the search was interrupted. Yes, this
   // resolves to std::optional<std::optional<value_view>>, but IMHO both
@@ -1094,6 +1064,13 @@ class olc_db final {
   /// detail::bulk_load_impl
   template <typename Db2, typename Fork2, typename It2>
   friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
+
+  /// detail::bulk_build_chain
+  template <class ArtPolicy2>
+  friend typename ArtPolicy2::node_ptr detail::bulk_build_chain(
+      typename ArtPolicy2::db_type&, typename ArtPolicy2::art_key_type,
+      typename ArtPolicy2::node_ptr,
+      detail::tree_depth<typename ArtPolicy2::art_key_type>);
 
   template <class>
   friend class detail::basic_db_leaf_deleter;
@@ -2382,68 +2359,7 @@ bool olc_db<Key, Value>::insert_internal(art_key_type insert_key,
 template <typename Key, typename Value>
 detail::olc_node_ptr olc_db<Key, Value>::build_chain(
     art_key_type k, detail::olc_node_ptr child, tree_depth_type start_depth) {
-  constexpr std::size_t cap = detail::key_prefix_capacity;
-  const auto full_key = k.get_key_view();
-  const auto key_len = k.size();
-  const auto start = static_cast<std::size_t>(start_depth);
-  auto current = child;
-  bool child_is_value = art_policy::can_eliminate_leaf;
-  bool owns_current =
-      false;  // set true once we've built at least one chain node
-  try {
-    std::size_t pos = key_len;
-    while (pos > start + cap) {
-      const auto depth = pos - cap - 1;
-      const auto dispatch = full_key[pos - 1];
-      auto remaining = k;
-      remaining.shift_right(depth);
-      auto chain{
-          inode_4::create(*this, full_key, remaining,
-                          tree_depth_type{static_cast<std::uint32_t>(depth)},
-                          dispatch, current)};
-      if (child_is_value) {
-        UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-        chain->set_value_bit(0);
-        UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-        child_is_value = false;
-      }
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-      current = detail::olc_node_ptr{chain.release(), node_type::I4};
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-      pos = depth;
-    }
-    if (pos > start) {
-      const auto dispatch = full_key[pos - 1];
-      auto chain{inode_4::create(
-          *this, full_key, tree_depth_type{static_cast<std::uint32_t>(start)},
-          static_cast<detail::key_prefix_size>(pos - start - 1), dispatch,
-          current)};
-      if (child_is_value) {
-        UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-        chain->set_value_bit(0);
-        UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      }
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-      current = detail::olc_node_ptr{chain.release(), node_type::I4};
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-    }
-  } catch (...) {
-    if (owns_current) {
-      art_policy::delete_subtree(current, *this);
-    } else if (!child_is_value) {
-      art_policy::delete_subtree(current, *this);
-    }
-    throw;
-  }
-  return current;
+  return detail::bulk_build_chain<art_policy>(*this, k, child, start_depth);
 }
 
 template <typename Key, typename Value>
