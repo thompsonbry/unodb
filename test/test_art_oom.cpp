@@ -653,8 +653,7 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainMultiNode) {
 template <class TypeParam>
 void bulk_load_oom_test(
     unsigned fail_limit,
-    std::vector<std::pair<std::uint64_t, unodb::value_view>>
-        kv) {  // NOLINT(performance-unnecessary-value-param)
+    const std::vector<std::pair<std::uint64_t, unodb::value_view>>& kv) {
   unsigned fail_n;
   for (fail_n = 1; fail_n <= fail_limit; ++fail_n) {
     TypeParam test_db;

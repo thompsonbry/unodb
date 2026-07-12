@@ -20,15 +20,21 @@ UNODB_DETAIL_DISABLE_MSVC_WARNING(26496)
 /// \cond UNODB_DETAIL_INTERNAL
 namespace unodb::detail {
 
-/// Core bulk_load algorithm parameterized on database type.
-///
-/// \pre Tree must be empty (caller validates).
-/// \pre [first, last) is sorted and non-empty (caller validates).
-/// \tparam Fork  Callable satisfying fork(Callable) -> Future<R> where
-///              Future has .get(). Ignored (nullptr_t) for sequential.
-template <typename Db, typename Fork, typename RandomIt>
-void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
-                    RandomIt first, RandomIt last) {
+// ─── Helper types ──────────────────────────────────────────────────────────
+
+/// Entry produced by partition_by_byte: the start iterator and dispatch byte.
+template <typename RandomIt>
+struct partition_entry {
+  RandomIt begin;
+  std::byte key_byte;
+};
+
+// ─── Bulk load helper struct ───────────────────────────────────────────────
+
+/// Named helper functions for bulk_load, collected in a struct to simplify
+/// friend declarations and avoid forward-declaration complexity.
+template <typename Db, typename RandomIt>
+struct bulk_load_helpers {
   using art_key_type = typename Db::art_key_type;
   using art_policy = typename Db::art_policy;
   using tree_depth_type = typename Db::tree_depth_type;
@@ -38,12 +44,12 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
   using inode_256 = typename Db::inode_256;
   using build_result_t = typename Db::build_result;
   using guard_t = typename Db::bulk_subtree_guard;
-  using node_ptr_t = decltype(build_result_t{}.ptr);
+  using node_ptr_t = typename build_result_t::ptr_type;
   using bulk_child_t = bulk_child<node_ptr_t>;
-  constexpr std::size_t prefix_cap = key_prefix_capacity;
 
-  auto common_prefix_length = [](RandomIt f, RandomIt l,
-                                 tree_depth_type depth) -> std::size_t {
+  /// Compute the length of the common prefix between first and last keys.
+  [[nodiscard]] static std::size_t common_prefix_length(RandomIt f, RandomIt l,
+                                                        tree_depth_type depth) {
     const art_key_type first_ak{f->first};
     const art_key_type last_ak{std::prev(l)->first};
     const auto fk = first_ak.get_key_view();
@@ -53,16 +59,13 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
     std::size_t len = 0;
     while (d + len < max_len && fk[d + len] == lk[d + len]) ++len;
     return len;
-  };
+  }
 
-  struct partition_entry {
-    RandomIt begin;
-    std::byte key_byte;
-  };
-
-  auto partition_by_byte = [](RandomIt f, RandomIt l,
-                              tree_depth_type dispatch_depth) {
-    boost::container::small_vector<partition_entry, 16> parts;
+  /// Partition sorted range [f, l) by the key byte at dispatch_depth.
+  [[nodiscard]] static boost::container::small_vector<partition_entry<RandomIt>,
+                                                      16>
+  partition_by_byte(RandomIt f, RandomIt l, tree_depth_type dispatch_depth) {
+    boost::container::small_vector<partition_entry<RandomIt>, 16> parts;
     const auto dd = static_cast<std::size_t>(dispatch_depth);
     auto cur = f;
     while (cur != l) {
@@ -80,16 +83,15 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
         ++cur;
       }
     }
-    UNODB_DETAIL_DISABLE_GCC_WARNING("-Wpessimizing-move")
-    UNODB_DETAIL_DISABLE_MSVC_WARNING(26479)
-    return std::move(parts);  // NOLINT(performance-move-const-arg)
-    UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-    UNODB_DETAIL_RESTORE_GCC_WARNINGS()
-  };
+    return parts;
+  }
 
-  auto build_prefix_chain = [&self](art_key_type k, node_ptr_t child_inode,
-                                    tree_depth_type start_depth,
-                                    std::size_t end_depth) -> node_ptr_t {
+  /// Build a chain of I4 nodes encoding the prefix from start_depth to
+  /// end_depth, with child_inode at the bottom.
+  [[nodiscard]] static node_ptr_t build_prefix_chain(
+      Db& self, art_key_type k, node_ptr_t child_inode,
+      tree_depth_type start_depth, std::size_t end_depth) {
+    constexpr std::size_t prefix_cap = key_prefix_capacity;
     const auto full_key = k.get_key_view();
     const auto start = static_cast<std::size_t>(start_depth);
     auto current = child_inode;
@@ -109,8 +111,9 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
 #endif
       pos = depth;
     }
-    // LCOV_EXCL_START — chain_consumed is always a multiple of (prefix_cap+1),
-    // so the while loop always decrements pos to exactly start.
+    // LCOV_EXCL_START — always-false: chain_consumed is always a multiple of
+    // (prefix_cap+1), so the while loop always decrements pos to exactly start.
+    UNODB_DETAIL_ASSERT(pos == start);
     if (pos > start) {
       const auto dispatch = full_key[pos - 1];
       auto chain{inode_4::create(
@@ -123,10 +126,11 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
     }
     // LCOV_EXCL_STOP
     return current;
-  };
+  }
 
-  auto build_single_leaf = [&self](RandomIt it,
-                                   tree_depth_type depth) -> build_result_t {
+  /// Build a single leaf (or packed value) from the iterator at given depth.
+  [[nodiscard]] static build_result_t build_single_leaf(Db& self, RandomIt it,
+                                                        tree_depth_type depth) {
     const art_key_type ak{it->first};
     if constexpr (art_policy::can_eliminate_leaf) {
       const auto packed = art_policy::pack_value(it->second);
@@ -147,16 +151,15 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
       const auto leaf_ptr = node_ptr_t{leaf.release(), node_type::LEAF};
       return {leaf_ptr, false};
     }
-  };
+  }
 
-  // ─── Shared inode factory ────────────────────────────────────────────
-
-  auto make_bulk_inode =
-      [&self](std::span<const bulk_child_t> cs,
-              const boost::container::small_vector<guard_t, 16>& guards,
-              const boost::container::small_vector<bulk_child_t, 16>& children,
-              key_prefix_size inode_prefix_len, key_view prefix_kv,
-              tree_depth_type inode_depth) -> node_ptr_t {
+  /// Assemble an internal node of the appropriate fan-out.
+  [[nodiscard]] static node_ptr_t make_inode(
+      Db& self, std::span<const bulk_child_t> cs,
+      const boost::container::small_vector<guard_t, 16>& guards,
+      const boost::container::small_vector<bulk_child_t, 16>& children,
+      key_prefix_size inode_prefix_len, key_view prefix_kv,
+      tree_depth_type inode_depth) {
     if constexpr (!art_policy::can_eliminate_leaf) {
       static_cast<void>(guards);
       static_cast<void>(children);
@@ -223,101 +226,109 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
     self.template account_growing_inode<node_type::I256>();
 #endif
     return node_ptr_t{ptr.release(), node_type::I256};
-  };
+  }
 
-  // ─── Recursive subtree builder ─────────────────────────────────────────
+  /// Recursively build a subtree from a sorted range of key-value pairs.
+  [[nodiscard]] static build_result_t build_subtree(Db& self, RandomIt f,
+                                                    RandomIt l,
+                                                    tree_depth_type depth) {
+    constexpr std::size_t prefix_cap = key_prefix_capacity;
 
-  struct subtree_builder {
-    Db& self;
-    decltype(common_prefix_length)& cpl;
-    decltype(partition_by_byte)& pbb;
-    decltype(build_prefix_chain)& bpc;
-    decltype(build_single_leaf)& bsl;
-    decltype(make_bulk_inode)& mbi;
+    const auto n = std::distance(f, l);
+    if (n == 0) return {node_ptr_t{nullptr}, false};
+    if (n == 1) return build_single_leaf(self, f, depth);
 
-    build_result_t operator()(RandomIt f, RandomIt l,
-                              tree_depth_type depth) const {
-      const auto n = std::distance(f, l);
-      if (n == 0) return {node_ptr_t{nullptr}, false};
-      if (n == 1) return bsl(f, depth);
+    const auto prefix_len = common_prefix_length(f, l, depth);
+    const auto dispatch_depth = tree_depth_type{static_cast<std::uint32_t>(
+        static_cast<std::size_t>(depth) + prefix_len)};
+    auto parts = partition_by_byte(f, l, dispatch_depth);
+    const auto child_count = parts.size();
 
-      const auto prefix_len = cpl(f, l, depth);
-      const auto dispatch_depth = tree_depth_type{static_cast<std::uint32_t>(
-          static_cast<std::size_t>(depth) + prefix_len)};
-      auto parts = pbb(f, l, dispatch_depth);
-      const auto child_count = parts.size();
+    boost::container::small_vector<guard_t, 16> guards;
+    guards.reserve(child_count);
+    boost::container::small_vector<bulk_child_t, 16> children;
+    children.reserve(child_count);
 
-      boost::container::small_vector<guard_t, 16> guards;
-      guards.reserve(child_count);
-      boost::container::small_vector<bulk_child_t, 16> children;
-      children.reserve(child_count);
+    const auto next_depth = tree_depth_type{static_cast<std::uint32_t>(
+        static_cast<std::size_t>(dispatch_depth) + 1)};
 
-      const auto next_depth = tree_depth_type{static_cast<std::uint32_t>(
-          static_cast<std::size_t>(dispatch_depth) + 1)};
-
-      for (std::size_t i = 0; i < child_count; ++i) {
-        const auto part_begin = parts[i].begin;
-        const auto part_end = (i + 1 < child_count) ? parts[i + 1].begin : l;
-        auto result = (*this)(part_begin, part_end, next_depth);
-        guards.emplace_back(self);
-        guards.back().ptr = result.ptr;
-        guards.back().is_packed_value = result.is_packed_value;
-        children.push_back({parts[i].key_byte, result.ptr});
-      }
-
-      const std::size_t chain_consumed =
-          (prefix_len > prefix_cap)
-              ? (prefix_len / (prefix_cap + 1)) * (prefix_cap + 1)
-              : 0;
-      const auto inode_prefix_len =
-          static_cast<key_prefix_size>(prefix_len - chain_consumed);
-      const auto inode_depth = tree_depth_type{static_cast<std::uint32_t>(
-          static_cast<std::size_t>(depth) + chain_consumed)};
-
-      const art_key_type prefix_key{f->first};
-      const auto prefix_kv = prefix_key.get_key_view();
-
-      const auto cs =
-          std::span<const bulk_child_t>{children.data(), children.size()};
-      auto inode_ptr =
-          mbi(cs, guards, children, inode_prefix_len, prefix_kv, inode_depth);
-      for (auto& g : guards) g.release();
-
-      if (chain_consumed > 0) {
-        return {bpc(prefix_key, inode_ptr, depth,
-                    chain_consumed + static_cast<std::size_t>(depth)),
-                false};
-      }
-      return {inode_ptr, false};
+    for (std::size_t i = 0; i < child_count; ++i) {
+      const auto part_begin = parts[i].begin;
+      const auto part_end = (i + 1 < child_count) ? parts[i + 1].begin : l;
+      auto result = build_subtree(self, part_begin, part_end, next_depth);
+      guards.emplace_back(self);
+      guards.back().ptr = result.ptr;
+      guards.back().is_packed_value = result.is_packed_value;
+      children.push_back({parts[i].key_byte, result.ptr});
     }
-  };
 
-  subtree_builder builder{self,
-                          common_prefix_length,
-                          partition_by_byte,
-                          build_prefix_chain,
-                          build_single_leaf,
-                          make_bulk_inode};
+    const std::size_t chain_consumed =
+        (prefix_len > prefix_cap)
+            ? (prefix_len / (prefix_cap + 1)) * (prefix_cap + 1)
+            : 0;
+    const auto inode_prefix_len =
+        static_cast<key_prefix_size>(prefix_len - chain_consumed);
+    const auto inode_depth = tree_depth_type{static_cast<std::uint32_t>(
+        static_cast<std::size_t>(depth) + chain_consumed)};
+
+    const art_key_type prefix_key{f->first};
+    const auto prefix_kv = prefix_key.get_key_view();
+
+    const auto cs =
+        std::span<const bulk_child_t>{children.data(), children.size()};
+    auto inode_ptr = make_inode(self, cs, guards, children, inode_prefix_len,
+                                prefix_kv, inode_depth);
+    for (auto& g : guards) g.release();
+
+    if (chain_consumed > 0) {
+      return {
+          build_prefix_chain(self, prefix_key, inode_ptr, depth,
+                             chain_consumed + static_cast<std::size_t>(depth)),
+          false};
+    }
+    return {inode_ptr, false};
+  }
+};
+
+// ─── Top-level bulk_load_impl ────────────────────────────────────────────────
+
+/// Core bulk_load algorithm parameterized on database type.
+///
+/// \pre Tree must be empty (caller validates).
+/// \pre [first, last) is sorted and non-empty (caller validates).
+/// \tparam Fork  Callable satisfying fork(Callable) -> Future<R> where
+///              Future has .get(). Ignored (nullptr_t) for sequential.
+template <typename Db, typename Fork, typename RandomIt>
+void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
+                    RandomIt first, RandomIt last) {
+  using H = bulk_load_helpers<Db, RandomIt>;
+  using build_result_t = typename Db::build_result;
+  using guard_t = typename Db::bulk_subtree_guard;
+  using node_ptr_t = typename build_result_t::ptr_type;
+  using bulk_child_t = bulk_child<node_ptr_t>;
+  using tree_depth_type = typename Db::tree_depth_type;
+  using art_key_type = typename Db::art_key_type;
+  constexpr std::size_t prefix_cap = key_prefix_capacity;
 
   constexpr bool is_parallel =
       !std::is_same_v<std::remove_cvref_t<Fork>, std::nullptr_t>;
 
   if constexpr (!is_parallel) {
-    auto result = builder(first, last, tree_depth_type{0});
+    auto result = H::build_subtree(self, first, last, tree_depth_type{0});
     self.root = result.ptr;
   } else {
     const auto n = std::distance(first, last);
     if (n <= 1) {
-      auto result = builder(first, last, tree_depth_type{0});
+      auto result = H::build_subtree(self, first, last, tree_depth_type{0});
       self.root = result.ptr;
       return;
     }
 
     const auto prefix_len =
-        common_prefix_length(first, last, tree_depth_type{0});
+        H::common_prefix_length(first, last, tree_depth_type{0});
     const auto dispatch_depth =
         tree_depth_type{static_cast<std::uint32_t>(prefix_len)};
-    auto parts = partition_by_byte(first, last, dispatch_depth);
+    auto parts = H::partition_by_byte(first, last, dispatch_depth);
     const auto child_count = parts.size();
 
     const auto next_depth = tree_depth_type{static_cast<std::uint32_t>(
@@ -335,18 +346,18 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
     using parallel_result = build_result_t;
 #endif
 
-    auto make_task = [&builder, &parts, child_count, last,
+    auto make_task = [&self, &parts, child_count, last,
                       next_depth](std::size_t i) {
       const auto part_begin = parts[i].begin;
       const auto part_end = (i + 1 < child_count) ? parts[i + 1].begin : last;
 #ifdef UNODB_DETAIL_WITH_STATS
       bulk_load_stats_accumulator acc;
       tls_bulk_load_stats = &acc;
-      auto result = builder(part_begin, part_end, next_depth);
+      auto result = H::build_subtree(self, part_begin, part_end, next_depth);
       tls_bulk_load_stats = nullptr;
       return parallel_result{result, acc};
 #else
-      return builder(part_begin, part_end, next_depth);
+      return H::build_subtree(self, part_begin, part_end, next_depth);
 #endif
     };
 
@@ -401,7 +412,7 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
             guards.back().ptr = r.ptr;
             guards.back().is_packed_value = r.is_packed_value;
 #endif
-          } catch (...) {
+          } catch (...) {  // future.get() may rethrow task exception
           }
         }
         throw;
@@ -438,13 +449,13 @@ void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
 
     const auto cs =
         std::span<const bulk_child_t>{children.data(), children.size()};
-    auto inode_ptr = make_bulk_inode(cs, guards, children, inode_prefix_len,
-                                     prefix_kv, inode_depth);
+    auto inode_ptr = H::make_inode(self, cs, guards, children, inode_prefix_len,
+                                   prefix_kv, inode_depth);
     for (auto& g : guards) g.release();
 
     if (chain_consumed > 0) {
-      self.root = build_prefix_chain(prefix_key, inode_ptr, tree_depth_type{0},
-                                     chain_consumed);
+      self.root = H::build_prefix_chain(self, prefix_key, inode_ptr,
+                                        tree_depth_type{0}, chain_consumed);
     } else {
       self.root = inode_ptr;
     }

@@ -167,10 +167,13 @@ template <typename Key, typename Value>
 using olc_leaf_unique_ptr =
     basic_db_leaf_unique_ptr<Key, Value, olc_node_header, olc_db>;
 
-/// Forward declaration of shared bulk_load algorithm.
+/// Forward declarations of bulk_load algorithm and helpers.
 template <typename Db, typename Fork, typename RandomIt>
 void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
                     RandomIt first, RandomIt last);
+
+template <typename Db, typename RandomIt>
+struct bulk_load_helpers;
 
 }  // namespace detail
 
@@ -192,9 +195,10 @@ class olc_db final {
   using leaf_type = detail::olc_leaf_type<Key, Value>;
   using db_type = olc_db<Key, Value>;
 
- private:
+  /// Internal encoded key type used for tree operations.
   using art_key_type = detail::basic_art_key<Key>;
 
+ private:
   /// Query for a value associated with an encoded key.
   [[nodiscard, gnu::pure]] get_result get_internal(
       art_key_type search_key) const noexcept;
@@ -874,10 +878,10 @@ class olc_db final {
   using inode_16 = detail::olc_inode_16<Key, Value>;
   using inode_48 = detail::olc_inode_48<Key, Value>;
   using inode_256 = detail::olc_inode_256<Key, Value>;
+
+ public:
+  /// Tree depth tracking type.
   using tree_depth_type = detail::tree_depth<art_key_type>;
-  using visitor_type = visitor<db_type::iterator>;
-  using olc_db_leaf_unique_ptr_type =
-      detail::olc_db_leaf_unique_ptr<Key, Value>;
 
   /// Result of subtree construction during bulk_load.
   /// Tagged return from build_subtree.
@@ -885,6 +889,11 @@ class olc_db final {
 
   /// RAII guard for subtrees during bulk construction.
   using bulk_subtree_guard = detail::bulk_subtree_guard<art_policy>;
+
+ private:
+  using visitor_type = visitor<db_type::iterator>;
+  using olc_db_leaf_unique_ptr_type =
+      detail::olc_db_leaf_unique_ptr<Key, Value>;
 
   // If get_result is not present, the search was interrupted. Yes, this
   // resolves to std::optional<std::optional<value_view>>, but IMHO both
@@ -1064,6 +1073,10 @@ class olc_db final {
   /// detail::bulk_load_impl
   template <typename Db2, typename Fork2, typename It2>
   friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
+
+  /// detail::bulk_load_helpers
+  template <typename, typename>
+  friend struct detail::bulk_load_helpers;
 
   /// detail::bulk_build_chain
   template <class ArtPolicy2>

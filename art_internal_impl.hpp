@@ -162,7 +162,8 @@ struct bulk_child {
 /// value (not a real heap pointer — must not be passed to delete_subtree).
 template <class ArtPolicy>
 struct bulk_build_result {
-  typename ArtPolicy::node_ptr ptr{nullptr};
+  using ptr_type = typename ArtPolicy::node_ptr;
+  ptr_type ptr{nullptr};
   bool is_packed_value{false};
 };
 
@@ -192,9 +193,9 @@ struct bulk_subtree_guard {
   bulk_subtree_guard(const bulk_subtree_guard&) = delete;
   // LCOV_EXCL_START — move ctor only called on vector reallocation
   bulk_subtree_guard(bulk_subtree_guard&& other) noexcept
-      : db_{other.db_}, ptr{other.ptr}, is_packed_value{other.is_packed_value} {
-    other.ptr = nullptr;
-  }
+      : db_{other.db_},
+        ptr{std::exchange(other.ptr, nullptr)},
+        is_packed_value{other.is_packed_value} {}
   // LCOV_EXCL_STOP
   auto& operator=(const bulk_subtree_guard&) = delete;
   auto& operator=(bulk_subtree_guard&&) = delete;

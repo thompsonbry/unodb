@@ -113,10 +113,13 @@ using leaf_type = basic_leaf<leaf_key_type<Key, Value>, node_header>;
 template <typename Key, typename Value>
 class inode : public inode_base<Key, Value> {};
 
-/// Forward declaration of shared bulk_load algorithm.
+/// Forward declarations of bulk_load algorithm and helpers.
 template <typename Db, typename Fork, typename RandomIt>
 void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
                     RandomIt first, RandomIt last);
+
+template <typename Db, typename RandomIt>
+struct bulk_load_helpers;
 
 }  // namespace detail
 
@@ -146,10 +149,10 @@ class db final {
   /// Base class type for internal nodes.
   using inode_base = detail::inode_base<Key, Value>;
 
- private:
   /// Internal encoded key type used for tree operations.
   using art_key_type = detail::basic_art_key<Key>;
 
+ private:
   /// Leaf node type (keyless when can_eliminate_key_in_leaf).
   using leaf_type = detail::leaf_type<Key, Value>;
 
@@ -202,8 +205,9 @@ class db final {
   /// tree and the associated index entry was removed).
   [[nodiscard]] bool remove_internal(art_key_type remove_key);
 
-  // ─── Bulk Load Infrastructure ─────────────────────────────────────────
+  // ─── Bulk Load Infrastructure (public for detail:: free functions) ─────
 
+ public:
   /// Tagged return from build_subtree: pointer + whether it's a VIS packed
   /// value (not a real heap pointer — must not be passed to delete_subtree).
   using build_result =
@@ -214,6 +218,10 @@ class db final {
   using bulk_subtree_guard =
       detail::bulk_subtree_guard<detail::art_policy<Key, Value>>;
 
+  /// Tree depth tracking type.
+  using tree_depth_type = detail::tree_depth<art_key_type>;
+
+ private:
   /// Extract byte at \a depth from a key. Handles big-endian uint64_t
   /// (via art_key_type bswap) and key_view (direct byte access).
   [[nodiscard]] static constexpr std::byte key_byte_at(
@@ -934,9 +942,6 @@ class db final {
   /// Node type with 256 children.
   using inode_256 = detail::inode_256<Key, Value>;
 
-  /// Tree depth tracking type.
-  using tree_depth_type = detail::tree_depth<art_key_type>;
-
   /// Visitor type for scan operations.
   using visitor_type = visitor<db_type::iterator>;
 
@@ -1061,6 +1066,10 @@ class db final {
   /// detail::bulk_load_impl
   template <typename Db2, typename Fork2, typename It2>
   friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
+
+  /// detail::bulk_load_helpers
+  template <typename, typename>
+  friend struct detail::bulk_load_helpers;
 
   /// detail::bulk_build_chain
   template <class ArtPolicy2>

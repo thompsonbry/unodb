@@ -15,7 +15,7 @@
 
 #include "art.hpp"
 #include "art_common.hpp"
-#include "mutex_art.hpp"
+#include "olc_art.hpp"
 
 namespace {
 
@@ -63,12 +63,11 @@ int main() {
     tree.clear();
   }
 
-  // ─── mutex_db: same API ────────────────────────────────────────────────────
+  // ─── olc_db: same API ──────────────────────────────────────────────────────
   {
-    unodb::mutex_db<std::uint64_t, unodb::value_view> tree;
+    unodb::olc_db<std::uint64_t, unodb::value_view> tree;
     tree.bulk_load(async_fork, 8, data.begin(), data.end());
-    std::cerr << "mutex_db parallel bulk_load: " << key_count
-              << " keys loaded\n";
+    std::cerr << "olc_db parallel bulk_load: " << key_count << " keys loaded\n";
     tree.clear();
   }
 
