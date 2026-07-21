@@ -250,12 +250,6 @@ struct [[nodiscard]] basic_art_key final {
     std::array<std::byte, sizeof(KeyType)> key_bytes;
   };
 
-  /// Compile-time assertions for type invariants.
-  static void static_asserts() {
-    static_assert(std::is_trivially_copyable_v<basic_art_key<KeyType>>);
-    static_assert(sizeof(basic_art_key<KeyType>) == sizeof(KeyType));
-  }
-
   /// Dump key in lexicographic byte-wise order to stream \a os.
   [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os) const {
     dump_key(os, key);
@@ -272,6 +266,15 @@ struct [[nodiscard]] basic_art_key final {
     return os;
   }
 };  // class basic_art_key
+
+// basic_art_key<KeyType> is a zero-overhead wrapper around KeyType (a union of
+// KeyType and an equally-sized byte overlay). Checked with representative
+// integral and key_view types: sizeof/traits of the enclosing class are
+// unavailable at class scope.
+static_assert(std::is_trivially_copyable_v<basic_art_key<std::uint64_t>>);
+static_assert(sizeof(basic_art_key<std::uint64_t>) == sizeof(std::uint64_t));
+static_assert(std::is_trivially_copyable_v<basic_art_key<key_view>>);
+static_assert(sizeof(basic_art_key<key_view>) == sizeof(key_view));
 
 /// Number of key bytes consumed along some path in the tree.
 ///
