@@ -523,11 +523,16 @@ class [[nodiscard]] basic_node_ptr {
   /// Mask for pointer bits.
   static constexpr auto ptr_bit_mask = ~tag_bit_mask;
 
-  /// Compile-time assertions for type invariants.
-  static void static_asserts() {
-    static_assert(sizeof(basic_node_ptr<Header>) == sizeof(void*));
-    static_assert(alignof(header_type) - 1 > lowest_non_tag_bit);
-  }
+  // Node type tags occupy the low bits of pointers to nodes. Nodes are
+  // heap-allocated via alignment_for_new<T>() (>=
+  // __STDCPP_DEFAULT_NEW_ALIGNMENT__), so their alignment leaves the tag bits
+  // free even when the header base is under-aligned (e.g. the empty
+  // node_header, or the 4-aligned non-OLC leaf). The wrapper's own size is
+  // checked at the node_ptr / olc_node_ptr alias definitions, where a concrete
+  // Header is in scope.
+  static_assert(
+      alignment_for_new<Header>() >= lowest_non_tag_bit,
+      "Node allocation alignment must leave the node type tag bits free");
 };
 
 /// Expandable buffer for binary comparable keys.

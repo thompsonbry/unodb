@@ -63,6 +63,8 @@ static_assert(std::is_empty_v<node_header>);
 /// Node pointer type for non-thread-safe ART.
 using node_ptr = basic_node_ptr<node_header>;
 
+static_assert(sizeof(node_ptr) == sizeof(void*));
+
 struct impl_helpers;
 
 /// Type definitions bundle for all internal node types.
