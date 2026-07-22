@@ -25,59 +25,59 @@
 var NAVTREE =
 [
   [ "UnoDB", "index.html", [
-    [ "unodb", "index.html#autotoc_md38", [
-      [ "Introduction", "index.html#autotoc_md39", null ],
-      [ "Requirements", "index.html#autotoc_md40", [
-        [ "Build dependencies", "index.html#autotoc_md41", null ],
-        [ "Optional vendored dependencies, bundled as Git submodules", "index.html#autotoc_md42", null ]
+    [ "unodb", "index.html#autotoc_md37", [
+      [ "Introduction", "index.html#autotoc_md38", null ],
+      [ "Requirements", "index.html#autotoc_md39", [
+        [ "Build dependencies", "index.html#autotoc_md40", null ],
+        [ "Optional vendored dependencies, bundled as Git submodules", "index.html#autotoc_md41", null ]
       ] ],
-      [ "Building", "index.html#autotoc_md43", null ],
-      [ "Platform-Specific Notes", "index.html#autotoc_md44", [
-        [ "Ubuntu 22.04", "index.html#autotoc_md45", null ],
-        [ "Amazon Linux 2023", "index.html#autotoc_md46", null ],
-        [ "Amazon Linux 2", "index.html#autotoc_md47", null ]
+      [ "Building", "index.html#autotoc_md42", null ],
+      [ "Platform-Specific Notes", "index.html#autotoc_md43", [
+        [ "Ubuntu 22.04", "index.html#autotoc_md44", null ],
+        [ "Amazon Linux 2023", "index.html#autotoc_md45", null ],
+        [ "Amazon Linux 2", "index.html#autotoc_md46", null ]
       ] ],
-      [ "Usage", "index.html#autotoc_md48", null ],
-      [ "Technical Details", "index.html#autotoc_md49", [
-        [ "Adaptive Radix Tree", "index.html#autotoc_md50", null ],
-        [ "Sequential Lock", "index.html#autotoc_md51", null ],
-        [ "Quiescent State-Based Reclamation (QSBR)", "index.html#autotoc_md52", null ]
+      [ "Usage", "index.html#autotoc_md47", null ],
+      [ "Technical Details", "index.html#autotoc_md48", [
+        [ "Adaptive Radix Tree", "index.html#autotoc_md49", null ],
+        [ "Sequential Lock", "index.html#autotoc_md50", null ],
+        [ "Quiescent State-Based Reclamation (QSBR)", "index.html#autotoc_md51", null ]
       ] ],
-      [ "Related Projects", "index.html#autotoc_md53", null ],
-      [ "Contributing", "index.html#autotoc_md54", null ],
-      [ "Literature", "index.html#autotoc_md55", null ]
+      [ "Related Projects", "index.html#autotoc_md52", null ],
+      [ "Contributing", "index.html#autotoc_md53", null ],
+      [ "Literature", "index.html#autotoc_md54", null ]
     ] ],
     [ "Agent Bootstrap — unodb", "md_AGENTS.html", [
-      [ "Scope", "md_AGENTS.html#autotoc_md1", null ],
-      [ "Repository Orientation", "md_AGENTS.html#autotoc_md2", null ],
-      [ "CI Process", "md_AGENTS.html#autotoc_md3", [
-        [ "Before pushing (MANDATORY — no exceptions)", "md_AGENTS.html#autotoc_md4", null ],
-        [ "Fork CI (MSVC + coverage) — run BEFORE pushing to upstream", "md_AGENTS.html#autotoc_md5", null ],
-        [ "Upstream CI — poll after pushing", "md_AGENTS.html#autotoc_md6", null ],
-        [ "Formatting", "md_AGENTS.html#autotoc_md7", null ]
-      ] ],
-      [ "Git Rules", "md_AGENTS.html#autotoc_md8", null ],
-      [ "Push Workflow (complete sequence)", "md_AGENTS.html#autotoc_md9", null ],
-      [ "Code Quality Rules (from CONTRIBUTING.md)", "md_AGENTS.html#autotoc_md10", null ],
-      [ "Build Rules", "md_AGENTS.html#autotoc_md11", [
-        [ "TSan and OLC Fields", "md_AGENTS.html#autotoc_md12", null ]
+      [ "Repository Orientation", "md_AGENTS.html#autotoc_md1", null ],
+      [ "Git Rules", "md_AGENTS.html#autotoc_md2", null ],
+      [ "Code Quality Rules (from CONTRIBUTING.md)", "md_AGENTS.html#autotoc_md3", null ],
+      [ "Build Rules", "md_AGENTS.html#autotoc_md4", [
+        [ "TSan and OLC Fields", "md_AGENTS.html#autotoc_md5", null ]
+      ] ]
+    ] ],
+    [ "Agent Bootstrap — unodb", "md_CLAUDE.html", [
+      [ "Repository Orientation", "md_CLAUDE.html#autotoc_md9", null ],
+      [ "Git Rules", "md_CLAUDE.html#autotoc_md10", null ],
+      [ "Code Quality Rules (from CONTRIBUTING.md)", "md_CLAUDE.html#autotoc_md11", null ],
+      [ "Build Rules", "md_CLAUDE.html#autotoc_md12", [
+        [ "TSan and OLC Fields", "md_CLAUDE.html#autotoc_md13", null ]
       ] ]
     ] ],
     [ "CONTRIBUTING", "md_CONTRIBUTING.html", [
-      [ "Contributing to UnoDB", "md_CONTRIBUTING.html#autotoc_md15", [
-        [ "Optional development dependencies", "md_CONTRIBUTING.html#autotoc_md16", null ],
-        [ "General workflow", "md_CONTRIBUTING.html#autotoc_md17", null ],
-        [ "Development CMake options", "md_CONTRIBUTING.html#autotoc_md18", null ],
-        [ "Code organization", "md_CONTRIBUTING.html#autotoc_md19", null ],
-        [ "Code style guide", "md_CONTRIBUTING.html#autotoc_md20", null ],
-        [ "Documentation style guide", "md_CONTRIBUTING.html#autotoc_md21", null ],
-        [ "Linting and static analysis", "md_CONTRIBUTING.html#autotoc_md22", null ],
-        [ "Testing", "md_CONTRIBUTING.html#autotoc_md23", null ],
-        [ "Fuzzing", "md_CONTRIBUTING.html#autotoc_md24", null ],
-        [ "Commit messages", "md_CONTRIBUTING.html#autotoc_md25", null ],
-        [ "Pull Requests", "md_CONTRIBUTING.html#autotoc_md26", null ],
-        [ "Benchmarking", "md_CONTRIBUTING.html#autotoc_md27", null ],
-        [ "License", "md_CONTRIBUTING.html#autotoc_md28", null ]
+      [ "Contributing to UnoDB", "md_CONTRIBUTING.html#autotoc_md14", [
+        [ "Optional development dependencies", "md_CONTRIBUTING.html#autotoc_md15", null ],
+        [ "General workflow", "md_CONTRIBUTING.html#autotoc_md16", null ],
+        [ "Development CMake options", "md_CONTRIBUTING.html#autotoc_md17", null ],
+        [ "Code organization", "md_CONTRIBUTING.html#autotoc_md18", null ],
+        [ "Code style guide", "md_CONTRIBUTING.html#autotoc_md19", null ],
+        [ "Documentation style guide", "md_CONTRIBUTING.html#autotoc_md20", null ],
+        [ "Linting and static analysis", "md_CONTRIBUTING.html#autotoc_md21", null ],
+        [ "Testing", "md_CONTRIBUTING.html#autotoc_md22", null ],
+        [ "Fuzzing", "md_CONTRIBUTING.html#autotoc_md23", null ],
+        [ "Commit messages", "md_CONTRIBUTING.html#autotoc_md24", null ],
+        [ "Pull Requests", "md_CONTRIBUTING.html#autotoc_md25", null ],
+        [ "Benchmarking", "md_CONTRIBUTING.html#autotoc_md26", null ],
+        [ "License", "md_CONTRIBUTING.html#autotoc_md27", null ]
       ] ]
     ] ],
     [ "Topics", "topics.html", "topics" ],
@@ -118,17 +118,17 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"classunodb_1_1db.html#ae96ae9741ef57bdec0060d3b43f2fd36",
-"classunodb_1_1detail_1_1basic__inode__256.html#a69ee45c77017182499a59843ebe0ada0",
-"classunodb_1_1detail_1_1basic__inode__impl.html#a697a7cbb45d3f7c687712e19e8dcefd7",
-"classunodb_1_1detail_1_1key__buffer.html#a1afd3af1a568531767801a0a18707abf",
-"classunodb_1_1key__encoder.html#a255c2ad351167e9f3b9d4aa8c0b338d6",
-"classunodb_1_1optimistic__lock_1_1atomic__version__type.html#a58e25f698739d17ed135f6940e31674d",
-"classunodb_1_1qsbr__per__thread.html#aa27231a20f8d382edb8f6257b208c15c",
-"group__internal.html#ga143793f205c69f573831b99b3dee1b9c",
-"namespaceanonymous__namespace_02test__olc__no__qsbr_8cpp_03.html",
-"structunodb_1_1detail_1_1basic__art__policy.html#a555c843dbdad1f137c0abdd430fa8d6d",
-"structunodb_1_1test_1_1pause__heap__faults.html#abf2e09545d5a1a80657c673cefc5a9b8"
+"classunodb_1_1db.html#ac3e9da364737e347b1d03b51bbe42fdd",
+"classunodb_1_1detail_1_1basic__inode__16.html#af470045f63b1888c85166604c3d8a6be",
+"classunodb_1_1detail_1_1basic__inode__48.html#af470045f63b1888c85166604c3d8a6be",
+"classunodb_1_1detail_1_1deferred__requests.html#ab8ccb1328add23dc0d55a3efed8c6b84",
+"classunodb_1_1key__decoder.html#a3945bba5bf4a21d6de3dab6004201026",
+"classunodb_1_1olc__db_1_1iterator.html#a893e4b2df424ad935a9f3a69db3a7927",
+"classunodb_1_1qsbr__epoch.html#a500bb15ce2db81222a1bed2aadbaba54",
+"duckdb__encode__decode_8hpp.html",
+"namespaceanonymous__namespace_02test__art__key__view_8cpp_03.html#ab224aa823326a5425487b5c941ce2912",
+"structanonymous__namespace_02test__qsbr__fuzz__deepstate_8cpp_03_1_1thread__info.html",
+"structunodb_1_1detail_1_1value__bitmask__field_3_01false_00_01std_1_1array_3_01T_00_01N_01_4_00_01CritSec_01_4.html"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';
