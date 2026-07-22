@@ -33,8 +33,6 @@
 // "expected exception was not thrown", try incrementing the allocation counter
 // in the test. If they fail in that "exception was thrown but we weren't
 // expecting it", try decrementing it.
-//
-// TODO(laurynas) OOM tests for the scan API.
 namespace {
 
 template <class TypeParam, typename Init, typename Test, typename CheckAfterOOM,
@@ -95,6 +93,36 @@ void oom_remove_test(unsigned fail_limit, Init init, std::uint64_t k,
         verifier.check_absent_keys({k});
         check_after_success(verifier);
       });
+}
+
+// The scan allocation count cannot be hardcoded: it comes from the iterator's
+// std::stack/deque and key buffer, whose allocation counts are
+// standard-library-dependent (libc++ vs libstdc++ debug mode). So fail_limit is
+// only an upper bound: inject at each point until the scan completes without
+// OOM, asserting the tree stays intact on every path that did throw.
+template <class TypeParam, typename ScanOp>
+void oom_scan_test(unsigned fail_limit, ScanOp scan_op) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.insert_key_range(0, 16);
+
+  unsigned fail_n = 1;
+  for (; fail_n <= fail_limit; ++fail_n) {
+    unodb::test::allocation_failure_injector::fail_on_nth_allocation(fail_n);
+    try {
+      scan_op(verifier.get_db());
+    } catch (const std::bad_alloc&) {
+      unodb::test::allocation_failure_injector::reset();
+      verifier.check_present_values();  // strong guarantee: tree intact
+      continue;
+    }
+    // Scan completed without OOM: past all of its allocations.
+    unodb::test::allocation_failure_injector::reset();
+    verifier.check_present_values();
+    break;
+  }
+  // Scan completed within fail_limit, making >= 1 injectable allocation.
+  UNODB_ASSERT_LE(fail_n, fail_limit);
+  UNODB_ASSERT_GT(fail_n, 1U);
 }
 
 template <class Db>
@@ -460,6 +488,23 @@ UNODB_TYPED_TEST(ARTOOMTest, Node256ShrinkToNode48) {
         verifier.assert_node_counts({48, 0, 0, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
       });
+}
+
+// No-op scan visitor: lets a scan run to completion without perturbing the
+// allocation count. Generic so it deduces the right visitor<iterator>& for
+// every DB type.
+constexpr auto oom_scan_noop_visitor = [](const auto&) noexcept {
+  return false;
+};
+
+// Upper bound on the heap allocations a scan of the 16-key test tree makes (see
+// oom_scan_test); not an exact count.
+constexpr unsigned oom_scan_fail_limit = 20;
+
+UNODB_TYPED_TEST(ARTOOMTest, Scan) {
+  oom_scan_test<TypeParam>(oom_scan_fail_limit, [](TypeParam& db) {
+    db.scan(oom_scan_noop_visitor);
+  });
 }
 
 // ===================================================================

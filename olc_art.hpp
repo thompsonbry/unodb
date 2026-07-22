@@ -394,8 +394,10 @@ class olc_db final {
    protected:
     /// Construct an empty iterator (one that is logically not
     /// positioned on anything and which will report !valid()).
-    explicit iterator(olc_db& tree UNODB_DETAIL_LIFETIMEBOUND) noexcept
-        : db_(tree) {}
+    // Not noexcept: the default-constructed stack_ member (std::stack over
+    // std::deque) may allocate on construction (libstdc++ allocates the deque
+    // map eagerly), so this can throw std::bad_alloc.
+    explicit iterator(olc_db& tree UNODB_DETAIL_LIFETIMEBOUND) : db_{tree} {}
 
     // iterator is not flyweight. disallow copy and move.
     iterator(const iterator&) = delete;
@@ -809,7 +811,7 @@ class olc_db final {
   //
 
   // Used to write the iterator tests.
-  iterator test_only_iterator() noexcept { return iterator(*this); }
+  [[nodiscard]] iterator test_only_iterator() { return iterator(*this); }
 
   // Stats
 
