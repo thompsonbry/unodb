@@ -1,4 +1,4 @@
-// Copyright 2024-2025 UnoDB contributors
+// Copyright 2024-2026 UnoDB contributors
 
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
 #include <iostream>
 #include <utility>
 #include <vector>  // IWYU pragma: keep
@@ -1142,6 +1143,50 @@ UNODB_TYPED_TEST(ARTScanTest, scanFromBacktrackAcrossSiblingSubtrees) {
     UNODB_EXPECT_EQ(200U, results[0]);
     UNODB_EXPECT_EQ(100U, results[1]);
   }
+}
+
+// Exception thrown by a scan callback to verify that it propagates out of
+// scan / scan_from / scan_range and leaves the tree intact (the strong
+// exception guarantee). mutex_db additionally needs its scan methods to be
+// non-noexcept so the exception escapes instead of hitting std::terminate.
+struct scan_callback_exception : std::exception {};
+
+// Build a multi-key tree, run scan_op with a callback that throws partway
+// through the scan (when it reaches key 5, so earlier keys exercise the
+// non-throwing continue path), assert the exception propagates out of the
+// scan, and assert the tree still holds all its values afterward.
+template <class TypeParam, typename ScanOp>
+void scan_throw_test(ScanOp scan_op) {
+  unodb::test::tree_verifier<TypeParam> verifier;
+  verifier.insert_key_range(0, 10);
+  TypeParam& db = verifier.get_db();
+
+  const auto throwing_fn =
+      [](const unodb::visitor<typename TypeParam::iterator>& v) -> bool {
+    if (decode(v.get_key()) == 5) throw scan_callback_exception{};
+    return false;
+  };
+  UNODB_ASSERT_THROW(scan_op(db, throwing_fn), scan_callback_exception);
+
+  // Scan is read-only, so the tree must be intact after the exception unwinds
+  // (for mutex_db this also confirms the mutex was released on unwind, since
+  // check_present_values re-locks it).
+  verifier.check_present_values();
+}
+
+UNODB_TYPED_TEST(ARTScanTest, scanThrowPropagates) {
+  scan_throw_test<TypeParam>(
+      [](TypeParam& db, const auto& fn) { db.scan(fn); });
+}
+
+UNODB_TYPED_TEST(ARTScanTest, scanFromThrowPropagates) {
+  scan_throw_test<TypeParam>(
+      [](TypeParam& db, const auto& fn) { db.scan_from(0, fn); });
+}
+
+UNODB_TYPED_TEST(ARTScanTest, scanRangeThrowPropagates) {
+  scan_throw_test<TypeParam>(
+      [](TypeParam& db, const auto& fn) { db.scan_range(0, 10, fn); });
 }
 
 }  // namespace
