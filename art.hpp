@@ -18,8 +18,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <stack>
+#include <stdexcept>
 #include <type_traits>
 #include <vector>
 
@@ -113,6 +115,14 @@ using leaf_type = basic_leaf<leaf_key_type<Key, Value>, node_header>;
 template <typename Key, typename Value>
 class inode : public inode_base<Key, Value> {};
 
+/// Forward declarations of bulk_load algorithm and helpers.
+template <typename Db, typename Fork, typename RandomIt>
+void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
+                    RandomIt first, RandomIt last);
+
+template <typename Db, typename RandomIt>
+struct bulk_load_helpers;
+
 }  // namespace detail
 
 template <typename Key, typename Value>
@@ -141,10 +151,10 @@ class db final {
   /// Base class type for internal nodes.
   using inode_base = detail::inode_base<Key, Value>;
 
- private:
   /// Internal encoded key type used for tree operations.
   using art_key_type = detail::basic_art_key<Key>;
 
+ private:
   /// Leaf node type (keyless when can_eliminate_key_in_leaf).
   using leaf_type = detail::leaf_type<Key, Value>;
 
@@ -196,6 +206,31 @@ class db final {
   /// \return true if the delete was successful (i.e. the key was found in the
   /// tree and the associated index entry was removed).
   [[nodiscard]] bool remove_internal(art_key_type remove_key);
+
+  // ─── Bulk Load Infrastructure (public for detail:: free functions) ─────
+
+ public:
+  /// Tagged return from build_subtree: pointer + whether it's a VIS packed
+  /// value (not a real heap pointer — must not be passed to delete_subtree).
+  using build_result =
+      detail::bulk_build_result<detail::art_policy<Key, Value>>;
+
+  /// RAII guard for subtrees during bulk construction.
+  /// Skips deallocation for VIS packed values (not heap-allocated).
+  using bulk_subtree_guard =
+      detail::bulk_subtree_guard<detail::art_policy<Key, Value>>;
+
+  /// Tree depth tracking type.
+  using tree_depth_type = detail::tree_depth<art_key_type>;
+
+ private:
+  /// Extract byte at \a depth from a key. Handles big-endian uint64_t
+  /// (via art_key_type bswap) and key_view (direct byte access).
+  [[nodiscard]] static constexpr std::byte key_byte_at(
+      const key_type& key, detail::tree_depth<art_key_type> depth) noexcept {
+    const art_key_type ak{key};
+    return ak[depth];
+  }
 
   /// Two-pass removal with chain cleanup for variable-length keys.
   [[nodiscard]] bool remove_internal_key_view(art_key_type remove_key);
@@ -305,6 +340,34 @@ class db final {
   /// After this operation, empty() returns true and all memory used by tree
   /// nodes is freed. Node growth/shrink counters are preserved.
   void clear() noexcept;
+
+  /// Bulk-load an ART tree from a pre-sorted range of key-value pairs.
+  ///
+  /// Bulk-load the tree from a sorted range, with caller-provided parallelism.
+  ///
+  /// \tparam Fork      Callable satisfying: fork(Callable) -> Future<R> where
+  ///                   Future has .get(). The callable is invoked to submit
+  ///                   subtree-building tasks; the library never spawns
+  ///                   threads.
+  /// \tparam RandomIt  Random-access iterator to std::pair<key_type,
+  ///                   value_type>
+  /// \param fork       Callable to submit parallel tasks.
+  /// \param max_tasks  Maximum number of tasks to fork (remaining partitions
+  ///                   run inline on the calling thread).
+  /// \param first      Start of sorted range (ART byte order, no duplicates).
+  /// \param last       End of sorted range.
+  /// \pre empty() == true
+  /// \throws std::invalid_argument if tree is non-empty.
+  /// \throws std::bad_alloc (strong guarantee — tree left empty).
+  template <typename Fork, typename RandomIt>
+  void bulk_load(Fork&& fork, std::size_t max_tasks, RandomIt first,
+                 RandomIt last);
+
+  /// Convenience overload: sequential execution (no parallelism).
+  template <typename RandomIt>
+  void bulk_load(RandomIt first, RandomIt last) {
+    bulk_load(nullptr, 0, first, last);
+  }
 
   /// Internal iterator for tree traversal.
   ///
@@ -872,8 +935,14 @@ class db final {
   /// Node type with 4 children.
   using inode_4 = detail::inode_4<Key, Value>;
 
-  /// Tree depth tracking type.
-  using tree_depth_type = detail::tree_depth<art_key_type>;
+  /// Node type with 16 children.
+  using inode_16 = detail::inode_16<Key, Value>;
+
+  /// Node type with 48 children.
+  using inode_48 = detail::inode_48<Key, Value>;
+
+  /// Node type with 256 children.
+  using inode_256 = detail::inode_256<Key, Value>;
 
   /// Visitor type for scan operations.
   using visitor_type = visitor<db_type::iterator>;
@@ -889,6 +958,11 @@ class db final {
   /// Increase tracked memory usage by \a delta bytes.
   constexpr void increase_memory_use(std::size_t delta) noexcept {
     UNODB_DETAIL_ASSERT(delta > 0);
+
+    if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+      acc->current_memory_use += delta;  // LCOV_EXCL_LINE — exercised by
+      return;                            // LCOV_EXCL_LINE — parallel tests
+    }
     UNODB_DETAIL_ASSERT(
         std::numeric_limits<decltype(current_memory_use)>::max() - delta >=
         current_memory_use);
@@ -906,6 +980,11 @@ class db final {
 
   /// Increment leaf node count and bump memory usage by \a leaf_size bytes.
   constexpr void increment_leaf_count(std::size_t leaf_size) noexcept {
+    if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+      acc->current_memory_use += leaf_size;
+      ++acc->node_counts[as_i<node_type::LEAF>];
+      return;
+    }
     increase_memory_use(leaf_size);
     ++node_counts[as_i<node_type::LEAF>];
   }
@@ -942,6 +1021,17 @@ class db final {
   template <node_type NodeType>
   constexpr void account_shrinking_inode() noexcept;
 
+  /// Merge accumulated stats from a parallel bulk_load subtree.
+  constexpr void merge_bulk_load_stats(
+      const detail::bulk_load_stats_accumulator& acc) noexcept {
+    current_memory_use += acc.current_memory_use;
+    for (std::size_t i = 0; i < node_counts.size(); ++i)
+      node_counts[i] += acc.node_counts[i];
+    for (std::size_t i = 0; i < growing_inode_counts.size(); ++i)
+      growing_inode_counts[i] += acc.growing_inode_counts[i];
+    key_prefix_splits += acc.key_prefix_splits;
+  }
+
 #endif  // UNODB_DETAIL_WITH_STATS
 
   /// Root of the tree (nullptr if empty).
@@ -974,6 +1064,21 @@ class db final {
   /// detail::make_db_leaf_ptr
   friend auto detail::make_db_leaf_ptr<Key, Value, db>(art_key_type, value_type,
                                                        db&);
+
+  /// detail::bulk_load_impl
+  template <typename Db2, typename Fork2, typename It2>
+  friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
+
+  /// detail::bulk_load_helpers
+  template <typename, typename>
+  friend struct detail::bulk_load_helpers;
+
+  /// detail::bulk_build_chain
+  template <class ArtPolicy2>
+  friend typename ArtPolicy2::node_ptr detail::bulk_build_chain(
+      typename ArtPolicy2::db_type&, typename ArtPolicy2::art_key_type,
+      typename ArtPolicy2::node_ptr,
+      detail::tree_depth<typename ArtPolicy2::art_key_type>);
 
   /// detail::basic_db_leaf_deleter
   template <class>
@@ -1625,73 +1730,7 @@ template <typename Key, typename Value>
 detail::node_ptr db<Key, Value>::build_chain(art_key_type k,
                                              detail::node_ptr child,
                                              tree_depth_type start_depth) {
-  constexpr std::size_t cap = detail::key_prefix_capacity;
-  const auto full_key = k.get_key_view();
-  const auto key_len = k.size();
-  const auto start = static_cast<std::size_t>(start_depth);
-  auto current = child;
-  bool child_is_value = art_policy::can_eliminate_leaf;
-  bool owns_current =
-      false;  // set true once we've built at least one chain node
-  // Build bottom-up: start from end of key, work toward start_depth.
-  // Each chain I4 consumes up to cap prefix bytes + 1 dispatch byte.
-  try {
-    std::size_t pos = key_len;
-    while (pos > start + cap) {
-      const auto depth = pos - cap - 1;
-      const auto dispatch = full_key[pos - 1];
-      auto remaining = k;
-      remaining.shift_right(depth);
-      auto chain{
-          inode_4::create(*this, full_key, remaining,
-                          tree_depth_type{static_cast<std::uint32_t>(depth)},
-                          dispatch, current)};
-      if (child_is_value) {
-        chain->set_value_bit(0);
-        child_is_value = false;
-      }
-      current = detail::node_ptr{chain.release(), node_type::I4};
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-      pos = depth;
-    }
-    // Tail: remaining bytes from start_depth to pos.
-    if (pos > start) {
-      const auto dispatch = full_key[pos - 1];
-      auto chain{inode_4::create(
-          *this, full_key, tree_depth_type{static_cast<std::uint32_t>(start)},
-          static_cast<detail::key_prefix_size>(pos - start - 1), dispatch,
-          current)};
-      if (child_is_value) {
-        chain->set_value_bit(0);
-      }
-      current = detail::node_ptr{chain.release(), node_type::I4};
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-    }
-  } catch (...) {
-    // On failure, free whatever current points to.  If owns_current is
-    // true, current is a partial chain (I4 tree).  If false, current is
-    // the original child — a leaf node_ptr on the leaf path, or a packed
-    // value on the VIS path.  delete_subtree handles both I4 and LEAF.
-    // For VIS packed values (!child_is_value is false only after the
-    // first chain node is built), the caller's packed bits are not a
-    // real pointer — but we only reach here with a packed value if
-    // owns_current is false AND child_is_value is true, meaning no
-    // chain was built and the packed value was never wrapped.  In that
-    // case we must NOT call delete_subtree on packed bits.
-    if (owns_current) {
-      art_policy::delete_subtree(current, *this);
-    } else if (!child_is_value) {
-      art_policy::delete_subtree(current, *this);
-    }
-    throw;
-  }
-  return current;
+  return detail::bulk_build_chain<art_policy>(*this, k, child, start_depth);
 }
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 UNODB_DETAIL_RESTORE_GCC_WARNINGS()
@@ -2596,6 +2635,11 @@ template <class INode>
 constexpr void db<Key, Value>::increment_inode_count() noexcept {
   static_assert(inode_defs_type::template is_inode<INode>());
 
+  if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+    ++acc->node_counts[as_i<INode::type>];
+    acc->current_memory_use += sizeof(INode);
+    return;
+  }
   ++node_counts[as_i<INode::type>];
   increase_memory_use(sizeof(INode));
 }
@@ -2615,6 +2659,10 @@ template <node_type NodeType>
 constexpr void db<Key, Value>::account_growing_inode() noexcept {
   static_assert(NodeType != node_type::LEAF);
 
+  if (auto* const acc = detail::tls_bulk_load_stats; acc != nullptr) {
+    ++acc->growing_inode_counts[internal_as_i<NodeType>];
+    return;
+  }
   // NOLINTNEXTLINE(google-readability-casting)
   ++growing_inode_counts[internal_as_i<NodeType>];
   UNODB_DETAIL_ASSERT(growing_inode_counts[internal_as_i<NodeType>] >=
@@ -2747,6 +2795,25 @@ bool db<Key, Value>::upsert(Key k, value_type v, FN fn) {
   }
 }
 
+template <typename Key, typename Value>
+template <typename Fork, typename RandomIt>
+void db<Key, Value>::bulk_load(Fork&& fork, std::size_t max_tasks,
+                               RandomIt first, RandomIt last) {
+  if (!empty()) {
+    throw std::invalid_argument("bulk_load requires empty tree");
+  }
+  if (first == last) return;
+  try {
+    detail::bulk_load_impl(*this, std::forward<Fork>(fork), max_tasks, first,
+                           last);
+  } catch (...) {
+    clear();
+    throw;
+  }
+}
+
 }  // namespace unodb
+
+#include "art_bulk_load_detail.hpp"
 
 #endif  // UNODB_DETAIL_ART_HPP

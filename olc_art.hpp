@@ -169,6 +169,14 @@ template <typename Key, typename Value>
 using olc_leaf_unique_ptr =
     basic_db_leaf_unique_ptr<Key, Value, olc_node_header, olc_db>;
 
+/// Forward declarations of bulk_load algorithm and helpers.
+template <typename Db, typename Fork, typename RandomIt>
+void bulk_load_impl(Db& self, Fork&& fork, std::size_t max_tasks,
+                    RandomIt first, RandomIt last);
+
+template <typename Db, typename RandomIt>
+struct bulk_load_helpers;
+
 }  // namespace detail
 
 /// A thread-safe Adaptive Radix Tree that is synchronized using optimistic lock
@@ -189,9 +197,10 @@ class olc_db final {
   using leaf_type = detail::olc_leaf_type<Key, Value>;
   using db_type = olc_db<Key, Value>;
 
- private:
+  /// Internal encoded key type used for tree operations.
   using art_key_type = detail::basic_art_key<Key>;
 
+ private:
   /// Query for a value associated with an encoded key.
   [[nodiscard, gnu::pure]] get_result get_internal(
       art_key_type search_key) const noexcept;
@@ -297,6 +306,25 @@ class olc_db final {
   ///
   /// \note Only legal in single-threaded context, as destructor
   void clear() noexcept;
+
+  /// Bulk-load sorted key-value pairs into an empty tree.
+  ///
+  /// \note Only legal in single-threaded context (same as clear).
+  /// \tparam Fork Callable: fork(Callable) -> Future<R> with .get()
+  /// \tparam RandomIt Random access iterator over pairs of (key, value)
+  /// \param fork Callable to submit parallel tasks
+  /// \param max_tasks Maximum tasks to fork
+  /// \param first Start of sorted range
+  /// \param last End of sorted range
+  template <typename Fork, typename RandomIt>
+  void bulk_load(Fork&& fork, std::size_t max_tasks, RandomIt first,
+                 RandomIt last);
+
+  /// Convenience overload: sequential execution.
+  template <typename RandomIt>
+  void bulk_load(RandomIt first, RandomIt last) {
+    bulk_load(nullptr, 0, first, last);
+  }
 
   //
   // iterator (the iterator is an internal API, the public API is scan()).
@@ -852,10 +880,23 @@ class olc_db final {
   using inode_16 = detail::olc_inode_16<Key, Value>;
   using inode_48 = detail::olc_inode_48<Key, Value>;
   using inode_256 = detail::olc_inode_256<Key, Value>;
+
+ public:
+  /// Tree depth tracking type.
   using tree_depth_type = detail::tree_depth<art_key_type>;
+
+  /// Result of subtree construction during bulk_load.
+  /// Tagged return from build_subtree.
+  using build_result = detail::bulk_build_result<art_policy>;
+
+  /// RAII guard for subtrees during bulk construction.
+  using bulk_subtree_guard = detail::bulk_subtree_guard<art_policy>;
+
+ private:
   using visitor_type = visitor<db_type::iterator>;
   using olc_db_leaf_unique_ptr_type =
       detail::olc_db_leaf_unique_ptr<Key, Value>;
+
   // If get_result is not present, the search was interrupted. Yes, this
   // resolves to std::optional<std::optional<value_view>>, but IMHO both
   // levels of std::optional are clear here
@@ -980,6 +1021,12 @@ class olc_db final {
   template <node_type NodeType>
   constexpr void account_shrinking_inode() noexcept;
 
+  /// Merge accumulated stats from a parallel bulk_load subtree.
+  /// For olc_db this is a no-op: atomic counters are updated directly.
+  // cppcheck-suppress functionStatic
+  constexpr void merge_bulk_load_stats(
+      const detail::bulk_load_stats_accumulator& /*acc*/) noexcept {}
+
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // optimistic lock guarding the [root].
@@ -1024,6 +1071,21 @@ class olc_db final {
 
   friend auto detail::make_db_leaf_ptr<Key, Value, olc_db>(art_key_type,
                                                            value_type, olc_db&);
+
+  /// detail::bulk_load_impl
+  template <typename Db2, typename Fork2, typename It2>
+  friend void detail::bulk_load_impl(Db2&, Fork2&&, std::size_t, It2, It2);
+
+  /// detail::bulk_load_helpers
+  template <typename, typename>
+  friend struct detail::bulk_load_helpers;
+
+  /// detail::bulk_build_chain
+  template <class ArtPolicy2>
+  friend typename ArtPolicy2::node_ptr detail::bulk_build_chain(
+      typename ArtPolicy2::db_type&, typename ArtPolicy2::art_key_type,
+      typename ArtPolicy2::node_ptr,
+      detail::tree_depth<typename ArtPolicy2::art_key_type>);
 
   template <class>
   friend class detail::basic_db_leaf_deleter;
@@ -2312,68 +2374,7 @@ bool olc_db<Key, Value>::insert_internal(art_key_type insert_key,
 template <typename Key, typename Value>
 detail::olc_node_ptr olc_db<Key, Value>::build_chain(
     art_key_type k, detail::olc_node_ptr child, tree_depth_type start_depth) {
-  constexpr std::size_t cap = detail::key_prefix_capacity;
-  const auto full_key = k.get_key_view();
-  const auto key_len = k.size();
-  const auto start = static_cast<std::size_t>(start_depth);
-  auto current = child;
-  bool child_is_value = art_policy::can_eliminate_leaf;
-  bool owns_current =
-      false;  // set true once we've built at least one chain node
-  try {
-    std::size_t pos = key_len;
-    while (pos > start + cap) {
-      const auto depth = pos - cap - 1;
-      const auto dispatch = full_key[pos - 1];
-      auto remaining = k;
-      remaining.shift_right(depth);
-      auto chain{
-          inode_4::create(*this, full_key, remaining,
-                          tree_depth_type{static_cast<std::uint32_t>(depth)},
-                          dispatch, current)};
-      if (child_is_value) {
-        UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-        chain->set_value_bit(0);
-        UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-        child_is_value = false;
-      }
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-      current = detail::olc_node_ptr{chain.release(), node_type::I4};
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-      pos = depth;
-    }
-    if (pos > start) {
-      const auto dispatch = full_key[pos - 1];
-      auto chain{inode_4::create(
-          *this, full_key, tree_depth_type{static_cast<std::uint32_t>(start)},
-          static_cast<detail::key_prefix_size>(pos - start - 1), dispatch,
-          current)};
-      if (child_is_value) {
-        UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-        chain->set_value_bit(0);
-        UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      }
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-      current = detail::olc_node_ptr{chain.release(), node_type::I4};
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      owns_current = true;
-#ifdef UNODB_DETAIL_WITH_STATS
-      account_growing_inode<node_type::I4>();
-#endif
-    }
-  } catch (...) {
-    if (owns_current) {
-      art_policy::delete_subtree(current, *this);
-    } else if (!child_is_value) {
-      art_policy::delete_subtree(current, *this);
-    }
-    throw;
-  }
-  return current;
+  return detail::bulk_build_chain<art_policy>(*this, k, child, start_depth);
 }
 
 template <typename Key, typename Value>
@@ -4969,5 +4970,33 @@ olc_db<Key, Value>::try_chain_cut(
   return true;
 }
 }  // namespace unodb
+
+// ─── olc_db::bulk_load ───────────────────────────────────────────────────────
+
+namespace unodb {
+
+template <typename Key, typename Value>
+template <typename Fork, typename RandomIt>
+void olc_db<Key, Value>::bulk_load(Fork&& fork, std::size_t max_tasks,
+                                   RandomIt first, RandomIt last) {
+  UNODB_DETAIL_QSBR_ASSERT(
+      qsbr_state::single_thread_mode(qsbr::instance().get_state()));
+
+  if (!empty()) {
+    throw std::invalid_argument("bulk_load requires empty tree");
+  }
+  if (first == last) return;
+  try {
+    detail::bulk_load_impl(*this, std::forward<Fork>(fork), max_tasks, first,
+                           last);
+  } catch (...) {
+    clear();
+    throw;
+  }
+}
+
+}  // namespace unodb
+
+#include "art_bulk_load_detail.hpp"
 
 #endif  // UNODB_DETAIL_OLC_ART_HPP

@@ -147,6 +147,27 @@ class mutex_db final {
     db_.clear();
   }
 
+  /// Bulk-load sorted key-value pairs into an empty tree.
+  ///
+  /// \tparam Fork Callable: fork(Callable) -> Future<R> with .get()
+  /// \tparam RandomIt Random access iterator over pairs of (key, value)
+  /// \param fork Callable to submit parallel tasks
+  /// \param max_tasks Maximum tasks to fork
+  /// \param first Start of sorted range
+  /// \param last End of sorted range
+  template <typename Fork, typename RandomIt>
+  void bulk_load(Fork&& fork, std::size_t max_tasks, RandomIt first,
+                 RandomIt last) {
+    const std::lock_guard guard{mutex};
+    db_.bulk_load(std::forward<Fork>(fork), max_tasks, first, last);
+  }
+
+  /// Convenience overload: sequential execution.
+  template <typename RandomIt>
+  void bulk_load(RandomIt first, RandomIt last) {
+    bulk_load(nullptr, 0, first, last);
+  }
+
   //
   // scan API.
   //
