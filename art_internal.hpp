@@ -250,12 +250,6 @@ struct [[nodiscard]] basic_art_key final {
     std::array<std::byte, sizeof(KeyType)> key_bytes;
   };
 
-  /// Compile-time assertions for type invariants.
-  static void static_asserts() {
-    static_assert(std::is_trivially_copyable_v<basic_art_key<KeyType>>);
-    static_assert(sizeof(basic_art_key<KeyType>) == sizeof(KeyType));
-  }
-
   /// Dump key in lexicographic byte-wise order to stream \a os.
   [[gnu::cold]] UNODB_DETAIL_NOINLINE void dump(std::ostream& os) const {
     dump_key(os, key);
@@ -272,6 +266,15 @@ struct [[nodiscard]] basic_art_key final {
     return os;
   }
 };  // class basic_art_key
+
+// basic_art_key<KeyType> is a zero-overhead wrapper around KeyType (a union of
+// KeyType and an equally-sized byte overlay). Checked with representative
+// integral and key_view types: sizeof/traits of the enclosing class are
+// unavailable at class scope.
+static_assert(std::is_trivially_copyable_v<basic_art_key<std::uint64_t>>);
+static_assert(sizeof(basic_art_key<std::uint64_t>) == sizeof(std::uint64_t));
+static_assert(std::is_trivially_copyable_v<basic_art_key<key_view>>);
+static_assert(sizeof(basic_art_key<key_view>) == sizeof(key_view));
 
 /// Number of key bytes consumed along some path in the tree.
 ///
@@ -520,11 +523,16 @@ class [[nodiscard]] basic_node_ptr {
   /// Mask for pointer bits.
   static constexpr auto ptr_bit_mask = ~tag_bit_mask;
 
-  /// Compile-time assertions for type invariants.
-  static void static_asserts() {
-    static_assert(sizeof(basic_node_ptr<Header>) == sizeof(void*));
-    static_assert(alignof(header_type) - 1 > lowest_non_tag_bit);
-  }
+  // Node type tags occupy the low bits of pointers to nodes. Nodes are
+  // heap-allocated via alignment_for_new<T>() (>=
+  // __STDCPP_DEFAULT_NEW_ALIGNMENT__), so their alignment leaves the tag bits
+  // free even when the header base is under-aligned (e.g. the empty
+  // node_header, or the 4-aligned non-OLC leaf). The wrapper's own size is
+  // checked at the node_ptr / olc_node_ptr alias definitions, where a concrete
+  // Header is in scope.
+  static_assert(
+      alignment_for_new<Header>() >= lowest_non_tag_bit,
+      "Node allocation alignment must leave the node type tag bits free");
 };
 
 /// Expandable buffer for binary comparable keys.

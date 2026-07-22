@@ -115,6 +115,8 @@ using olc_inode_defs =
 
 using olc_node_ptr = basic_node_ptr<olc_node_header>;
 
+static_assert(sizeof(olc_node_ptr) == sizeof(void*));
+
 template <typename, typename, class>
 class db_inode_qsbr_deleter;  // IWYU pragma: keep
 

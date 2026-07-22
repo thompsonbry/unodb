@@ -146,6 +146,13 @@ class [[nodiscard]] in_fake_critical_section final {
   T value;
 };
 
+// in_fake_critical_section<T> must be a zero-overhead, layout-compatible
+// stand-in for a bare T (and for in_critical_section<T>) in the templatized
+// node code. Checked with a representative type: sizeof of the enclosing class
+// is unavailable at class scope.
+static_assert(sizeof(in_fake_critical_section<std::size_t>) ==
+              sizeof(std::size_t));
+
 }  // namespace unodb
 
 #endif  // UNODB_DETAIL_IN_FAKE_CRITICAL_SECTION_HPP
