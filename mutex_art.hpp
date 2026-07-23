@@ -184,7 +184,7 @@ class mutex_db final {
   /// \param fwd When \c true perform a forward scan, otherwise perform a
   /// reverse scan.
   template <typename FN>
-  void scan(FN fn, bool fwd = true) noexcept {
+  void scan(FN fn, bool fwd = true) {
     const std::lock_guard guard{mutex};
     db_.scan(fn, fwd);
   }
@@ -202,7 +202,7 @@ class mutex_db final {
   /// \param fwd When \c true perform a forward scan, otherwise perform a
   /// reverse scan.
   template <typename FN>
-  void scan_from(Key from_key, FN fn, bool fwd = true) noexcept {
+  void scan_from(Key from_key, FN fn, bool fwd = true) {
     const std::lock_guard guard{mutex};
     db_.scan_from(from_key, fn, fwd);
   }
@@ -223,7 +223,7 @@ class mutex_db final {
   /// returning `bool`.  The traversal will halt if the function returns \c
   /// true.
   template <typename FN>
-  void scan_range(Key from_key, Key to_key, FN fn) noexcept {
+  void scan_range(Key from_key, Key to_key, FN fn) {
     const std::lock_guard guard{mutex};
     db_.scan_range(from_key, to_key, fn);
   }
@@ -233,7 +233,9 @@ class mutex_db final {
   //
 
   // Used to write the iterator tests.
-  iterator test_only_iterator() noexcept { return db_.test_only_iterator(); }
+  [[nodiscard]] iterator test_only_iterator() {
+    return db_.test_only_iterator();
+  }
 
   // Stats
 #ifdef UNODB_DETAIL_WITH_STATS
