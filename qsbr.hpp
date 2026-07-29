@@ -454,7 +454,8 @@ namespace detail {
 
 /// Function type for destroy callbacks invoked when deferred deallocation is
 /// safe.  Matches the signature in art_allocator.hpp.
-using destroy_callback_type = void (*)(void* ptr, std::size_t size, void* ctx);
+using destroy_callback_type = void (*)(void* ptr, std::size_t size,
+                                       void* ctx) noexcept;
 
 /// Pending deallocation request for QSBR-managed memory.
 class [[nodiscard]] deallocation_request final {
