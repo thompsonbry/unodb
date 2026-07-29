@@ -5,12 +5,9 @@
 /// \file
 /// Pluggable allocator for ART trees (header-only, no QSBR dependency).
 ///
-/// Trees accept an allocator_type at construction time.  The default
-/// allocator uses the built-in aligned heap (heap.hpp) with immediate
-/// deferred free.  OLC trees override defer_dealloc with a QSBR-based
-/// implementation.  External integrators can supply their own allocator
-/// to route allocations through a custom heap and deferred free through
-/// an external epoch-based GC system.
+/// Defines allocation, deallocation, and optional deferred-deallocation
+/// callbacks.  The default uses the built-in aligned heap (heap.hpp) and does
+/// not provide deferred deallocation.
 ///
 /// \see https://github.com/unodb-dev/unodb/issues/837
 
@@ -28,13 +25,12 @@ using destroy_callback_type = void (*)(void* ptr, std::size_t size, void* ctx);
 
 /// Pluggable allocator for ART trees.
 ///
-/// All three function pointers must be non-null.  \a ctx is forwarded
-/// to every callback and may be nullptr.
+/// \a alloc and \a dealloc must be non-null.  \a defer_dealloc must be
+/// non-null when deferred deallocation is used and may otherwise be null.
+/// \a ctx is forwarded to every callback and may be nullptr.
 ///
-/// \a defer_dealloc is called when a node is removed and cannot be freed
-/// immediately (concurrent readers may hold pointers).  For single-threaded
-/// trees the default calls \a destroy_callback immediately.  OLC trees
-/// replace this with QSBR-based deferred reclamation.
+/// \a defer_dealloc schedules \a destroy_callback for an allocation that
+/// cannot be reclaimed immediately.
 struct allocator_type {
   /// Allocate `size` bytes with the given `alignment`. May throw on failure.
   void* (*alloc)(std::size_t size, std::size_t alignment, void* ctx);
@@ -62,21 +58,13 @@ inline void default_dealloc(void* ptr, std::size_t /*size*/,
   free_aligned(ptr);
 }
 
-/// Default defer_dealloc: immediate free via destroy_callback.
-/// Safe for db and mutex_db where no concurrent readers exist.
-inline void default_defer_dealloc(void* ptr, std::size_t size,
-                                  destroy_callback_type destroy_callback,
-                                  void* ctx) noexcept {
-  destroy_callback(ptr, size, ctx);
-}
-
 /// Default destroy callback: frees via default_dealloc.
 /// Passed as the destroy_callback argument to defer_dealloc.
 inline void default_destroy(void* ptr, std::size_t size, void* ctx) noexcept {
   default_dealloc(ptr, size, ctx);
 }
 
-/// The default allocator instance (no QSBR, immediate free).
+/// The default allocator instance without deferred deallocation.
 inline constexpr allocator_type default_allocator{
     &default_alloc, &default_dealloc, nullptr, nullptr};
 

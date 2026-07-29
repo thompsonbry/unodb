@@ -17,8 +17,8 @@
 namespace {
 
 // Exercise the custom allocator constructor and get_allocator() for each db
-// type. Also exercises default_defer_dealloc and default_destroy by using
-// olc_db with the default (non-QSBR) allocator and performing insert+remove.
+// type. Also exercises default_destroy through the QSBR-based
+// olc_default_allocator by performing insert+remove on olc_db.
 
 UNODB_TEST(ArtAllocator, DbCustomAllocatorConstructor) {
   const unodb::allocator_type alloc{unodb::detail::default_allocator};
