@@ -1,4 +1,4 @@
-# Copyright 2021-2025 Laurynas Biveinis
+# Copyright 2021-2026 Laurynas Biveinis
 
 enable_testing()
 
@@ -123,7 +123,9 @@ if(LIBFUZZER_AVAILABLE)
 endif()
 
 add_fuzz_deepstate_target(qsbr)
-target_link_libraries(test_qsbr_fuzz_deepstate PRIVATE unodb_qsbr)
+# QSBR fault injection requires unodb_test's replacement operator new.
+target_link_libraries(test_qsbr_fuzz_deepstate PRIVATE unodb_qsbr unodb_test)
 if(LIBFUZZER_AVAILABLE)
-  target_link_libraries(test_qsbr_fuzz_deepstate_lf PRIVATE unodb_qsbr_lf)
+  target_link_libraries(test_qsbr_fuzz_deepstate_lf
+    PRIVATE unodb_qsbr_lf unodb_test_lf)
 endif()
