@@ -1,4 +1,4 @@
-// Copyright 2023-2025 UnoDB contributors
+// Copyright 2023-2026 UnoDB contributors
 #ifndef UNODB_DETAIL_TEST_HEAP_HPP
 #define UNODB_DETAIL_TEST_HEAP_HPP
 
@@ -18,6 +18,7 @@
 #ifndef NDEBUG
 
 #include <atomic>
+#include <cassert>  // Avoid cyclical dependency with assert.hpp
 #include <cstdint>
 #include <iostream>
 #include <new>  // IWYU pragma: keep
@@ -133,6 +134,74 @@ struct [[nodiscard]] pause_heap_faults final {
   pause_heap_faults& operator=(pause_heap_faults&&) = delete;
 };
 
+/// Lexically scoped guard that fails the nth heap allocation and resets the
+/// injector on every exit from the scope, including the injected failure
+/// itself and a fatal test assertion.
+///
+/// Only one guard may be active in the process, which a debug atomic asserts.
+///
+/// A violated pin is reported by throwing `std::bad_alloc`, so any `noexcept`
+/// frame inside the armed scope turns the violation into `std::terminate`
+/// rather than an observable exception.  That includes a destructor run at
+/// scope exit, which is why pinning one is a deliberate choice and not a free
+/// extra check.
+///
+/// The injector state is process-wide, so a concurrent guard aborts rather than
+/// resetting another guard's arming. Other threads still must not allocate: a
+/// foreign allocation either consumes the pin, which passes the check
+/// vacuously, or trips it on the wrong thread. Other threads may run as long as
+/// they do not allocate.
+///
+/// This guard cannot restore an enclosing scope's state on exit: the arming is
+/// a counting policy, and the enclosing scope's allocation count cannot
+/// meaningfully account for what the inner scope allocated.
+///
+/// Past the trip point every allocation fails, so a test assertion inside the
+/// armed scope loses its diagnostic to an escaping `std::bad_alloc`.  Evaluate
+/// assertions outside the scope, or pause across them.
+///
+/// \note Do not instantiate directly: use
+/// UNODB_DETAIL_FAIL_ON_NTH_ALLOCATION_GUARD(n) instead.
+struct [[nodiscard]] fail_on_nth_allocation_guard final {
+ public:
+  /// Arm the injector to fail allocation number \a n for this process.
+  explicit fail_on_nth_allocation_guard(std::uint64_t n) noexcept {
+    assert(n != 0 &&
+           "fail_on_nth_allocation_guard is 1-based; 0 disarms the injector");
+    const auto was_active = active.exchange(true, std::memory_order_acquire);
+    assert(!was_active &&
+           "must_not_allocate/throws_bad_alloc scopes must not nest; guards "
+           "must not overlap");
+    allocation_failure_injector::reset();
+    allocation_failure_injector::fail_on_nth_allocation(n);
+  }
+
+  /// Disarm the injector.
+  ~fail_on_nth_allocation_guard() noexcept {
+    allocation_failure_injector::reset();
+    active.store(false, std::memory_order_release);
+  }
+
+  /// Copy construction is disabled.
+  fail_on_nth_allocation_guard(const fail_on_nth_allocation_guard&) = delete;
+
+  /// Move construction is disabled.
+  fail_on_nth_allocation_guard(fail_on_nth_allocation_guard&&) = delete;
+
+  /// Copy assignment is disabled.
+  fail_on_nth_allocation_guard& operator=(const fail_on_nth_allocation_guard&) =
+      delete;
+
+  /// Move assignment is disabled.
+  fail_on_nth_allocation_guard& operator=(fail_on_nth_allocation_guard&&) =
+      delete;
+
+ private:
+  /// Whether a guard is active in this process.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+  inline static std::atomic<bool> active{false};
+};
+
 }  // namespace unodb::test
 
 /// \addtogroup test-internals
@@ -158,7 +227,14 @@ struct [[nodiscard]] pause_heap_faults final {
 /// To be used for specific allocations that are outside of the tested code,
 /// such as constructing test diagnostic messages.
 #define UNODB_DETAIL_PAUSE_HEAP_TRACKING_GUARD() \
-  unodb::test::pause_heap_faults guard {}
+  const unodb::test::pause_heap_faults guard {}
+
+/// Fail the nth heap allocation in the current scope, disarming the injector
+/// on every exit from it.
+/// \hideinitializer
+/// \param n The 1-based number of the allocation that should fail.
+#define UNODB_DETAIL_FAIL_ON_NTH_ALLOCATION_GUARD(n) \
+  const unodb::test::fail_on_nth_allocation_guard heap_fault_guard { n }
 
 /// \}
 
@@ -169,6 +245,7 @@ struct [[nodiscard]] pause_heap_faults final {
 #define UNODB_DETAIL_RESET_ALLOCATION_FAILURE_INJECTOR()
 #define UNODB_DETAIL_FAIL_ON_NTH_ALLOCATION(n)
 #define UNODB_DETAIL_PAUSE_HEAP_TRACKING_GUARD()
+#define UNODB_DETAIL_FAIL_ON_NTH_ALLOCATION_GUARD(n)
 
 #endif  // !NDEBUG
 

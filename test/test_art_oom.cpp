@@ -5,12 +5,10 @@
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
 
-// IWYU pragma: no_include <__new/exceptions.h>
 // IWYU pragma: no_include <array>
 // IWYU pragma: no_include <string>
 
 #include <cstdint>
-#include <new>  // IWYU pragma: keep
 #include <utility>
 #include <vector>
 
@@ -20,6 +18,7 @@
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "test_heap.hpp"
+#include "test_utils.hpp"
 
 // The OOM tests are dependent on the number of heap allocations in the test,
 // that's brittle and hardcoded. Suppose some op takes 5 heap allocations. The
@@ -29,12 +28,24 @@
 //
 // Changing the data structure in the main code or the test suite might perturb
 // this, causing tests to fail. If this happens you need to decide whether the
-// change in behavior was for a valid reason or not. If tests fail in that
-// "expected exception was not thrown", try incrementing the allocation counter
-// in the test. If they fail in that "exception was thrown but we weren't
-// expecting it", try decrementing it.
+// change in behavior was for a valid reason or not.
+//
+// oom_scan_test and bulk_load_oom_test fail differently: there fail_limit is
+// only an upper bound, so their UNODB_ASSERT_LE / FAIL() forms always mean
+// increment, and a too-high limit is silently tolerated.
 namespace {
 
+/// Exercise \a test at each expected allocation-failure point.
+///
+/// The assertions hold only when the operation makes exactly fail_limit - 1
+/// injectable allocations, so recalibrate from that invariant rather than from
+/// a lookup table. A mid-loop failure, "Value of: ... throws_bad_alloc(...) /
+/// Actual: false / Expected: true", means the operation now makes fewer
+/// allocations than the limit assumes - a decrement. A failure on the last
+/// iteration, which expected false and got true, means the operation still
+/// reaches its fail_limit-th allocation - an increment. Neither message names
+/// the failing iteration, but the two shapes are monotone in fail_limit and
+/// mutually exclusive, so stepping or bisecting on them converges.
 template <class TypeParam, typename Init, typename Test, typename CheckAfterOOM,
           typename CheckAfterSuccess>
 void oom_test(unsigned fail_limit, Init init, Test test,
@@ -45,9 +56,8 @@ void oom_test(unsigned fail_limit, Init init, Test test,
     unodb::test::tree_verifier<TypeParam> verifier;
     init(verifier);
 
-    unodb::test::allocation_failure_injector::fail_on_nth_allocation(fail_n);
-    UNODB_ASSERT_THROW(test(verifier), std::bad_alloc);
-    unodb::test::allocation_failure_injector::reset();
+    UNODB_ASSERT_TRUE(unodb::test::throws_bad_alloc(
+        fail_n, [&test, &verifier] { test(verifier); }));
 
     verifier.check_present_values();
     check_after_oom(verifier);
@@ -56,9 +66,8 @@ void oom_test(unsigned fail_limit, Init init, Test test,
   unodb::test::tree_verifier<TypeParam> verifier;
   init(verifier);
 
-  unodb::test::allocation_failure_injector::fail_on_nth_allocation(fail_n);
-  test(verifier);
-  unodb::test::allocation_failure_injector::reset();
+  UNODB_ASSERT_FALSE(unodb::test::throws_bad_alloc(
+      fail_n, [&test, &verifier] { test(verifier); }));
 
   verifier.check_present_values();
   check_after_success(verifier);
@@ -95,30 +104,32 @@ void oom_remove_test(unsigned fail_limit, Init init, std::uint64_t k,
       });
 }
 
-// The scan allocation count cannot be hardcoded: it comes from the iterator's
-// std::stack/deque and key buffer, whose allocation counts are
-// standard-library-dependent (libc++ vs libstdc++ debug mode). So fail_limit is
-// only an upper bound: inject at each point until the scan completes without
-// OOM, asserting the tree stays intact on every path that did throw.
+/// Exercise a scan across its implementation-defined allocation points.
+///
+/// The count cannot be hardcoded: it comes from the iterator's std::stack/deque
+/// and key buffer, whose allocation counts are standard-library-dependent
+/// (libc++ vs libstdc++ debug mode). So fail_limit is only an upper bound:
+/// inject at each point until the scan completes without OOM. The scan is
+/// read-only, so the tree must be intact after every injection point, whether
+/// that iteration threw (the strong guarantee) or completed.
+///
+/// UNODB_ASSERT_GT(fail_n, 1U) is the exception to the upper-bound adjustment
+/// rule: reported as "Expected: (fail_n) > (1U), actual: 1 vs 1", it can only
+/// fire when the scan makes no injectable allocation at all, so the test
+/// exercises nothing. No fail_limit value repairs that - fix the scan, not the
+/// limit.
 template <class TypeParam, typename ScanOp>
-void oom_scan_test(unsigned fail_limit, ScanOp scan_op) {
+void oom_scan_test(unsigned fail_limit, const ScanOp& scan_op) {
   unodb::test::tree_verifier<TypeParam> verifier;
   verifier.insert_key_range(0, 16);
 
   unsigned fail_n = 1;
   for (; fail_n <= fail_limit; ++fail_n) {
-    unodb::test::allocation_failure_injector::fail_on_nth_allocation(fail_n);
-    try {
-      scan_op(verifier.get_db());
-    } catch (const std::bad_alloc&) {
-      unodb::test::allocation_failure_injector::reset();
-      verifier.check_present_values();  // strong guarantee: tree intact
-      continue;
-    }
-    // Scan completed without OOM: past all of its allocations.
-    unodb::test::allocation_failure_injector::reset();
+    const bool completed = !unodb::test::throws_bad_alloc(
+        fail_n, [&scan_op, &verifier] { scan_op(verifier.get_db()); });
     verifier.check_present_values();
-    break;
+    // Scan completed without OOM: past all of its allocations.
+    if (completed) break;
   }
   // Scan completed within fail_limit, making >= 1 injectable allocation.
   UNODB_ASSERT_LE(fail_n, fail_limit);
@@ -137,10 +148,17 @@ using ARTTypes =
 
 UNODB_TYPED_TEST_SUITE(ARTOOMTest, ARTTypes)
 
-UNODB_TYPED_TEST(ARTOOMTest, CtorDoesNotAllocate) {
-  unodb::test::allocation_failure_injector::fail_on_nth_allocation(1);
+// The guard must be declared before the tree so that reverse destruction order
+// leaves the destructor inside the armed window; swapping the two lines still
+// compiles and passes while pinning nothing at all - the constructor would run
+// before the guard arms, and the destructor after the guard's own destructor
+// disarmed. Note that the destructor half is enforced differently: the
+// destructors of all three tested types are noexcept, so a violation there
+// terminates the process rather than failing this test, per the noexcept-frame
+// warning on fail_on_nth_allocation_guard.
+UNODB_TYPED_TEST(ARTOOMTest, CtorAndDtorDoNotAllocate) {
+  UNODB_DETAIL_FAIL_ON_NTH_ALLOCATION_GUARD(1);
   const TypeParam tree;
-  unodb::test::allocation_failure_injector::reset();
 }
 
 UNODB_TYPED_TEST(ARTOOMTest, SingleNodeTreeEmptyValue) {
@@ -703,24 +721,22 @@ void bulk_load_oom_test(
   for (fail_n = 1; fail_n <= fail_limit; ++fail_n) {
     TypeParam test_db;
 
-    unodb::test::allocation_failure_injector::fail_on_nth_allocation(fail_n);
-    try {
-      test_db.bulk_load(kv.begin(), kv.end());
-      // Success: we've found the limit
-      unodb::test::allocation_failure_injector::reset();
+    const bool loaded = !unodb::test::throws_bad_alloc(
+        fail_n, [&test_db, &kv] { test_db.bulk_load(kv.begin(), kv.end()); });
+    if (loaded) {  // Success: we've found the limit
       UNODB_ASSERT_FALSE(test_db.empty());
       for (const auto& [k, v] : kv) {
-        UNODB_ASSERT_TRUE(TypeParam::key_found(test_db.get(k)));
+        const auto result = test_db.get(k);
+        UNODB_ASSERT_TRUE(TypeParam::key_found(result));
+        unodb::test::detail::assert_value_eq<TypeParam>(result, v);
       }
       return;
-    } catch (const std::bad_alloc&) {
-      unodb::test::allocation_failure_injector::reset();
-      // Strong guarantee: tree must be empty after failed bulk_load
-      UNODB_ASSERT_TRUE(test_db.empty());
-#ifdef UNODB_DETAIL_WITH_STATS
-      UNODB_ASSERT_EQ(test_db.get_current_memory_use(), 0);
-#endif
     }
+    // Strong guarantee: tree must be empty after failed bulk_load
+    UNODB_ASSERT_TRUE(test_db.empty());
+#ifdef UNODB_DETAIL_WITH_STATS
+    UNODB_ASSERT_EQ(test_db.get_current_memory_use(), 0);
+#endif
   }
   FAIL() << "bulk_load did not succeed within " << fail_limit << " allocations";
 }
@@ -734,40 +750,41 @@ UNODB_TYPED_TEST(ARTOOMTest, BulkLoadSingleKey) {
 
 // Tree that creates one inode4 (4 leaves + 1 inode4)
 UNODB_TYPED_TEST(ARTOOMTest, BulkLoadInode4) {
-  constexpr auto val = unodb::test::test_values[0];
   std::vector<std::pair<std::uint64_t, unodb::value_view>> kv;
   kv.reserve(4);
-  for (std::uint64_t i = 0; i < 4; ++i) kv.emplace_back(i << 56U, val);
+  for (std::uint64_t i = 0; i < 4; ++i)
+    kv.emplace_back(i << 56U, unodb::test::get_test_value<TypeParam>(i));
   bulk_load_oom_test<TypeParam>(10, kv);
 }
 
 // Tree that creates an inode16 (10 leaves + 1 inode16)
 UNODB_TYPED_TEST(ARTOOMTest, BulkLoadInode16) {
-  constexpr auto val = unodb::test::test_values[0];
   std::vector<std::pair<std::uint64_t, unodb::value_view>> kv;
   kv.reserve(10);
-  for (std::uint64_t i = 0; i < 10; ++i) kv.emplace_back(i << 56U, val);
+  for (std::uint64_t i = 0; i < 10; ++i)
+    kv.emplace_back(i << 56U, unodb::test::get_test_value<TypeParam>(i));
   bulk_load_oom_test<TypeParam>(15, kv);
 }
 
 // Tree that creates an inode48 (20 leaves + 1 inode48)
 UNODB_TYPED_TEST(ARTOOMTest, BulkLoadInode48) {
-  constexpr auto val = unodb::test::test_values[0];
   std::vector<std::pair<std::uint64_t, unodb::value_view>> kv;
   kv.reserve(20);
-  for (std::uint64_t i = 0; i < 20; ++i) kv.emplace_back(i << 56U, val);
+  for (std::uint64_t i = 0; i < 20; ++i)
+    kv.emplace_back(i << 56U, unodb::test::get_test_value<TypeParam>(i));
   bulk_load_oom_test<TypeParam>(30, kv);
 }
 
 // Tree with nested inodes (two inode4s under one root inode4)
 UNODB_TYPED_TEST(ARTOOMTest, BulkLoadNested) {
-  constexpr auto val = unodb::test::test_values[0];
   std::vector<std::pair<std::uint64_t, unodb::value_view>> kv;
   kv.reserve(8);
   for (std::uint64_t i = 0; i < 4; ++i)
-    kv.emplace_back((1ULL << 56U) | (i << 48U), val);
+    kv.emplace_back((1ULL << 56U) | (i << 48U),
+                    unodb::test::get_test_value<TypeParam>(i));
   for (std::uint64_t i = 0; i < 4; ++i)
-    kv.emplace_back((2ULL << 56U) | (i << 48U), val);
+    kv.emplace_back((2ULL << 56U) | (i << 48U),
+                    unodb::test::get_test_value<TypeParam>(i + 4));
   bulk_load_oom_test<TypeParam>(20, kv);
 }
 

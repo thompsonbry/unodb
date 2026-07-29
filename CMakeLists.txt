@@ -751,7 +751,7 @@ function(COMMON_TARGET_PROPERTIES TARGET)
     "$<$<AND:${is_release_genex},${is_not_windows}>:$<IF:${coverage_on},-O0,-O3>>"
     # Misc
     "$<${coverage_on}:--coverage>")
-  target_link_options(${TARGET} INTERFACE "$<${coverage_on}:--coverage>")
+  target_link_options(${TARGET} PUBLIC "$<${coverage_on}:--coverage>")
   target_link_options(${TARGET} PRIVATE
     "$<${is_apple_clang_genex}:-Wl,-no_warn_duplicate_libraries>"
     "$<${is_darwin_clang_ge_21_x86_64}:-L/usr/local/opt/llvm/lib/c++>"

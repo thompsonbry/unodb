@@ -56,6 +56,18 @@ add_test_target(test_qsbr)
 target_link_libraries(test_qsbr PRIVATE qsbr_test_utils)
 add_db_test_target(test_key_encode_decode)
 
+# Tests the allocation failure injector itself. Deliberately does not link
+# unodb_test: with the replaced global operator new live, Google Test's own
+# allocations would feed the same counter as the code under test. Only
+# unodb::detail::allocate_aligned must trip the injector here, which also lets
+# this run in the configurations the OOM test targets are excluded from.
+add_executable(test_fault_injection test_fault_injection.cpp)
+common_target_properties(test_fault_injection)
+target_link_libraries(test_fault_injection
+  PRIVATE unodb_util Threads::Threads GTest::gtest_main ${Boost_LIBRARIES})
+set_clang_tidy_options(test_fault_injection "${DO_CLANG_TIDY}")
+add_sanitized_test(NAME test_fault_injection COMMAND test_fault_injection)
+
 add_db_test_target(test_art)
 target_compile_options(test_art PRIVATE "$<${is_msvc}:/bigobj>")
 
@@ -102,14 +114,14 @@ add_test(NAME test_olc_no_qsbr COMMAND test_olc_no_qsbr)
 if(COVERAGE)
   add_custom_target(tests_for_coverage ctest
     DEPENDS test_key_encode_decode test_art test_art_key_view test_art_key_view_full_chain test_art_iter test_art_scan test_art_concurrency test_art_allocator test_art_upsert test_olc_no_qsbr test_qsbr_ptr test_qsbr test_art_oom
-            test_qsbr_oom test_art_bulk_load)
+            test_qsbr_oom test_art_bulk_load test_fault_injection)
   add_coverage_target(TARGET coverage DEPENDENCY tests_for_coverage)
 endif()
 
 add_custom_target(valgrind_tests
+  # Targets with death tests will print their SIGABRT stacktrace under
+  # Valgrind. I have not found a way to disable it.
   COMMAND ${VALGRIND_COMMAND} ./test_qsbr_ptr;
-  # The death tests will print their SIGABRT stacktrace under Valgrind. I have
-  # not found a way to disable it.
   COMMAND ${VALGRIND_COMMAND} ./test_qsbr;
   COMMAND ${VALGRIND_COMMAND} ./test_key_encode_decode;
   COMMAND ${VALGRIND_COMMAND} ./test_art;
@@ -119,5 +131,6 @@ add_custom_target(valgrind_tests
   COMMAND ${VALGRIND_COMMAND} ./test_art_scan;
   COMMAND ${VALGRIND_COMMAND} ./test_art_concurrency;
   COMMAND ${VALGRIND_COMMAND} ./test_art_upsert;
-  COMMAND ${VALGRIND_COMMAND} ./test_art_bulk_load
-  DEPENDS test_qsbr_ptr test_qsbr test_key_encode_decode test_art test_art_key_view test_art_key_view_full_chain test_art_iter test_art_scan test_art_concurrency test_art_upsert test_art_bulk_load)
+  COMMAND ${VALGRIND_COMMAND} ./test_art_bulk_load;
+  COMMAND ${VALGRIND_COMMAND} ./test_fault_injection
+  DEPENDS test_qsbr_ptr test_qsbr test_key_encode_decode test_art test_art_key_view test_art_key_view_full_chain test_art_iter test_art_scan test_art_concurrency test_art_upsert test_art_bulk_load test_fault_injection)

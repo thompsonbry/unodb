@@ -1,4 +1,4 @@
-// Copyright 2020-2025 UnoDB contributors
+// Copyright 2020-2026 UnoDB contributors
 
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
@@ -26,6 +26,37 @@ using QSBRDeathTest = unodb::test::QSBRTestBase;
 
 using unodb::detail::thread_syncs;
 
+/// Notify a test thread when the current scope exits.
+class [[nodiscard]] notify_thread_on_scope_exit final {
+ public:
+  /// Create a notifier for \a sync.
+  constexpr explicit notify_thread_on_scope_exit(
+      unodb::detail::thread_sync& sync) noexcept
+      : sync_to_notify{sync} {}
+
+  /// Notify the waiting thread.
+  ~notify_thread_on_scope_exit() noexcept(false) { sync_to_notify.notify(); }
+
+  /// Copy construction is disabled.
+  notify_thread_on_scope_exit(const notify_thread_on_scope_exit&) = delete;
+
+  /// Move construction is disabled.
+  notify_thread_on_scope_exit(notify_thread_on_scope_exit&&) = delete;
+
+  /// Copy assignment is disabled.
+  notify_thread_on_scope_exit& operator=(const notify_thread_on_scope_exit&) =
+      delete;
+
+  /// Move assignment is disabled.
+  notify_thread_on_scope_exit& operator=(notify_thread_on_scope_exit&&) =
+      delete;
+
+ private:
+  /// Synchronization primitive to notify.
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+  unodb::detail::thread_sync& sync_to_notify;
+};
+
 void active_pointer_ops(void* raw_ptr) noexcept {
   unodb::qsbr_ptr<void> active_ptr{raw_ptr};
   unodb::qsbr_ptr<void> active_ptr2{active_ptr};
@@ -51,23 +82,32 @@ UNODB_TEST_F(QSBR, SingleThreadPauseResume) {
 
 UNODB_TEST_F(QSBR, TwoThreads) {
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1);
-  unodb::qsbr_thread second_thread(
-      []() noexcept { UNODB_EXPECT_EQ(get_qsbr_thread_count(), 2); });
+  unodb::qsbr_thread second_thread([]() noexcept {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[0]};
+    UNODB_EXPECT_EQ(get_qsbr_thread_count(), 2);
+  });
+  thread_syncs[0].wait();
   join(second_thread);
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1);
 }
 
 UNODB_TEST_F(QSBR, TwoThreadsSecondQuitPaused) {
-  unodb::qsbr_thread second_thread([]()
+  unodb::qsbr_thread second_thread(
+      []()
 #ifndef UNODB_DETAIL_WITH_STATS
-                                       noexcept
+          noexcept
 #endif
-                                   { qsbr_pause(); });
+      {
+        const notify_thread_on_scope_exit notify_parent{thread_syncs[0]};
+        qsbr_pause();
+      });
+  thread_syncs[0].wait();
   join(second_thread);
 }
 
 UNODB_TEST_F(QSBR, TwoThreadsSecondPaused) {
   unodb::qsbr_thread second_thread([] {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[0]};
     UNODB_EXPECT_EQ(get_qsbr_thread_count(), 2);
     UNODB_ASSERT_FALSE(is_qsbr_paused());
     qsbr_pause();
@@ -76,6 +116,7 @@ UNODB_TEST_F(QSBR, TwoThreadsSecondPaused) {
     unodb::this_thread().qsbr_resume();
     UNODB_EXPECT_EQ(get_qsbr_thread_count(), 2);
   });
+  thread_syncs[0].wait();
   join(second_thread);
 }
 
@@ -99,9 +140,9 @@ UNODB_TEST_F(QSBR, TwoThreadsFirstPaused) {
 UNODB_TEST_F(QSBR, TwoThreadsBothPaused) {
   unodb::qsbr_thread second_thread([] {
     UNODB_EXPECT_EQ(get_qsbr_thread_count(), 2);
-    thread_syncs[0].notify();  // 1 ->
     qsbr_pause();
-    thread_syncs[1].wait();  // 2 <-
+    thread_syncs[0].notify();  // 1 ->
+    thread_syncs[1].wait();    // 2 <-
     UNODB_EXPECT_EQ(get_qsbr_thread_count(), 0);
     unodb::this_thread().qsbr_resume();
     thread_syncs[0].notify();  // 3 ->
@@ -118,8 +159,11 @@ UNODB_TEST_F(QSBR, TwoThreadsBothPaused) {
 UNODB_TEST_F(QSBR, TwoThreadsSequential) {
   qsbr_pause();
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
-  unodb::qsbr_thread second_thread(
-      []() noexcept { UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1); });
+  unodb::qsbr_thread second_thread([]() noexcept {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[0]};
+    UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1);
+  });
+  thread_syncs[0].wait();
   join(second_thread);
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
   unodb::this_thread().qsbr_resume();
@@ -130,8 +174,11 @@ UNODB_TEST_F(QSBR, TwoThreadsDefaultCtor) {
   qsbr_pause();
   unodb::qsbr_thread second_thread{};
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
-  second_thread = unodb::qsbr_thread{
-      []() noexcept { UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1); }};
+  second_thread = unodb::qsbr_thread{[]() noexcept {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[0]};
+    UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1);
+  }};
+  thread_syncs[0].wait();
   join(second_thread);
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
   unodb::this_thread().qsbr_resume();
@@ -141,8 +188,11 @@ UNODB_TEST_F(QSBR, SecondThreadAddedWhileFirstPaused) {
   qsbr_pause();
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
 
-  unodb::qsbr_thread second_thread(
-      []() noexcept { UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1); });
+  unodb::qsbr_thread second_thread([]() noexcept {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[0]};
+    UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1);
+  });
+  thread_syncs[0].wait();
   join(second_thread);
 
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
@@ -178,9 +228,11 @@ UNODB_TEST_F(QSBR, ThreeThreadsInitialPaused) {
   thread_syncs[0].wait();
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 1);
   unodb::qsbr_thread third_thread([] {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[2]};
+    const notify_thread_on_scope_exit notify_second_thread{thread_syncs[1]};
     UNODB_ASSERT_EQ(get_qsbr_thread_count(), 2);
-    thread_syncs[1].notify();
   });
+  thread_syncs[2].wait();
   join(second_thread);
   join(third_thread);
   UNODB_ASSERT_EQ(get_qsbr_thread_count(), 0);
@@ -884,6 +936,7 @@ UNODB_TEST_F(QSBR, ResetStats) {
 
 UNODB_TEST_F(QSBR, GettersConcurrentWithQuiescentState) {
   unodb::qsbr_thread second_thread{[] {
+    const notify_thread_on_scope_exit notify_parent{thread_syncs[1]};
     quiescent();
 
     thread_syncs[0].notify();  // 1 -> & v
@@ -906,6 +959,7 @@ UNODB_TEST_F(QSBR, GettersConcurrentWithQuiescentState) {
   quiescent();
   quiescent();
 
+  thread_syncs[1].wait();
   join(second_thread);
 }
 
