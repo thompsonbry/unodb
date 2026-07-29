@@ -159,7 +159,7 @@ class QSBRTestBase : public ::testing::Test {
   static void check_ptr_on_qsbr_dealloc(const void* ptr) noexcept {
     // The pointer must be readable
     // cppcheck-suppress unreadVariable
-    static const volatile char sink UNODB_DETAIL_UNUSED =
+    const volatile char sink UNODB_DETAIL_UNUSED =
         *static_cast<const char*>(ptr);
   }
 #endif
