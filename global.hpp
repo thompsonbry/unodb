@@ -10,7 +10,7 @@
 /// \addtogroup internal
 /// \{
 
-// Macros that have multiple definitions are documented once.
+// Doxygen comments hoisted from the definitions below; see CONTRIBUTING.md.
 
 /// \def UNODB_DETAIL_BUILTIN_ASSUME(condition)
 /// \hideinitializer
@@ -19,6 +19,7 @@
 /// instead.
 
 /// \def UNODB_DETAIL_LIFETIMEBOUND
+/// \hideinitializer
 /// Indicate that a reference parameter lifetime is bound to that of the return
 /// value.
 
@@ -86,9 +87,11 @@
 /// UNODB_DETAIL_DISABLE_MSVC_WARNING().
 
 /// \def UNODB_DETAIL_DISABLE_CLANG_WARNING(x)
+/// \hideinitializer
 /// Disable a clang warning \a x until UNODB_DETAIL_RESTORE_CLANG_WARNINGS()
 
 /// \def UNODB_DETAIL_RESTORE_CLANG_WARNINGS()
+/// \hideinitializer
 /// Re-enable the warning that was previously disabled with
 /// UNODB_DETAIL_DISABLE_CLANG_WARNING().
 

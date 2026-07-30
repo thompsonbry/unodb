@@ -1,4 +1,4 @@
-// Copyright 2022-2025 UnoDB contributors
+// Copyright 2022-2026 UnoDB contributors
 #ifndef UNODB_DETAIL_ASSERT_HPP
 #define UNODB_DETAIL_ASSERT_HPP
 
@@ -13,7 +13,7 @@
 /// \addtogroup internal
 /// \{
 
-// Macros that have multiple definitions are documented once.
+// Doxygen comments hoisted from the definitions below; see CONTRIBUTING.md.
 
 /// \name Assertion & assumption macros
 /// \{
@@ -169,6 +169,7 @@ assert_failure(const char* file, int line, const char* func,
 #endif  // !defined(NDEBUG)
 
 /// Assert that is only active when QSBR debug checking is enabled.
+/// \hideinitializer
 /// Use for assertions that reference QSBR state (qsbr::instance(), etc.)
 /// which may not be available in builds without QSBR linked.
 #ifdef UNODB_DETAIL_QSBR_DEBUG

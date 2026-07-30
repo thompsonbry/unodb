@@ -116,11 +116,73 @@ UnoDB contributors` as the first line.
 - Doxygen is used to produce source code documentation. To build the local HTML
   docs, run `doxygen Doxyfile` from the root source directory.
 - Doxygen commands should use `\foo` (and not `@foo`) syntax.
-- The preferred location of the comments is next to the declarations. An
-  exception is declarations with multiple conditionally compiled declarations,
-  in which case a Doxygen comment with a `\def`, `\var`, or another suitable tag
-  for the declaration should appear at the top of its section or source file,
-  and it should also have a `\hideinitializer` tag.
+- The preferred location of the comments is next to the declarations. A
+  declaration with multiple conditionally compiled definitions may be
+  documented in place, either above the whole conditional or, when the other
+  branches are no-ops that need no documentation of their own, inside
+  the branch Doxygen selects. Hoist it instead into a Doxygen comment with a
+  `\def`, `\var`, or another suitable tag at the top of its section or source
+  file when the definitions are scattered. Closely related declarations may be
+  hoisted alongside it even when they have a single definition.
+- Use a `\hideinitializer` tag when the initializer Doxygen would otherwise
+  render is not worth showing, wherever the comment is placed. It is required
+  when the declaration has more than one definition and the one Doxygen
+  selects has a non-empty value, so that one configuration's value is not
+  presented as the declaration's only value. Otherwise it is a judgement call:
+  tag when the rendered value would only restate the brief, and leave it
+  untagged when the value tells the reader something the brief does not. Where
+  the selected definition is empty (no replacement text, so Doxygen renders no
+  initializer) there is nothing to hide; `((void)0)` renders one and counts as
+  non-empty.
+- Which definition Doxygen selects is fixed by the documentation build's own
+  configuration, not by the compiler you build with. Its inputs are
+  `Doxyfile`'s `PREDEFINED` list together with the
+  `#ifdef UNODB_DETAIL_DOXYGEN` sections in the sources, chiefly `global.hpp`'s
+  CMake macro block. The build also executes every `#define` in the regions
+  those inputs select, and the definitions propagate through `#include`:
+  `global.hpp`'s macro-derivation cascade derives `UNODB_DETAIL_X86_64`, which
+  appears in neither input, from `PREDEFINED`'s `_MSC_VER` and `_M_X64`,
+  selecting its regions across the tree, and likewise derives
+  `UNODB_DETAIL_MSVC_CLANG`, deselecting the regions its `#ifndef` guards.
+  Together the inputs and the cascade currently describe a standalone,
+  MSVC-with-clang-frontend, x86-64, statistics-enabled debug build. Run
+  `doxygen Doxyfile` and look at the declaration's page to see which
+  definition it documents. Do not read the answer off a `PREDEFINED` entry
+  that names the macro itself: an entry defines the macro for the
+  documentation build the way `-D` would, satisfying the conditionals that
+  test it and controlling how it expands in the signatures that use it, but
+  it never supplies the value shown on the macro's own page, which always
+  comes from the source `#define` in the selected branch.
+- A guard neither listed in the inputs nor derived by the cascade is simply
+  undefined for the documentation build, and a documented declaration confined
+  to a region such a guard deselects vanishes silently. Resolve every macro
+  that conditionally compiles documented declarations deliberately: add it to
+  `PREDEFINED`, define it in the block, let the cascade derive it, or
+  knowingly leave it undefined (`NDEBUG`).
+- When changing the inputs or the cascade, or introducing such a conditional,
+  re-audit the `\hideinitializer` tags, re-read comments placed outside a
+  conditional for claims that hold only for the definition previously
+  selected, and compare the generated docs before and after for declarations
+  that disappeared: Doxygen warns when a comment inside a deselected branch is
+  dropped only if a selected branch still defines the declaration, and it
+  never warns when a comment placed outside a conditional re-anchors. Keep the
+  build description above current when the selected configuration changes.
+- The comparison above is differential: it cannot surface a declaration that
+  was already missing, and documentation added inside an already deselected
+  region is absent from every baseline and fires no re-audit trigger. When
+  adding documentation inside a conditional, and periodically, sweep the
+  regions the documentation build deselects, including those a defined macro
+  deselects through `#ifndef`, for Doxygen comment blocks; make each hit
+  render or record it as a knowing omission. To make a declaration render,
+  define and document its guard in the `UNODB_DETAIL_DOXYGEN` block, hoist a
+  `\def` block anchored by an immediately-`#undef`ed `#define` in an
+  `#ifdef UNODB_DETAIL_DOXYGEN` region, keeping the macro undefined for the
+  selection of later conditionals, or extend the region's guard with
+  `|| defined(UNODB_DETAIL_DOXYGEN)`. A hit whose declaration the
+  selected branch of the same conditional already documents is a knowing
+  omission recorded by the build description above; record any other knowing
+  omission at the site with a `// not in the generated docs: <reason>`
+  comment, so that a sweep can tell recorded omissions from new hits.
 - Trailing Doxygen comments (`///<`, `/**<`) should be avoided; place
   documentation before declarations instead.
 - Doxygen automatic brief description detection is enabled, thus explicit
