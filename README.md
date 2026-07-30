@@ -242,6 +242,13 @@ automatically reports the quiescent state when the scope is exited.
 providing `std::`-like interface over the ART data structure. It shares some
 code with UnoDB.
 
+## Contributors
+
+Amazon Web Services / Amazon Neptune is a contributor to UnoDB through the work
+of Bryan Thompson, who added forward and reverse scans, CAS-style upsert
+semantics, QSBR decoupling, leaf memory optimizations for the secondary index
+use case, and variable length key support.
+
 ## Contributing
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md).
