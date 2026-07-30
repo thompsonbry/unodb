@@ -336,7 +336,7 @@ class basic_db_leaf_deleter {
   static_assert(std::is_trivially_destructible_v<leaf_type>);
 
   /// Construct leaf deleter for database \a db_
-  constexpr explicit basic_db_leaf_deleter(Db& db_
+  constexpr explicit basic_db_leaf_deleter(UNODB_DETAIL_NO_STATS_CONST Db& db_
                                            UNODB_DETAIL_LIFETIMEBOUND) noexcept
       : db{db_} {}
 
@@ -346,11 +346,14 @@ class basic_db_leaf_deleter {
   /// Get reference to owning database.
   ///
   /// \return Reference to database
-  [[nodiscard, gnu::pure]] Db& get_db() const noexcept { return db; }
+  [[nodiscard, gnu::pure]] UNODB_DETAIL_NO_STATS_CONST Db& get_db()
+      const noexcept {
+    return db;
+  }
 
  private:
   /// Reference to owning database.
-  Db& db;
+  UNODB_DETAIL_NO_STATS_CONST Db& db;
 };
 
 /// Unique pointer to leaf with database-aware deleter.
@@ -380,7 +383,7 @@ template <class INode, class Db>
 class basic_db_inode_deleter {
  public:
   /// Construct internal node deleter for database \a db_.
-  constexpr explicit basic_db_inode_deleter(Db& db_
+  constexpr explicit basic_db_inode_deleter(UNODB_DETAIL_NO_STATS_CONST Db& db_
                                             UNODB_DETAIL_LIFETIMEBOUND) noexcept
       : db{db_} {}
 
@@ -390,11 +393,13 @@ class basic_db_inode_deleter {
   /// Get reference to owning database.
   ///
   /// \return Reference to database
-  [[nodiscard, gnu::pure]] Db& get_db() noexcept { return db; }
+  [[nodiscard, gnu::pure]] UNODB_DETAIL_NO_STATS_CONST Db& get_db() noexcept {
+    return db;
+  }
 
  private:
   /// Reference to owning database.
-  Db& db;
+  UNODB_DETAIL_NO_STATS_CONST Db& db;
 };
 
 /// Tagged pointer with node type stored in low bits.

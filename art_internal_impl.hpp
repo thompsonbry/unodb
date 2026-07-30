@@ -174,11 +174,11 @@ struct bulk_subtree_guard {
   using db_type = typename ArtPolicy::db_type;
   using node_ptr = typename ArtPolicy::node_ptr;
 
-  db_type& db_;
+  UNODB_DETAIL_NO_STATS_CONST db_type& db_;
   node_ptr ptr{nullptr};
   bool is_packed_value{false};
 
-  constexpr explicit bulk_subtree_guard(db_type& db
+  constexpr explicit bulk_subtree_guard(UNODB_DETAIL_NO_STATS_CONST db_type& db
                                         UNODB_DETAIL_LIFETIMEBOUND) noexcept
       : db_{db} {}
 
@@ -215,8 +215,8 @@ struct bulk_subtree_guard {
 /// \note Defined at end of art_internal_impl.hpp (after inode types).
 template <class ArtPolicy>
 [[nodiscard]] typename ArtPolicy::node_ptr bulk_build_chain(
-    typename ArtPolicy::db_type& self, typename ArtPolicy::art_key_type k,
-    typename ArtPolicy::node_ptr child,
+    UNODB_DETAIL_NO_STATS_CONST typename ArtPolicy::db_type& self,
+    typename ArtPolicy::art_key_type k, typename ArtPolicy::node_ptr child,
     tree_depth<typename ArtPolicy::art_key_type> start_depth);
 
 #ifdef UNODB_DETAIL_X86_64
@@ -584,9 +584,9 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 ///
 /// \throws std::length_error if key or value exceeds maximum size
 template <typename Key, typename Value, template <typename, typename> class Db>
-[[nodiscard]] auto make_db_leaf_ptr(basic_art_key<Key> k, Value v,
-                                    Db<Key, Value>& db
-                                    UNODB_DETAIL_LIFETIMEBOUND) {
+[[nodiscard]] auto make_db_leaf_ptr(
+    basic_art_key<Key> k, Value v,
+    UNODB_DETAIL_NO_STATS_CONST Db<Key, Value>& db UNODB_DETAIL_LIFETIMEBOUND) {
   using db_type = Db<Key, Value>;
   using header_type = typename db_type::header_type;
   using leaf_type = basic_leaf<leaf_key_type<Key, Value>, header_type>;
@@ -891,9 +891,10 @@ struct basic_art_policy final {
   /// \param db_instance Database for memory tracking
   ///
   /// \return Unique pointer to newly allocated leaf
-  [[nodiscard]] static auto make_db_leaf_ptr(art_key_type k, value_type v,
-                                             db_type& db_instance
-                                             UNODB_DETAIL_LIFETIMEBOUND) {
+  [[nodiscard]] static auto make_db_leaf_ptr(
+      art_key_type k, value_type v,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND) {
     static_assert(
         !can_eliminate_leaf,
         "make_db_leaf_ptr must not be called when leaf is eliminated");
@@ -908,7 +909,8 @@ struct basic_art_policy final {
   /// \return Reclaimable pointer that defers leaf deletion
   [[nodiscard]] static auto reclaim_leaf_on_scope_exit(
       leaf_type* leaf UNODB_DETAIL_LIFETIMEBOUND,
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND) noexcept {
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND) noexcept {
     static_assert(!can_eliminate_leaf,
                   "reclaim_leaf_on_scope_exit must not be called when leaf is "
                   "eliminated");
@@ -926,8 +928,8 @@ struct basic_art_policy final {
   /// \param db_instance Database for memory reclamation
   /// \return Reclaimable pointer (no-op if child is not a leaf)
   [[nodiscard]] static auto reclaim_if_leaf(
-      node_ptr child,
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND) noexcept {
+      node_ptr child, UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND) noexcept {
     if constexpr (can_eliminate_leaf) {
       struct noop_guard {};
       return noop_guard{};
@@ -953,9 +955,10 @@ struct basic_art_policy final {
   UNODB_DETAIL_DISABLE_GCC_11_WARNING("-Wmismatched-new-delete")
   template <class INode, class... Args>
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
-  [[nodiscard]] static auto make_db_inode_unique_ptr(db_type& db_instance
-                                                     UNODB_DETAIL_LIFETIMEBOUND,
-                                                     Args&&... args) {
+  [[nodiscard]] static auto make_db_inode_unique_ptr(
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND,
+      Args&&... args) {
     auto* const inode_mem =
         static_cast<std::byte*>(db_instance.get_allocator().alloc(
             sizeof(INode), alignment_for_new<INode>(),
@@ -983,7 +986,8 @@ struct basic_art_policy final {
   template <class INode>
   [[nodiscard]] static auto make_db_inode_unique_ptr(
       INode* inode_ptr UNODB_DETAIL_LIFETIMEBOUND,
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND) noexcept {
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND) noexcept {
     return db_inode_unique_ptr<INode>{inode_ptr,
                                       db_inode_deleter<INode>{db_instance}};
   }
@@ -999,7 +1003,8 @@ struct basic_art_policy final {
   template <class INode>
   [[nodiscard]] static auto make_db_inode_reclaimable_ptr(
       INode* inode_ptr UNODB_DETAIL_LIFETIMEBOUND,
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND) noexcept {
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND) noexcept {
     return db_inode_reclaimable_ptr<INode>{
         inode_ptr, INodeReclamator<Key, Value, INode>{db_instance}};
   }
@@ -1013,7 +1018,8 @@ struct basic_art_policy final {
   /// \return Unique pointer owning the leaf
   [[nodiscard]] static auto make_db_leaf_ptr(
       leaf_type* leaf UNODB_DETAIL_LIFETIMEBOUND,
-      db_type& db_instance UNODB_DETAIL_LIFETIMEBOUND) noexcept
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance
+      UNODB_DETAIL_LIFETIMEBOUND) noexcept
     requires(!can_eliminate_leaf)
   {
     return basic_db_leaf_unique_ptr<key_type, value_type, header_type, Db>{
@@ -1027,7 +1033,8 @@ struct basic_art_policy final {
     /// Construct guard for node \a node_ptr_ deletion from \a db_.
     constexpr explicit delete_db_node_ptr_at_scope_exit(
         NodePtr node_ptr_ UNODB_DETAIL_LIFETIMEBOUND,
-        db_type& db_ UNODB_DETAIL_LIFETIMEBOUND) noexcept
+        UNODB_DETAIL_NO_STATS_CONST db_type& db_
+        UNODB_DETAIL_LIFETIMEBOUND) noexcept
         : node_ptr{node_ptr_}, db{db_} {}
 
     /// Delete the node based on its type.
@@ -1090,7 +1097,7 @@ struct basic_art_policy final {
     const NodePtr node_ptr;
 
     /// Database reference for memory tracking.
-    db_type& db;
+    UNODB_DETAIL_NO_STATS_CONST db_type& db;
   };
 
  public:
@@ -1101,7 +1108,8 @@ struct basic_art_policy final {
   /// chain has been safely transferred to its new owner.
   struct subtree_guard final {
     constexpr subtree_guard(NodePtr node,
-                            db_type& db UNODB_DETAIL_LIFETIMEBOUND) noexcept
+                            UNODB_DETAIL_NO_STATS_CONST db_type& db
+                            UNODB_DETAIL_LIFETIMEBOUND) noexcept
         : node_{node}, db_{db} {}
 
     ~subtree_guard() noexcept {
@@ -1117,7 +1125,7 @@ struct basic_art_policy final {
 
    private:
     NodePtr node_;
-    db_type& db_;
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_;
   };
 
   /// \name Tree operations
@@ -1127,7 +1135,8 @@ struct basic_art_policy final {
   ///
   /// \param node Root of subtree to delete
   /// \param db_instance Database instance
-  static void delete_subtree(NodePtr node, db_type& db_instance) noexcept {
+  static void delete_subtree(
+      NodePtr node, UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     delete_db_node_ptr_at_scope_exit delete_on_scope_exit{node, db_instance};
 
     switch (node.type()) {
@@ -2165,8 +2174,8 @@ class [[nodiscard]] basic_inode : public basic_inode_impl<ArtPolicy> {
   /// \param args Constructor arguments
   /// \return Unique pointer to new node
   template <typename... Args>
-  [[nodiscard]] static constexpr auto create(db_type& db_instance,
-                                             Args&&... args) {
+  [[nodiscard]] static constexpr auto create(
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance, Args&&... args) {
     return ArtPolicy::template make_db_inode_unique_ptr<Derived>(
         db_instance, std::forward<Args>(args)...);
   }
@@ -2332,7 +2341,8 @@ class basic_inode_4
   /// \param k1 First key for prefix computation
   /// \param shifted_k2 Second key shifted to current depth
   /// \param depth Current tree depth
-  constexpr basic_inode_4(db_type&, unodb::key_view k1, art_key_type shifted_k2,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          unodb::key_view k1, art_key_type shifted_k2,
                           // cppcheck-suppress passedByValue
                           tree_depth_type depth) noexcept
       : parent_class{k1, shifted_k2, depth} {}
@@ -2344,7 +2354,8 @@ class basic_inode_4
   /// \param depth Current tree depth
   /// \param child1 First child leaf
   /// \param child2 Second child leaf (ownership transferred)
-  constexpr basic_inode_4(db_type&, key_view k1, art_key_type shifted_k2,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&, key_view k1,
+                          art_key_type shifted_k2,
                           // cppcheck-suppress passedByValue
                           tree_depth_type depth, leaf_type* child1,
                           db_leaf_unique_ptr&& child2) noexcept
@@ -2357,7 +2368,8 @@ class basic_inode_4
   /// \param source_node Node to copy prefix from
   /// \param len Length of prefix to copy
   // cppcheck-suppress passedByValue
-  constexpr basic_inode_4(db_type&, node_ptr source_node, unsigned len) noexcept
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          node_ptr source_node, unsigned len) noexcept
       : parent_class{len, *source_node.template ptr<inode_type*>()} {}
 
   /// Construct by splitting prefix from source node.
@@ -2366,7 +2378,8 @@ class basic_inode_4
   /// \param len Length of prefix to copy
   /// \param depth Current tree depth
   /// \param child1 Child leaf to add (ownership transferred)
-  constexpr basic_inode_4(db_type&, node_ptr source_node, unsigned len,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          node_ptr source_node, unsigned len,
                           // cppcheck-suppress passedByValue
                           [[maybe_unused]] tree_depth_type depth,
                           db_leaf_unique_ptr&& child1) noexcept
@@ -2375,7 +2388,8 @@ class basic_inode_4
   }
 
   /// Construct by splitting prefix, with explicit dispatch byte for child1.
-  constexpr basic_inode_4(db_type&, node_ptr source_node, unsigned len,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          node_ptr source_node, unsigned len,
                           // cppcheck-suppress passedByValue
                           tree_depth_type depth, db_leaf_unique_ptr&& child1,
                           std::byte child1_key_byte) noexcept
@@ -2384,7 +2398,8 @@ class basic_inode_4
   }
 
   /// Construct by splitting prefix, value-in-slot child with dispatch byte.
-  constexpr basic_inode_4(db_type&, node_ptr source_node, unsigned len,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          node_ptr source_node, unsigned len,
                           // cppcheck-suppress passedByValue
                           tree_depth_type depth, node_ptr child1_value,
                           std::byte child1_key_byte) noexcept
@@ -2393,7 +2408,8 @@ class basic_inode_4
   }
 
   /// Construct by shrinking from basic_inode_16 \a source_node.
-  constexpr basic_inode_4(db_type&, const inode16_type& source_node) noexcept
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          const inode16_type& source_node) noexcept
       : parent_class{source_node} {}
 
   /// Construct by shrinking from basic_inode_16 with deletion.
@@ -2401,7 +2417,8 @@ class basic_inode_4
   /// \param db_instance Database instance
   /// \param source_node N16 node to shrink from
   /// \param child_to_delete Index of child to delete
-  constexpr basic_inode_4(db_type& db_instance, inode16_type& source_node,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                          inode16_type& source_node,
                           std::uint8_t child_to_delete)
       : parent_class{source_node} {
     init(db_instance, source_node, child_to_delete);
@@ -2419,7 +2436,8 @@ class basic_inode_4
   /// \param depth Current tree depth
   /// \param key_byte Dispatch byte for the single child
   /// \param child The single child node
-  constexpr basic_inode_4(db_type&, key_view k1, art_key_type remaining_key,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&, key_view k1,
+                          art_key_type remaining_key,
                           // cppcheck-suppress passedByValue
                           [[maybe_unused]] tree_depth_type depth,
                           std::byte key_byte, node_ptr child) noexcept
@@ -2450,7 +2468,7 @@ class basic_inode_4
 
   /// Construct single-child chain node with explicit prefix length.
   /// Used by build_chain when remaining key <= key_prefix_capacity.
-  constexpr basic_inode_4(db_type&, key_view k1,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&, key_view k1,
                           // cppcheck-suppress passedByValue
                           [[maybe_unused]] tree_depth_type depth,
                           detail::key_prefix_size prefix_len,
@@ -2461,7 +2479,8 @@ class basic_inode_4
   }
 
   /// Construct for bulk load with explicit children count and prefix.
-  constexpr basic_inode_4(db_type&, unsigned n_children,
+  constexpr basic_inode_4(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                          unsigned n_children,
                           detail::key_prefix_size prefix_len, key_view k1,
                           // cppcheck-suppress passedByValue
                           tree_depth_type depth,
@@ -2516,8 +2535,8 @@ class basic_inode_4
   // scope exit while db_instance (passed by caller) remains valid.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
-  constexpr void init(db_type& db_instance, inode16_type& source_node,
-                      std::uint8_t child_to_delete) {
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                      inode16_type& source_node, std::uint8_t child_to_delete) {
     const auto reclaim_source_node{
         ArtPolicy::template make_db_inode_reclaimable_ptr<inode16_type>(
             &source_node, db_instance)};
@@ -2692,8 +2711,9 @@ class basic_inode_4
   // scope exit while db_instance (passed by caller) remains valid.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-  constexpr void remove(std::uint8_t child_index,
-                        db_type& db_instance) noexcept {
+  constexpr void remove(
+      std::uint8_t child_index,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(child_index < this->children_count.load());
 
     if constexpr (!ArtPolicy::can_eliminate_leaf) {
@@ -2748,8 +2768,9 @@ class basic_inode_4
   ///
   /// \return Pointer to the remaining child
   UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")
-  [[nodiscard]] constexpr auto leave_last_child(std::uint8_t child_to_delete,
-                                                db_type& db_instance) noexcept {
+  [[nodiscard]] constexpr auto leave_last_child(
+      std::uint8_t child_to_delete,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(this->is_min_size());
     // NOLINTNEXTLINE(readability-simplify-boolean-expr)
     UNODB_DETAIL_ASSERT(child_to_delete == 0 || child_to_delete == 1);
@@ -2959,7 +2980,8 @@ class basic_inode_4
   /// Recursively delete all children.
   ///
   /// \param db_instance Database instance
-  constexpr void delete_subtree(db_type& db_instance) noexcept {
+  constexpr void delete_subtree(
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     const std::uint8_t children_count_ = this->children_count.load();
     for (std::uint8_t i = 0; i < children_count_; ++i) {
       if constexpr (ArtPolicy::can_eliminate_leaf) {
@@ -3139,8 +3161,9 @@ class basic_inode_4
   /// \param value_mask Precomputed VIS bitmask
   UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")
   [[nodiscard]] static auto create_bulk(
-      db_type& db_instance, detail::key_prefix_size prefix_len,
-      unodb::key_view prefix_key, tree_depth_type depth,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+      detail::key_prefix_size prefix_len, unodb::key_view prefix_key,
+      tree_depth_type depth,
       std::span<const detail::bulk_child<node_ptr>> children_span,
       std::uint8_t value_mask = 0) {
     const auto n = static_cast<unsigned>(children_span.size());
@@ -3207,11 +3230,13 @@ class basic_inode_16
   using typename parent_class::tree_depth_type;
 
   /// Construct by growing from \a source_node of basic_inode_4 type.
-  constexpr basic_inode_16(db_type&, const inode4_type& source_node) noexcept
+  constexpr basic_inode_16(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                           const inode4_type& source_node) noexcept
       : parent_class{source_node} {}
 
   /// Construct by shrinking from \a source_node of basic_inode_48 type.
-  constexpr basic_inode_16(db_type&, const inode48_type& source_node) noexcept
+  constexpr basic_inode_16(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                           const inode48_type& source_node) noexcept
       : parent_class{source_node} {}
 
   /// Construct by growing from basic_inode_4 and adding a child.
@@ -3220,8 +3245,8 @@ class basic_inode_16
   /// \param source_node N4 node to grow from
   /// \param child New child to add
   /// \param depth Current tree depth
-  constexpr basic_inode_16(db_type& db_instance, inode4_type& source_node,
-                           db_leaf_unique_ptr&& child,
+  constexpr basic_inode_16(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                           inode4_type& source_node, db_leaf_unique_ptr&& child,
                            [[maybe_unused]] tree_depth_type depth,
                            std::byte key_byte) noexcept
       : parent_class{source_node} {
@@ -3229,8 +3254,8 @@ class basic_inode_16
   }
 
   /// Construct by growing from basic_inode_4 (value-in-slot variant).
-  constexpr basic_inode_16(db_type& db_instance, inode4_type& source_node,
-                           node_ptr packed_value,
+  constexpr basic_inode_16(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                           inode4_type& source_node, node_ptr packed_value,
                            [[maybe_unused]] tree_depth_type depth,
                            std::byte key_byte) noexcept
       : parent_class{source_node} {
@@ -3242,14 +3267,16 @@ class basic_inode_16
   /// \param db_instance Database instance
   /// \param source_node basic_inode_48 node to shrink from
   /// \param child_to_delete Index of child to remove
-  constexpr basic_inode_16(db_type& db_instance, inode48_type& source_node,
+  constexpr basic_inode_16(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                           inode48_type& source_node,
                            std::uint8_t child_to_delete) noexcept
       : parent_class{source_node} {
     init(db_instance, source_node, child_to_delete);
   }
 
   /// Construct for bulk load with explicit children count and prefix.
-  constexpr basic_inode_16(db_type&, unsigned n_children,
+  constexpr basic_inode_16(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                           unsigned n_children,
                            detail::key_prefix_size prefix_len, key_view k1,
                            // cppcheck-suppress passedByValue
                            tree_depth_type depth,
@@ -3262,8 +3289,8 @@ class basic_inode_16
   /// \param source_node N4 node to grow from
   /// \param child New child to add
   /// \param depth Current tree depth
-  constexpr void init(db_type& db_instance, inode4_type& source_node,
-                      db_leaf_unique_ptr child,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                      inode4_type& source_node, db_leaf_unique_ptr child,
                       [[maybe_unused]] tree_depth_type depth,
                       std::byte key_byte) noexcept {
     // This overload is only for trees with actual leaves.  When
@@ -3277,16 +3304,17 @@ class basic_inode_16
   }
 
   /// Initialize by growing from basic_inode_4 (value-in-slot variant).
-  constexpr void init(db_type& db_instance, inode4_type& source_node,
-                      node_ptr packed_value,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                      inode4_type& source_node, node_ptr packed_value,
                       [[maybe_unused]] tree_depth_type depth,
                       std::byte key_byte) noexcept {
     init_grow(db_instance, source_node, packed_value, key_byte);
   }
 
   /// Common grow logic: insert child_val at sorted position.
-  constexpr void init_grow(db_type& db_instance, inode4_type& source_node,
-                           node_ptr child_val, std::byte key_byte) noexcept {
+  constexpr void init_grow(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                           inode4_type& source_node, node_ptr child_val,
+                           std::byte key_byte) noexcept {
     const auto reclaim_source_node{
         ArtPolicy::template make_db_inode_reclaimable_ptr<inode4_type>(
             &source_node, db_instance)};
@@ -3342,7 +3370,8 @@ class basic_inode_16
   /// \param db_instance Database instance
   /// \param source_node basic_inode_48 node to shrink from
   /// \param child_to_delete Index of child to remove
-  constexpr void init(db_type& db_instance, inode48_type& source_node,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                      inode48_type& source_node,
                       std::uint8_t child_to_delete) noexcept {
     const auto reclaim_source_node{
         ArtPolicy::template make_db_inode_reclaimable_ptr<inode48_type>(
@@ -3470,8 +3499,9 @@ class basic_inode_16
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
   // scope exit while db_instance (passed by caller) remains valid.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-  constexpr void remove(std::uint8_t child_index,
-                        db_type& db_instance) noexcept {
+  constexpr void remove(
+      std::uint8_t child_index,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(child_index < this->children_count.load());
 
     if constexpr (!ArtPolicy::can_eliminate_leaf) {
@@ -3665,7 +3695,8 @@ class basic_inode_16
   /// Recursively delete all children.
   ///
   /// \param db_instance Database instance
-  constexpr void delete_subtree(db_type& db_instance) noexcept {
+  constexpr void delete_subtree(
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     const uint8_t children_count_ = this->children_count.load();
     for (std::uint8_t i = 0; i < children_count_; ++i) {
       if constexpr (ArtPolicy::can_eliminate_leaf) {
@@ -3800,8 +3831,9 @@ class basic_inode_16
   /// \pre children sorted by key_byte
   UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")
   [[nodiscard]] static auto create_bulk(
-      db_type& db_instance, detail::key_prefix_size prefix_len,
-      unodb::key_view prefix_key, tree_depth_type depth,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+      detail::key_prefix_size prefix_len, unodb::key_view prefix_key,
+      tree_depth_type depth,
       std::span<const detail::bulk_child<node_ptr>> children_span,
       std::uint16_t value_mask = 0) {
     const auto n = static_cast<unsigned>(children_span.size());
@@ -3866,11 +3898,13 @@ class basic_inode_48
   using typename parent_class::tree_depth_type;
 
   /// Construct by growing from \a source_node of basic_inode_16 type.
-  constexpr basic_inode_48(db_type&, const inode16_type& source_node) noexcept
+  constexpr basic_inode_48(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                           const inode16_type& source_node) noexcept
       : parent_class{source_node} {}
 
   /// Construct by shrinking from \a source_node of basic_inode_256 type.
-  constexpr basic_inode_48(db_type&, const inode256_type& source_node) noexcept
+  constexpr basic_inode_48(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                           const inode256_type& source_node) noexcept
       : parent_class{source_node} {}
 
   /// Construct by growing from basic_inode_16 and adding a child.
@@ -3879,7 +3913,7 @@ class basic_inode_48
   /// \param source_node N16 node to grow from
   /// \param child New child to add
   /// \param depth Current tree depth
-  constexpr basic_inode_48(db_type& db_instance,
+  constexpr basic_inode_48(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                            inode16_type& __restrict source_node,
                            db_leaf_unique_ptr&& child,
                            [[maybe_unused]] tree_depth_type depth,
@@ -3889,7 +3923,7 @@ class basic_inode_48
   }
 
   /// Construct by growing from basic_inode_16 (value-in-slot variant).
-  constexpr basic_inode_48(db_type& db_instance,
+  constexpr basic_inode_48(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                            inode16_type& __restrict source_node,
                            node_ptr packed_value,
                            [[maybe_unused]] tree_depth_type depth,
@@ -3903,7 +3937,7 @@ class basic_inode_48
   /// \param db_instance Database instance
   /// \param source_node N256 node to shrink from
   /// \param child_to_delete Key byte of child to remove
-  constexpr basic_inode_48(db_type& db_instance,
+  constexpr basic_inode_48(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                            inode256_type& __restrict source_node,
                            std::uint8_t child_to_delete) noexcept
       : parent_class{source_node} {
@@ -3911,7 +3945,8 @@ class basic_inode_48
   }
 
   /// Construct for bulk load with explicit children count and prefix.
-  constexpr basic_inode_48(db_type&, unsigned n_children,
+  constexpr basic_inode_48(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                           unsigned n_children,
                            detail::key_prefix_size prefix_len, key_view k1,
                            // cppcheck-suppress passedByValue
                            tree_depth_type depth,
@@ -3924,7 +3959,7 @@ class basic_inode_48
   /// \param source_node N16 node to grow from
   /// \param child New child to add
   /// \param depth Current tree depth
-  constexpr void init(db_type& db_instance,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                       inode16_type& __restrict source_node,
                       db_leaf_unique_ptr child,
                       [[maybe_unused]] tree_depth_type depth,
@@ -3936,7 +3971,7 @@ class basic_inode_48
   }
 
   /// Initialize by growing from basic_inode_16 (value-in-slot variant).
-  constexpr void init(db_type& db_instance,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                       inode16_type& __restrict source_node,
                       node_ptr packed_value,
                       [[maybe_unused]] tree_depth_type depth,
@@ -3945,7 +3980,7 @@ class basic_inode_48
   }
 
   /// Common grow logic from I16.
-  constexpr void init_grow(db_type& db_instance,
+  constexpr void init_grow(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                            inode16_type& __restrict source_node,
                            node_ptr child_val, std::byte key_byte) noexcept {
     const auto reclaim_source_node{
@@ -3989,7 +4024,7 @@ class basic_inode_48
   // MSVC C26815 false positive: reclaim objects intentionally destroyed at
   // scope exit while db_instance (passed by caller) remains valid.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-  constexpr void init(db_type& db_instance,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                       inode256_type& __restrict source_node,
                       std::uint8_t child_to_delete) noexcept {
     const auto reclaim_source_node{
@@ -4191,8 +4226,9 @@ class basic_inode_48
   ///
   /// \param child_index Key byte of child to remove
   /// \param db_instance Database for memory reclamation
-  constexpr void remove(std::uint8_t child_index,
-                        db_type& db_instance) noexcept {
+  constexpr void remove(
+      std::uint8_t child_index,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     remove_child_pointer(child_index, db_instance);
     remove_child_entry(child_index);
   }
@@ -4373,7 +4409,8 @@ class basic_inode_48
   /// Recursively delete all children.
   ///
   /// \param db_instance Database instance
-  constexpr void delete_subtree(db_type& db_instance) noexcept {
+  constexpr void delete_subtree(
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
 #ifndef NDEBUG
     const auto children_count_ = this->children_count.load();
     unsigned actual_children_count = 0;
@@ -4448,8 +4485,9 @@ class basic_inode_48
   ///
   /// \param child_index Key byte of child to remove
   /// \param db_instance Database for memory reclamation
-  constexpr void remove_child_pointer(std::uint8_t child_index,
-                                      db_type& db_instance) noexcept {
+  constexpr void remove_child_pointer(
+      std::uint8_t child_index,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     direct_remove_child_pointer(child_indexes[child_index], db_instance);
   }
 
@@ -4461,8 +4499,9 @@ class basic_inode_48
   // MSVC C26815 false positive: reclaim object intentionally destroyed at
   // scope exit while db_instance (passed by caller) remains valid.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
-  constexpr void direct_remove_child_pointer(std::uint8_t children_i,
-                                             db_type& db_instance) noexcept {
+  constexpr void direct_remove_child_pointer(
+      std::uint8_t children_i,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(children_i != empty_child);
 
     [[maybe_unused]] const auto r{ArtPolicy::reclaim_if_leaf(
@@ -4613,8 +4652,9 @@ class basic_inode_48
   /// \pre children sorted by key_byte
   UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")
   [[nodiscard]] static auto create_bulk(
-      db_type& db_instance, detail::key_prefix_size prefix_len,
-      unodb::key_view prefix_key, tree_depth_type depth,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+      detail::key_prefix_size prefix_len, unodb::key_view prefix_key,
+      tree_depth_type depth,
       std::span<const detail::bulk_child<node_ptr>> children_span,
       const std::array<std::uint8_t, 6>& value_mask = {}) {
     const auto n = static_cast<unsigned>(children_span.size());
@@ -4685,7 +4725,8 @@ class basic_inode_256
   using typename parent_class::tree_depth_type;
 
   /// Construct by growing from \a source_node of basic_inode_48 type.
-  constexpr basic_inode_256(db_type&, const inode48_type& source_node) noexcept
+  constexpr basic_inode_256(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                            const inode48_type& source_node) noexcept
       : parent_class{source_node} {}
 
   /// Construct by growing from basic_inode_48 and adding a child.
@@ -4694,7 +4735,8 @@ class basic_inode_256
   /// \param source_node N48 node to grow from
   /// \param child New child to add
   /// \param depth Current tree depth
-  constexpr basic_inode_256(db_type& db_instance, inode48_type& source_node,
+  constexpr basic_inode_256(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                            inode48_type& source_node,
                             db_leaf_unique_ptr&& child,
                             [[maybe_unused]] tree_depth_type depth,
                             std::byte key_byte) noexcept
@@ -4703,8 +4745,8 @@ class basic_inode_256
   }
 
   /// Construct by growing from basic_inode_48 (value-in-slot variant).
-  constexpr basic_inode_256(db_type& db_instance, inode48_type& source_node,
-                            node_ptr packed_value,
+  constexpr basic_inode_256(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+                            inode48_type& source_node, node_ptr packed_value,
                             [[maybe_unused]] tree_depth_type depth,
                             std::byte key_byte) noexcept
       : parent_class{source_node} {
@@ -4712,7 +4754,8 @@ class basic_inode_256
   }
 
   /// Construct for bulk load with explicit children count and prefix.
-  constexpr basic_inode_256(db_type&, unsigned n_children,
+  constexpr basic_inode_256(UNODB_DETAIL_NO_STATS_CONST db_type&,
+                            unsigned n_children,
                             detail::key_prefix_size prefix_len, key_view k1,
                             // cppcheck-suppress passedByValue
                             tree_depth_type depth,
@@ -4725,7 +4768,7 @@ class basic_inode_256
   /// \param source_node N48 node to grow from
   /// \param child New child to add
   /// \param depth Current tree depth
-  constexpr void init(db_type& db_instance,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                       inode48_type& __restrict source_node,
                       db_leaf_unique_ptr child,
                       [[maybe_unused]] tree_depth_type depth,
@@ -4737,7 +4780,7 @@ class basic_inode_256
   }
 
   /// Initialize by growing from basic_inode_48 (value-in-slot variant).
-  constexpr void init(db_type& db_instance,
+  constexpr void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                       inode48_type& __restrict source_node,
                       node_ptr packed_value,
                       [[maybe_unused]] tree_depth_type depth,
@@ -4746,7 +4789,7 @@ class basic_inode_256
   }
 
   /// Common grow logic from I48.
-  constexpr void init_grow(db_type& db_instance,
+  constexpr void init_grow(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
                            inode48_type& __restrict source_node,
                            node_ptr child_val, std::byte key_byte) noexcept {
     const auto reclaim_source_node{
@@ -4829,8 +4872,9 @@ class basic_inode_256
   // scope exit while db_instance (passed by caller) remains valid.
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26460)
-  constexpr void remove(std::uint8_t child_index,
-                        db_type& db_instance) noexcept {
+  constexpr void remove(
+      std::uint8_t child_index,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     if constexpr (!ArtPolicy::can_eliminate_leaf) {
       const auto r{ArtPolicy::reclaim_leaf_on_scope_exit(
           children[child_index].load().template ptr<leaf_type*>(),
@@ -5034,7 +5078,8 @@ class basic_inode_256
   /// Recursively delete all children.
   ///
   /// \param db_instance Database instance
-  constexpr void delete_subtree(db_type& db_instance) noexcept {
+  constexpr void delete_subtree(
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     if constexpr (ArtPolicy::can_eliminate_leaf) {
       for_each_child([this, &db_instance](unsigned i, node_ptr child) noexcept {
         if (this->is_value_in_slot(static_cast<std::uint8_t>(i))) return;
@@ -5100,8 +5145,9 @@ class basic_inode_256
   /// \pre children sorted by key_byte
   UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")
   [[nodiscard]] static auto create_bulk(
-      db_type& db_instance, detail::key_prefix_size prefix_len,
-      unodb::key_view prefix_key, tree_depth_type depth,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+      detail::key_prefix_size prefix_len, unodb::key_view prefix_key,
+      tree_depth_type depth,
       std::span<const detail::bulk_child<node_ptr>> children_span,
       const std::array<std::uint8_t, 32>& value_mask = {}) {
     const auto n = static_cast<unsigned>(children_span.size());
@@ -5134,8 +5180,8 @@ UNODB_DETAIL_DISABLE_MSVC_WARNING(4459)
 
 template <class ArtPolicy>
 [[nodiscard]] typename ArtPolicy::node_ptr bulk_build_chain(
-    typename ArtPolicy::db_type& self, typename ArtPolicy::art_key_type k,
-    typename ArtPolicy::node_ptr child,
+    UNODB_DETAIL_NO_STATS_CONST typename ArtPolicy::db_type& self,
+    typename ArtPolicy::art_key_type k, typename ArtPolicy::node_ptr child,
     tree_depth<typename ArtPolicy::art_key_type> start_depth) {
   using node_ptr = typename ArtPolicy::node_ptr;
   using inode_4 = typename ArtPolicy::inode4_type;

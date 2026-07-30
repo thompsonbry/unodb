@@ -139,6 +139,10 @@
 /// Marks a declaration as intentionally unused in release builds, but used in
 /// debug ones. Suppresses a compiler warning.
 
+/// \def UNODB_DETAIL_NO_STATS_CONST
+/// Expands to `const` when the statistics counters are compiled out, empty
+/// otherwise.
+
 /// \name CMake macros
 /// Macros set by CMake.
 /// \{
@@ -394,8 +398,8 @@
 
 /// \}
 
-/// \name Debug or release build macros
-/// Definitions conditional on the build type
+/// \name Build configuration macros
+/// Definitions conditional on the build configuration
 /// \{
 
 #ifdef NDEBUG
@@ -408,6 +412,12 @@
 #define UNODB_DETAIL_RELEASE_CONST
 #define UNODB_DETAIL_RELEASE_EXPLICIT
 #define UNODB_DETAIL_USED_IN_DEBUG
+#endif
+
+#ifdef UNODB_DETAIL_WITH_STATS
+#define UNODB_DETAIL_NO_STATS_CONST
+#else
+#define UNODB_DETAIL_NO_STATS_CONST const
 #endif
 
 /// \}

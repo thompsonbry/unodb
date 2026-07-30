@@ -1071,8 +1071,8 @@ class olc_db final {
 
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  friend auto detail::make_db_leaf_ptr<Key, Value, olc_db>(art_key_type,
-                                                           value_type, olc_db&);
+  friend auto detail::make_db_leaf_ptr<Key, Value, olc_db>(
+      art_key_type, value_type, UNODB_DETAIL_NO_STATS_CONST olc_db&);
 
   /// detail::bulk_load_impl
   template <typename Db2, typename Fork2, typename It2>
@@ -1085,8 +1085,8 @@ class olc_db final {
   /// detail::bulk_build_chain
   template <class ArtPolicy2>
   friend typename ArtPolicy2::node_ptr detail::bulk_build_chain(
-      typename ArtPolicy2::db_type&, typename ArtPolicy2::art_key_type,
-      typename ArtPolicy2::node_ptr,
+      UNODB_DETAIL_NO_STATS_CONST typename ArtPolicy2::db_type&,
+      typename ArtPolicy2::art_key_type, typename ArtPolicy2::node_ptr,
       detail::tree_depth<typename ArtPolicy2::art_key_type>);
 
   template <class>
@@ -1152,7 +1152,7 @@ class db_leaf_qsbr_deleter {
 
   static_assert(std::is_trivially_destructible_v<leaf_type>);
 
-  constexpr explicit db_leaf_qsbr_deleter(Db& db_
+  constexpr explicit db_leaf_qsbr_deleter(UNODB_DETAIL_NO_STATS_CONST Db& db_
                                           UNODB_DETAIL_LIFETIMEBOUND) noexcept
       : db_instance{db_} {}
 
@@ -1176,7 +1176,7 @@ class db_leaf_qsbr_deleter {
 
  private:
   // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-  Db& db_instance;
+  UNODB_DETAIL_NO_STATS_CONST Db& db_instance;
 };
 
 /// Return a reference to the unodb::optimistic_lock from the node header
@@ -1296,13 +1296,15 @@ class [[nodiscard]] olc_inode_4 final : public olc_inode_4_parent<Key, Value> {
   using parent_class::parent_class;
 
   using parent_class::init;
-  void init(db_type& db_instance, inode_16_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_16_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             std::uint8_t child_to_delete,
             unodb::optimistic_lock::write_guard& child_guard);
 
   // Overload for packed value deletion (no child lock).
-  void init(db_type& db_instance, inode_16_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_16_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             std::uint8_t child_to_delete);
 
@@ -1333,14 +1335,16 @@ class [[nodiscard]] olc_inode_4 final : public olc_inode_4_parent<Key, Value> {
         *this, std::forward<Args>(args)...);
   }
 
-  void remove(std::uint8_t child_index, db_type& db_instance) noexcept {
+  void remove(std::uint8_t child_index,
+              UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(lock(*this).is_write_locked());
 
     parent_class::remove(child_index, db_instance);
   }
 
-  [[nodiscard]] auto leave_last_child(std::uint8_t child_to_delete,
-                                      db_type& db_instance) noexcept {
+  [[nodiscard]] auto leave_last_child(
+      std::uint8_t child_to_delete,
+      UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(lock(*this).is_obsoleted_by_this_thread());
     UNODB_DETAIL_ASSERT(node_ptr_lock(this->children[child_to_delete].load())
                             .is_obsoleted_by_this_thread());
@@ -1392,7 +1396,8 @@ class [[nodiscard]] olc_inode_16 final
   using parent_class::init;
   using parent_class::parent_class;
 
-  void init(db_type& db_instance, inode_4_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_4_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             olc_db_leaf_unique_ptr_type&& child, tree_depth_type depth,
             std::byte key_byte) noexcept {
@@ -1402,7 +1407,8 @@ class [[nodiscard]] olc_inode_16 final
     UNODB_DETAIL_ASSERT(!source_node_guard.active());
   }
 
-  void init(db_type& db_instance, inode_4_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_4_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             olc_node_ptr packed_value, tree_depth_type depth,
             std::byte key_byte) noexcept {
@@ -1412,12 +1418,14 @@ class [[nodiscard]] olc_inode_16 final
     UNODB_DETAIL_ASSERT(!source_node_guard.active());
   }
 
-  void init(db_type& db_instance, inode_48_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_48_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             std::uint8_t child_to_delete,
             unodb::optimistic_lock::write_guard& child_guard) noexcept;
 
-  void init(db_type& db_instance, inode_48_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_48_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             std::uint8_t child_to_delete) noexcept;
 
@@ -1433,7 +1441,8 @@ class [[nodiscard]] olc_inode_16 final
         *this, std::forward<Args>(args)...);
   }
 
-  void remove(std::uint8_t child_index, db_type& db_instance) noexcept {
+  void remove(std::uint8_t child_index,
+              UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(lock(*this).is_write_locked());
 
     parent_class::remove(child_index, db_instance);
@@ -1469,7 +1478,8 @@ static_assert(sizeof(olc_inode_16_test_type) == 160 + 32);
 
 template <typename Key, typename Value>
 void olc_inode_4<Key, Value>::init(
-    db_type& db_instance, inode_16_type& source_node,
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+    inode_16_type& source_node,
     unodb::optimistic_lock::write_guard& source_node_guard,
     std::uint8_t child_to_delete,
     unodb::optimistic_lock::write_guard& child_guard) {
@@ -1485,7 +1495,8 @@ void olc_inode_4<Key, Value>::init(
 
 template <typename Key, typename Value>
 void olc_inode_4<Key, Value>::init(
-    db_type& db_instance, inode_16_type& source_node,
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+    inode_16_type& source_node,
     unodb::optimistic_lock::write_guard& source_node_guard,
     std::uint8_t child_to_delete) {
   UNODB_DETAIL_ASSERT(source_node_guard.guards(lock(source_node)));
@@ -1513,7 +1524,8 @@ class [[nodiscard]] olc_inode_48 final
   using parent_class::parent_class;
 
   using parent_class::init;
-  void init(db_type& db_instance, inode_16_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_16_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             olc_db_leaf_unique_ptr_type&& child, tree_depth_type depth,
             std::byte key_byte) noexcept {
@@ -1523,7 +1535,8 @@ class [[nodiscard]] olc_inode_48 final
     UNODB_DETAIL_ASSERT(!source_node_guard.active());
   }
 
-  void init(db_type& db_instance, inode_16_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_16_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             olc_node_ptr packed_value, tree_depth_type depth,
             std::byte key_byte) noexcept {
@@ -1533,12 +1546,14 @@ class [[nodiscard]] olc_inode_48 final
     UNODB_DETAIL_ASSERT(!source_node_guard.active());
   }
 
-  void init(db_type& db_instance, inode_256_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_256_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             std::uint8_t child_to_delete,
             unodb::optimistic_lock::write_guard& child_guard) noexcept;
 
-  void init(db_type& db_instance, inode_256_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_256_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             std::uint8_t child_to_delete) noexcept;
 
@@ -1554,7 +1569,8 @@ class [[nodiscard]] olc_inode_48 final
         *this, std::forward<Args>(args)...);
   }
 
-  void remove(std::uint8_t child_index, db_type& db_instance) noexcept {
+  void remove(std::uint8_t child_index,
+              UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(lock(*this).is_write_locked());
 
     parent_class::remove(child_index, db_instance);
@@ -1583,7 +1599,8 @@ static_assert(sizeof(olc_inode_48_test_type) == 656 + 32);
 
 template <typename Key, typename Value>
 void olc_inode_16<Key, Value>::init(
-    db_type& db_instance, inode_48_type& source_node,
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+    inode_48_type& source_node,
     unodb::optimistic_lock::write_guard& source_node_guard,
     std::uint8_t child_to_delete,
     unodb::optimistic_lock::write_guard& child_guard) noexcept {
@@ -1599,7 +1616,8 @@ void olc_inode_16<Key, Value>::init(
 
 template <typename Key, typename Value>
 void olc_inode_16<Key, Value>::init(
-    db_type& db_instance, inode_48_type& source_node,
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+    inode_48_type& source_node,
     unodb::optimistic_lock::write_guard& source_node_guard,
     std::uint8_t child_to_delete) noexcept {
   UNODB_DETAIL_ASSERT(source_node_guard.guards(lock(source_node)));
@@ -1626,7 +1644,8 @@ class [[nodiscard]] olc_inode_256 final
   using parent_class::parent_class;
 
   using parent_class::init;
-  void init(db_type& db_instance, inode_48_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_48_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             olc_db_leaf_unique_ptr_type&& child, tree_depth_type depth,
             std::byte key_byte) noexcept {
@@ -1636,7 +1655,8 @@ class [[nodiscard]] olc_inode_256 final
     UNODB_DETAIL_ASSERT(!source_node_guard.active());
   }
 
-  void init(db_type& db_instance, inode_48_type& source_node,
+  void init(UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+            inode_48_type& source_node,
             unodb::optimistic_lock::write_guard& source_node_guard,
             olc_node_ptr packed_value, tree_depth_type depth,
             std::byte key_byte) noexcept {
@@ -1658,7 +1678,8 @@ class [[nodiscard]] olc_inode_256 final
         *this, std::forward<Args>(args)...);
   }
 
-  void remove(std::uint8_t child_index, db_type& db_instance) noexcept {
+  void remove(std::uint8_t child_index,
+              UNODB_DETAIL_NO_STATS_CONST db_type& db_instance) noexcept {
     UNODB_DETAIL_ASSERT(lock(*this).is_write_locked());
 
     parent_class::remove(child_index, db_instance);
@@ -1682,7 +1703,8 @@ static_assert(sizeof(olc_inode_256_test_type) == 2064 + 24);
 
 template <typename Key, typename Value>
 void olc_inode_48<Key, Value>::init(
-    db_type& db_instance, inode_256_type& source_node,
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+    inode_256_type& source_node,
     unodb::optimistic_lock::write_guard& source_node_guard,
     std::uint8_t child_to_delete,
     unodb::optimistic_lock::write_guard& child_guard) noexcept {
@@ -1698,7 +1720,8 @@ void olc_inode_48<Key, Value>::init(
 
 template <typename Key, typename Value>
 void olc_inode_48<Key, Value>::init(
-    db_type& db_instance, inode_256_type& source_node,
+    UNODB_DETAIL_NO_STATS_CONST db_type& db_instance,
+    inode_256_type& source_node,
     unodb::optimistic_lock::write_guard& source_node_guard,
     std::uint8_t child_to_delete) noexcept {
   UNODB_DETAIL_ASSERT(source_node_guard.guards(lock(source_node)));

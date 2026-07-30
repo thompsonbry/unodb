@@ -1064,8 +1064,8 @@ class db final {
   // Type names in the Doxygen comments below make them clickable in the output
 
   /// detail::make_db_leaf_ptr
-  friend auto detail::make_db_leaf_ptr<Key, Value, db>(art_key_type, value_type,
-                                                       db&);
+  friend auto detail::make_db_leaf_ptr<Key, Value, db>(
+      art_key_type, value_type, UNODB_DETAIL_NO_STATS_CONST db&);
 
   /// detail::bulk_load_impl
   template <typename Db2, typename Fork2, typename It2>
@@ -1078,8 +1078,8 @@ class db final {
   /// detail::bulk_build_chain
   template <class ArtPolicy2>
   friend typename ArtPolicy2::node_ptr detail::bulk_build_chain(
-      typename ArtPolicy2::db_type&, typename ArtPolicy2::art_key_type,
-      typename ArtPolicy2::node_ptr,
+      UNODB_DETAIL_NO_STATS_CONST typename ArtPolicy2::db_type&,
+      typename ArtPolicy2::art_key_type, typename ArtPolicy2::node_ptr,
       detail::tree_depth<typename ArtPolicy2::art_key_type>);
 
   /// detail::basic_db_leaf_deleter
