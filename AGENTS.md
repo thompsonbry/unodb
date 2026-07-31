@@ -12,7 +12,6 @@ At the start of every session, read:
 
 ## Git Rules
 
-- **Never amend commits** — always make new ones.
 - **Never `git add -A`** — stage specific files.
 
 ## Code Quality Rules (from CONTRIBUTING.md)
