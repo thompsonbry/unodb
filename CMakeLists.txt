@@ -625,6 +625,7 @@ if(BENCHMARKS)
     INTERFACE_INCLUDE_DIRECTORIES)
 endif()
 
+set(DO_CLANG_TIDY_TESTS "")
 if(NOT is_any_clang)
   message(STATUS "Not using clang-tidy due to non-clang compiler being used")
   set(DO_CLANG_TIDY "")
@@ -643,6 +644,20 @@ else()
     # recognize all compiler warning flags (e.g., when scan-build from LLVM 21
     # wraps the build)
     list(APPEND DO_CLANG_TIDY "--extra-arg=-Wno-unknown-warning-option")
+    execute_process(COMMAND "${CLANG_TIDY_EXE}" "--version"
+      RESULT_VARIABLE CLANG_TIDY_VERSION_RESULT
+      OUTPUT_VARIABLE CLANG_TIDY_VERSION_OUTPUT
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT CLANG_TIDY_VERSION_RESULT EQUAL 0)
+      message(FATAL_ERROR
+        "clang-tidy version check failed: ${CLANG_TIDY_VERSION_RESULT}")
+    endif()
+    set(DO_CLANG_TIDY_TESTS "${DO_CLANG_TIDY}")
+    # clang-tidy 16 hangs on some test TUs when multiple checks are enabled.
+    if(CLANG_TIDY_VERSION_OUTPUT MATCHES "LLVM version 16\\.")
+      message(STATUS "clang-tidy 16: disabling clang-tidy on test targets")
+      set(DO_CLANG_TIDY_TESTS "")
+    endif()
   endif()
 endif()
 
