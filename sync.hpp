@@ -13,6 +13,7 @@
 
 #ifndef NDEBUG
 #include <functional>
+#include <type_traits>
 #endif
 
 namespace unodb::detail {
@@ -33,13 +34,18 @@ struct sync_point {
 };
 
 /// Fire a sync point (calls hook if armed).
-inline void sync(sync_point& pt) { pt.hit(); }
+///
+/// The `std::is_constant_evaluated()` guard keeps `constexpr` callers
+/// constant-evaluable; there is nothing to fire during constant evaluation.
+constexpr void sync(sync_point& pt) noexcept {
+  if (!std::is_constant_evaluated()) pt.hit();
+}
 
 #else  // NDEBUG
 
 struct sync_point {};
 
-inline void sync(sync_point&) noexcept {}
+constexpr void sync(sync_point&) noexcept {}
 
 #endif  // NDEBUG
 

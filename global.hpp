@@ -135,6 +135,10 @@
 /// \def UNODB_DETAIL_RELEASE_EXPLICIT
 /// Expands to `explicit` in release builds, empty in debug builds
 
+/// \def UNODB_DETAIL_RELEASE_PURE
+/// Expands to `[[gnu::pure]]` in release builds, empty in debug builds. For
+/// functions whose only side effects come from debug-only instrumentation.
+
 /// \def UNODB_DETAIL_USED_IN_DEBUG
 /// Marks a declaration as intentionally unused in release builds, but used in
 /// debug ones. Suppresses a compiler warning.
@@ -406,11 +410,13 @@
 #define UNODB_DETAIL_RELEASE_CONSTEXPR constexpr
 #define UNODB_DETAIL_RELEASE_CONST const
 #define UNODB_DETAIL_RELEASE_EXPLICIT explicit
+#define UNODB_DETAIL_RELEASE_PURE [[gnu::pure]]
 #define UNODB_DETAIL_USED_IN_DEBUG UNODB_DETAIL_UNUSED
 #else
 #define UNODB_DETAIL_RELEASE_CONSTEXPR
 #define UNODB_DETAIL_RELEASE_CONST
 #define UNODB_DETAIL_RELEASE_EXPLICIT
+#define UNODB_DETAIL_RELEASE_PURE
 #define UNODB_DETAIL_USED_IN_DEBUG
 #endif
 

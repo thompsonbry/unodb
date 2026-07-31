@@ -4,13 +4,13 @@
 #include "global.hpp"
 
 // IWYU pragma: no_include <string>
-// IWYU pragma: no_include <type_traits>
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <random>
+#include <span>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -27,6 +27,10 @@
 #include "qsbr_test_utils.hpp"
 
 #ifndef NDEBUG
+#include <type_traits>
+
+#include "art_internal_impl.hpp"
+#include "node_type.hpp"
 #include "sync.hpp"
 #include "sync_point_test_utils.hpp"
 #include "thread_sync.hpp"
@@ -361,20 +365,20 @@ UNODB_TYPED_TEST(ARTConcurrencyTest,
 // creation.  Different tags diverge at byte 0 (no chain).
 // ===================================================================
 
-// Helper: encode a 9-byte chain-triggering key into a caller-owned buffer.
-// The returned key_view is valid for the lifetime of `buf`.
+/// Helper: encode a 9-byte chain-triggering key into a caller-owned buffer.
+/// The returned key_view is valid for the lifetime of \a buf.
 [[nodiscard]] inline unodb::key_view make_chain_key(
     unodb::key_encoder& enc, std::uint8_t tag, std::uint64_t v,
     std::array<std::byte, 9>& buf UNODB_DETAIL_LIFETIMEBOUND) {
   return copy_key(make_key(enc, tag, v), buf);
 }
 
-// Chain concurrency tests reuse ARTConcurrencyTest for QSBR setup and
-// parallel_test.  Thread functions access the db via verifier->get_db().
+/// Chain concurrency tests reuse ARTConcurrencyTest for QSBR setup and
+/// parallel_test.  Thread functions access the db via verifier->get_db().
 template <class Db>
 class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
  protected:
-  // Thread function: insert/remove chain keys with a fixed tag.
+  /// Thread function: insert/remove chain keys with a fixed tag.
   static void chain_insert_remove_thread(unodb::test::tree_verifier<Db>* tv,
                                          std::size_t thread_i,
                                          std::size_t ops_per_thread) {
@@ -400,7 +404,7 @@ class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
     if constexpr (unodb::test::is_olc_db<Db>) unodb::this_thread().quiescent();
   }
 
-  // Thread function: random insert/remove/get on chain keys.
+  /// Thread function: random insert/remove/get on chain keys.
   static void chain_random_ops_thread(unodb::test::tree_verifier<Db>* tv,
                                       std::size_t thread_i,
                                       std::size_t ops_per_thread) {
@@ -445,7 +449,7 @@ class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
     if constexpr (unodb::test::is_olc_db<Db>) unodb::this_thread().quiescent();
   }
 
-  // Thread function: multi-tag random ops.
+  /// Thread function: multi-tag random ops.
   static void chain_multi_tag_thread(unodb::test::tree_verifier<Db>* tv,
                                      std::size_t thread_i,
                                      std::size_t ops_per_thread) {
@@ -490,6 +494,7 @@ class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
   }
 };
 
+/// The database types the chain concurrency tests run against.
 using ChainConcurrentTypes = ::testing::Types<unodb::test::key_view_mutex_db,
                                               unodb::test::key_view_olc_db>;
 
@@ -1461,6 +1466,198 @@ UNODB_TEST(OLCNonfullChainRestart, ConcurrentRemoveDuringChainInsert) {
   UNODB_ASSERT_FALSE(db.get(k_seed2).has_value());
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+
+// Torn-read scan tests.
+//
+// An OLC reader scanning an I48's or I256's 256 key-byte slots can observe
+// every slot empty, because the occupancy set migrates from slots it has not
+// reached to slots it has already passed.  The node is never empty at any
+// instant; the composite of the scan's loads, taken at different times,
+// corresponds to no state it ever held.  Before
+// basic_inode_impl::torn_read_result, begin()/last() fell through to
+// UNODB_DETAIL_CANNOT_HAPPEN() here.
+
+/// Which scan iteration parks the reader.  The layout derived below places
+/// the concurrently filled key bytes strictly on the already-scanned side of
+/// the park slot and the seeded ones strictly on the not-yet-scanned side.
+constexpr unsigned torn_read_park_hit = 51;
+/// The slot the parked forward scan stops before: 50.
+constexpr unsigned torn_read_park_slot_fwd = torn_read_park_hit - 1;
+/// The slot the parked backward scan stops before: 205.
+constexpr unsigned torn_read_park_slot_bwd = 256 - torn_read_park_hit;
+
+/// Where the seeded children go.  One value serves every scenario.
+constexpr std::uint8_t torn_read_seed_lo = 100;
+
+/// The inode type a scenario exercises, selected by node type rather than by
+/// a bare child count at the call site.
+template <unodb::node_type ExpectedType>
+using torn_read_inode_type = std::conditional_t<
+    ExpectedType == unodb::node_type::I48,
+    unodb::detail::olc_inode_48<unodb::key_view, std::uint64_t>,
+    unodb::detail::olc_inode_256<unodb::key_view, std::uint64_t>>;
+
+/// Run one torn-read scan scenario on \a ExpectedType.
+///
+/// Seeds that node type's min_size children at key bytes
+/// [torn_read_seed_lo, torn_read_seed_lo + count), which is what makes the
+/// root that type.  Parks the scanning thread mid-scan, then has a writer
+/// fill an equally sized run of key bytes the parked reader has already
+/// passed and erase the seeded ones, which it has not yet reached.  Neither
+/// step changes the node type.
+///
+/// The resumed scan therefore finds every slot empty, check() fails, and the
+/// traversal must restart rather than abort, landing on the extreme filled
+/// key byte.  Every layout value is derived here, so a call site cannot
+/// perturb the invariants the static_asserts below pin.
+template <unodb::node_type ExpectedType, bool Forward>
+void run_torn_read_scan_test() {
+  using db_type = unodb::olc_db<unodb::key_view, std::uint64_t>;
+  using inode_type = torn_read_inode_type<ExpectedType>;
+  // Zero packs to the nullptr bit pattern in value-in-slot mode, so the I256
+  // restart scan can detect the filled slots only through the value bitmask
+  // (is_value_in_slot()).  I48 occupancy lives in child_indexes, so its
+  // scenarios are value-agnostic.
+  constexpr std::uint64_t val = 0;
+
+  // Seeding exactly min_size children makes the root ExpectedType.
+  constexpr auto count = static_cast<std::uint8_t>(inode_type::min_size);
+  // The filled run must fit strictly on the already-scanned side of the park
+  // slot, in both directions.
+  static_assert(count <= torn_read_park_slot_fwd);
+  static_assert(256U - count > torn_read_park_slot_bwd);
+  // The fill must not grow the node out of ExpectedType.
+  static_assert(2U * count <= inode_type::capacity);
+  // The seeded run must stay strictly on the not-yet-scanned side, likewise in
+  // both directions.
+  static_assert(torn_read_seed_lo >= torn_read_park_slot_fwd);
+  static_assert(torn_read_seed_lo + count - 1U <= torn_read_park_slot_bwd);
+
+  // Pack the filled run against the extreme of the already-scanned side, so
+  // the restart lands on a known key byte.
+  constexpr auto fill_lo =
+      static_cast<std::uint8_t>(Forward ? 0U : 256U - count);
+  constexpr auto expected_byte = static_cast<std::byte>(
+      Forward ? fill_lo : static_cast<std::uint8_t>(fill_lo + count - 1));
+
+  db_type db;
+  unodb::key_encoder enc;
+  std::vector<std::array<std::byte, 9>> bufs(static_cast<std::size_t>(count) *
+                                             2);
+  std::vector<unodb::key_view> seeded;
+  std::vector<unodb::key_view> filled;
+
+  for (std::uint8_t i = 0; i < count; ++i) {
+    seeded.push_back(make_chain_key(
+        enc, static_cast<std::uint8_t>(torn_read_seed_lo + i), 1, bufs[i]));
+    UNODB_ASSERT_TRUE(db.insert(seeded.back(), val));
+    filled.push_back(make_chain_key(enc, static_cast<std::uint8_t>(fill_lo + i),
+                                    1,
+                                    bufs[static_cast<std::size_t>(count) + i]));
+  }
+
+#ifdef UNODB_DETAIL_WITH_STATS
+  // Pin the node type under test.  Both types scan 256 slots and return the
+  // same sentinel, so no other assertion here would notice a mix-up that left
+  // one of them uncovered.
+  UNODB_ASSERT_EQ(1U, db.get_node_counts()[unodb::as_i<ExpectedType>]);
+#endif
+
+  // Only T1's traversal reaches the instrumented scans -- no write path calls
+  // I48/I256 begin()/last() -- so a plain counter suffices and the hook can
+  // stay armed to keep counting through the restart scan.  Declared before the
+  // guard so the guard disarms the hook before the counter it captures dies.
+  unsigned hits = 0;
+  const sync_point_guard guard{unodb::detail::sync_in_inode_scan};
+  unodb::detail::sync_in_inode_scan.arm([&hits]() {
+    // Park exactly once: later hits fall through, so the restart does not park.
+    if (++hits != torn_read_park_hit) return;
+    unodb::detail::thread_syncs[0].notify();
+    unodb::detail::thread_syncs[1].wait();
+  });
+
+  unodb::this_thread().qsbr_pause();
+
+  // T2: migrate the occupancy set past the parked reader's cursor.
+  auto t2 = unodb::qsbr_thread([&] {
+    const unodb::quiescent_state_on_scope_exit q{};
+    unodb::detail::thread_syncs[0].wait();
+    for (const auto k : filled) std::ignore = db.insert(k, val);
+    for (const auto k : seeded) std::ignore = db.remove(k);
+    unodb::detail::thread_syncs[1].notify();
+  });
+
+  // T1: the traversal that observes every slot empty and must restart.
+  bool valid = false;
+  auto observed_byte = std::byte{0};
+  auto t1 = unodb::qsbr_thread([&] {
+    const unodb::quiescent_state_on_scope_exit q{};
+    auto it = db.test_only_iterator();
+    if constexpr (Forward)
+      it.first();
+    else
+      it.last();
+    valid = it.valid();
+    if (valid) observed_byte = it.get_key().view()[0];
+  });
+
+  t1.join();
+  t2.join();
+  unodb::this_thread().qsbr_resume();
+  unodb::this_thread().quiescent();
+
+  const unodb::quiescent_state_on_scope_exit q{};
+  // 256 slots of the parked scan, which found none occupied -- that
+  // fall-through is what returns torn_read_result rather than an ordinary
+  // child -- plus the single restart scan, which finds an occupied slot on its
+  // first iteration.  Pinning the sum exactly also catches an unexpected extra
+  // restart and an early exit from the parked scan, both of which a >= bound
+  // would silently tolerate.
+  UNODB_ASSERT_EQ(256U + 1U, hits);
+  UNODB_ASSERT_TRUE(valid);
+  UNODB_ASSERT_EQ(observed_byte, expected_byte);
+  for (const auto k : filled) UNODB_ASSERT_TRUE(db.get(k).has_value());
+  for (const auto k : seeded) UNODB_ASSERT_FALSE(db.get(k).has_value());
+}
+
+/// Run the begin() (forward traversal) torn-read scenario on \a ExpectedType.
+template <unodb::node_type ExpectedType>
+void run_torn_read_begin_test() {
+  run_torn_read_scan_test<ExpectedType, true>();
+}
+
+/// Run the last() (backward traversal) torn-read scenario on \a ExpectedType.
+template <unodb::node_type ExpectedType>
+void run_torn_read_last_test() {
+  run_torn_read_scan_test<ExpectedType, false>();
+}
+
+/// TR1: root I48 (17 children, basic_inode_48's min_size) at key bytes
+/// 100-116.  Reader parks at slot 50 having passed 0-16; writer fills 0-16
+/// (34 children, under the 48 grow threshold) and erases 100-116.  The
+/// resumed scan finds nothing; first() restarts onto key byte 0.
+UNODB_TEST(OLCIteratorTornRead, I48BeginObservesAllSlotsEmpty) {
+  run_torn_read_begin_test<unodb::node_type::I48>();
+}
+
+/// TR2: mirror of TR1 for last(), which scans 255 -> 0.  Reader parks at slot
+/// 205 having passed 255-239; writer fills 239-255 and erases 100-116.
+UNODB_TEST(OLCIteratorTornRead, I48LastObservesAllSlotsEmpty) {
+  run_torn_read_last_test<unodb::node_type::I48>();
+}
+
+/// TR3: root I256 (49 children, basic_inode_256's min_size) at key bytes
+/// 100-148.  Reader parks at slot 50 having passed 0-48; writer fills 0-48
+/// (98 children) and erases 100-148.
+UNODB_TEST(OLCIteratorTornRead, I256BeginObservesAllSlotsEmpty) {
+  run_torn_read_begin_test<unodb::node_type::I256>();
+}
+
+/// TR4: mirror of TR3 for last().  Reader parks at slot 205 having passed
+/// 255-207; writer fills 207-255 and erases 100-148.
+UNODB_TEST(OLCIteratorTornRead, I256LastObservesAllSlotsEmpty) {
+  run_torn_read_last_test<unodb::node_type::I256>();
+}
 
 #endif  // NDEBUG
 

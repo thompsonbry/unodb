@@ -576,9 +576,18 @@ class olc_db final {
       return true;
     }
 
-    /// Push an entry onto the stack.
+    /// Push an entry \a e onto the stack.
+    ///
+    /// \pre \a e.node is non-null. Every caller check()s the read that produced
+    /// \a e before pushing it, and a successful check() means the producing
+    /// scan was consistent, so a null here means a missed version bump, not a
+    /// torn read.
+    ///
+    /// \sa detail::basic_inode_impl::torn_read_result for why the assert lives
+    /// here rather than at the callers
     bool try_push(const typename inode_base::iter_result& e,
                   const optimistic_lock::read_critical_section& rcs) {
+      UNODB_DETAIL_ASSERT(e.node != nullptr);
       const auto node_type = e.node.type();
       if (UNODB_DETAIL_UNLIKELY(node_type == node_type::LEAF)) {
         return try_push_leaf(e.node, rcs);
@@ -3852,7 +3861,7 @@ olc_db<Key, Value>::try_remove_fixed_width_key(art_key_type k) {
 template <typename Key, typename Value>
 typename olc_db<Key, Value>::iterator& olc_db<Key, Value>::iterator::first() {
   while (!try_first()) {
-    unodb::spin_wait_loop_body();  // LCOV_EXCL_LINE
+    unodb::spin_wait_loop_body();
   }
   return *this;
 }
@@ -3876,7 +3885,7 @@ bool olc_db<Key, Value>::iterator::try_first() {
 template <typename Key, typename Value>
 typename olc_db<Key, Value>::iterator& olc_db<Key, Value>::iterator::last() {
   while (!try_last()) {
-    unodb::spin_wait_loop_body();  // LCOV_EXCL_LINE
+    unodb::spin_wait_loop_body();
   }
   return *this;
 }
@@ -4496,8 +4505,7 @@ bool olc_db<Key, Value>::iterator::try_left_most_traversal(
     auto* const inode{node.ptr<inode_type*>()};
     const auto t =
         inode->begin(node_type);  // first chold of current internal node
-    if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))
-      return false;  // LCOV_EXCL_LINE
+    if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) return false;
     if (UNODB_DETAIL_UNLIKELY(!try_push(t, node_critical_section)))
       return false;  // LCOV_EXCL_LINE
     if constexpr (art_policy::can_eliminate_leaf) {
@@ -4552,8 +4560,7 @@ bool olc_db<Key, Value>::iterator::try_right_most_traversal(
     auto* const inode{node.ptr<inode_type*>()};
     const auto t =
         inode->last(node_type);  // last child of current internal node
-    if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check()))
-      return false;  // LCOV_EXCL_LINE
+    if (UNODB_DETAIL_UNLIKELY(!node_critical_section.check())) return false;
     if (UNODB_DETAIL_UNLIKELY(!try_push(t, node_critical_section)))
       return false;  // LCOV_EXCL_LINE
     if constexpr (art_policy::can_eliminate_leaf) {

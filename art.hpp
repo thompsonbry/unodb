@@ -661,7 +661,15 @@ class db final {
     }
 
     /// Push an entry \a e onto the stack.
+    ///
+    /// \pre \a e.node is non-null. Every inode scan puts the scanned inode
+    /// itself there, so single-threaded a null can only mean structural
+    /// corruption.
+    ///
+    /// \sa detail::basic_inode_impl::torn_read_result for why the assert lives
+    /// here rather than at the callers
     void push(const typename inode_base::iter_result& e) {
+      UNODB_DETAIL_ASSERT(e.node != nullptr);
       const auto node_type = e.node.type();
       if (UNODB_DETAIL_UNLIKELY(node_type == node_type::LEAF)) {
         push_leaf(e.node);

@@ -46,6 +46,7 @@
 #include "heap.hpp"
 #include "node_type.hpp"
 #include "portability_builtins.hpp"
+#include "sync.hpp"
 
 namespace unodb {
 
@@ -58,6 +59,18 @@ class olc_db;
 }  // namespace unodb
 
 namespace unodb::detail {
+
+/// Sync point: fires on each slot of the basic_inode_48 / basic_inode_256
+/// begin()/last() scans, before the occupancy test.
+///
+/// Lets a test park a reader mid-scan while a writer relocates the node's
+/// occupancy set past the scan cursor, which is what makes the
+/// basic_inode_impl::torn_read_result path deterministic. Unlike the sync
+/// points in olc_art.hpp, this one sits in code shared with the
+/// single-threaded unodb::db instantiation.
+UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wunique-object-duplication")
+inline sync_point sync_in_inode_scan;
+UNODB_DETAIL_RESTORE_CLANG_21_WARNINGS()
 
 /// A bitmask that tracks which child slots hold packed values rather than
 /// pointers.  When \p Enabled is false the struct is empty and all operations
@@ -1895,8 +1908,10 @@ class basic_inode_impl : public ArtPolicy::header_type {
   /// Return iterator result for first valid child.
   ///
   /// \param type Current node type
-  /// \return iter_result for first child
-  [[nodiscard, gnu::pure]] constexpr iter_result begin(
+  /// \return iter_result for first child, or torn_read_result if no valid
+  /// child was observed; act on the result only after a successful
+  /// read_critical_section::check()
+  [[nodiscard]] UNODB_DETAIL_RELEASE_PURE constexpr iter_result begin(
       node_type type) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
     switch (type) {
@@ -1919,8 +1934,11 @@ class basic_inode_impl : public ArtPolicy::header_type {
   /// Return iterator result for last valid child.
   ///
   /// \param type Current node type
-  /// \return iter_result for last child
-  [[nodiscard, gnu::pure]] constexpr iter_result last(node_type type) noexcept {
+  /// \return iter_result for last child, or torn_read_result if no valid
+  /// child was observed; act on the result only after a successful
+  /// read_critical_section::check()
+  [[nodiscard]] UNODB_DETAIL_RELEASE_PURE constexpr iter_result last(
+      node_type type) noexcept {
     UNODB_DETAIL_ASSERT(type != node_type::LEAF);
     switch (type) {
       case node_type::I4:
@@ -2116,6 +2134,55 @@ class basic_inode_impl : public ArtPolicy::header_type {
 
   /// Iterator result value at the end of iteration.
   static constexpr iter_result_opt end_result{};
+
+  /// Returned by `begin()` and `last()` when every child slot was observed
+  /// empty. A live basic_inode_48 always maps at least 17 key bytes and a live
+  /// basic_inode_256 at least 49, so this cannot happen single-threaded.
+  ///
+  /// Distinct from end_result, which marks a legitimate end of scan that
+  /// callers act on by popping the stack. This value must instead be
+  /// discarded, so the two are deliberately not the same iter_result_opt
+  /// nullopt: `!e` would conflate an ordinary end of iteration with an
+  /// observation that corresponds to no state of the tree.
+  ///
+  /// Under OLC the 256-slot scan is not atomic with respect to the node:
+  /// concurrent insert and remove change which key bytes are occupied while
+  /// the scan is in progress. An occupancy set that migrates from slots the
+  /// scan has not reached to slots it has already passed leaves every slot
+  /// observed empty even though the node was never empty. With 17 children at
+  /// key bytes 100-116, a reader scans 0..99, a writer inserts at 0..16 and
+  /// then erases 100..116, and the reader scans 100..255. The insert must
+  /// precede the erase, as dropping below 17 children would shrink the node.
+  ///
+  /// No individual load tears: each is one relaxed atomic load of a
+  /// critical_section_policy field. It is the composite of the scan's loads,
+  /// taken at different times, that corresponds to no state the node ever
+  /// held: inconsistent, not stale. "Torn read" here means such an
+  /// inconsistent optimistic read rather than a non-atomic read of a single
+  /// object.
+  ///
+  /// The fields are never acted on. Every write that produces this observation
+  /// bumps the node version, so the OLC caller's
+  /// `read_critical_section::check()` fails before the result is used. The
+  /// single-threaded db traversals take no critical section at all and cannot
+  /// observe this value. Both db::iterator::push() and
+  /// olc_db::iterator::try_push() assert the node is non-null, keeping a
+  /// tripwire on each side: structural corruption for db, a missed version
+  /// bump for olc_db. Both assert in the dispatcher rather than at the callers
+  /// so that every producer is covered, and so that the null is caught before
+  /// push_leaf() / try_push_leaf() stamps packed_leaf on it: under
+  /// ArtPolicy::can_eliminate_leaf it would then be indistinguishable from a
+  /// legitimate packed zero and unpack_value() would return 0, and otherwise
+  /// the entry would be dereferenced as a leaf.
+  ///
+  /// \sa get_child(node_type, std::uint8_t), which returns nullptr on the same
+  /// torn read
+  /// \sa sync_in_inode_scan, the sync point that makes this path testable
+  static constexpr iter_result torn_read_result{node_ptr{nullptr}, std::byte{0},
+                                                0, key_prefix_snapshot{0}};
+  // Guards the aggregate initializer above: the sentinel's first member must
+  // stay the null node that the two dispatchers assert on.
+  static_assert(torn_read_result.node == nullptr);
 
   friend class unodb::db<key_type, value_type>;
   friend class unodb::olc_db<key_type, value_type>;
@@ -4294,11 +4361,13 @@ class basic_inode_48
   ///
   /// Scans child_indexes[256] for first mapped entry (smallest key).
   ///
-  /// \return Iterator result pointing to first child
-  [[nodiscard, gnu::pure]] constexpr typename basic_inode_48::iter_result
-  begin() noexcept {
+  /// \return Iterator result pointing to first child, or torn_read_result if
+  /// no mapped entry was observed (OLC torn read)
+  [[nodiscard]] UNODB_DETAIL_RELEASE_PURE constexpr
+      typename basic_inode_48::iter_result
+      begin() noexcept {
     for (std::uint64_t i = 0; i < 256; i++) {
-      // cppcheck-suppress useStlAlgorithm
+      sync(sync_in_inode_scan);
       if (child_indexes[i] != empty_child) {
         const auto key = static_cast<std::byte>(i);
         const auto child_index = static_cast<std::uint8_t>(i);
@@ -4306,18 +4375,21 @@ class basic_inode_48
                 this->get_key_prefix().get_snapshot()};
       }
     }
-    // because we always have at least 17 keys.
-    UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+    // A live node always maps at least 17 key bytes; see torn_read_result.
+    return parent_class::torn_read_result;
   }
 
   /// Get iterator result for last child.
   ///
   /// Scans child_indexes[256] in reverse for last mapped entry (greatest key).
   ///
-  /// \return Iterator result pointing to last child
-  [[nodiscard, gnu::pure]] constexpr typename basic_inode_48::iter_result
-  last() noexcept {
+  /// \return Iterator result pointing to last child, or torn_read_result if
+  /// no mapped entry was observed (OLC torn read)
+  [[nodiscard]] UNODB_DETAIL_RELEASE_PURE constexpr
+      typename basic_inode_48::iter_result
+      last() noexcept {
     for (std::int64_t i = 255; i >= 0; i--) {
+      sync(sync_in_inode_scan);
       if (child_indexes[static_cast<std::uint8_t>(i)] != empty_child) {
         const auto key = static_cast<std::byte>(i);
         const auto child_index = static_cast<std::uint8_t>(i);
@@ -4325,8 +4397,8 @@ class basic_inode_48
                 this->get_key_prefix().get_snapshot()};
       }
     }
-    // because we always have at least 17 keys.
-    UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+    // A live node always maps at least 17 key bytes; see torn_read_result.
+    return parent_class::torn_read_result;
   }
 
   /// Get iterator result for next child after given index.
@@ -4925,10 +4997,13 @@ class basic_inode_256
   ///
   /// Scans children array for first non-null entry (smallest key).
   ///
-  /// \return Iterator result pointing to first child
-  [[nodiscard, gnu::pure]] constexpr typename basic_inode_256::iter_result
-  begin() noexcept {
+  /// \return Iterator result pointing to first child, or torn_read_result if
+  /// every child slot was observed empty (OLC torn read)
+  [[nodiscard]] UNODB_DETAIL_RELEASE_PURE constexpr
+      typename basic_inode_256::iter_result
+      begin() noexcept {
     for (std::uint64_t i = 0; i < basic_inode_256::capacity; i++) {
+      sync(sync_in_inode_scan);
       // cppcheck-suppress useStlAlgorithm
       if (children[i] != nullptr ||
           this->is_value_in_slot(static_cast<std::uint8_t>(i))) {
@@ -4938,18 +5013,21 @@ class basic_inode_256
                 this->get_key_prefix().get_snapshot()};
       }
     }
-    // because we always have at least 49 keys.
-    UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+    // A live node always has at least 49 occupied slots; see torn_read_result.
+    return parent_class::torn_read_result;
   }
 
   /// Get iterator result for last child.
   ///
   /// Scans children array in reverse for last non-null entry (greatest key).
   ///
-  /// \return Iterator result pointing to last child
-  [[nodiscard, gnu::pure]] constexpr typename basic_inode_256::iter_result
-  last() noexcept {
+  /// \return Iterator result pointing to last child, or torn_read_result if
+  /// every child slot was observed empty (OLC torn read)
+  [[nodiscard]] UNODB_DETAIL_RELEASE_PURE constexpr
+      typename basic_inode_256::iter_result
+      last() noexcept {
     for (std::int64_t i = basic_inode_256::capacity - 1; i >= 0; i--) {
+      sync(sync_in_inode_scan);
       if (children[static_cast<std::uint8_t>(i)] != nullptr ||
           this->is_value_in_slot(static_cast<std::uint8_t>(i))) {
         const auto key = static_cast<std::byte>(i);  // child_index is key byte
@@ -4958,8 +5036,8 @@ class basic_inode_256
                 this->get_key_prefix().get_snapshot()};
       }
     }
-    // because we always have at least 49 keys.
-    UNODB_DETAIL_CANNOT_HAPPEN();  // LCOV_EXCL_LINE
+    // A live node always has at least 49 occupied slots; see torn_read_result.
+    return parent_class::torn_read_result;
   }
 
   /// Get iterator result for next child after given index.
