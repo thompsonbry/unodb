@@ -67,6 +67,17 @@ using node_ptr = basic_node_ptr<node_header>;
 
 static_assert(sizeof(node_ptr) == sizeof(void*));
 
+static_assert(node_ptr{nullptr} == nullptr,
+              "the nullptr constructor and comparison must be "
+              "constant-evaluable");
+static_assert((node_ptr{nullptr} = nullptr) == nullptr,
+              "the nullptr assignment must be constant-evaluable");
+static_assert(node_ptr{nullptr}.raw_val() == 0,
+              "the null must be the all-zero tagged value that "
+              "basic_inode_48's free-slot scan compares against");
+static_assert(node_ptr{} == nullptr,
+              "value-initialization must produce the null node_ptr");
+
 struct impl_helpers;
 
 /// Type definitions bundle for all internal node types.

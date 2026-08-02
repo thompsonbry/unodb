@@ -407,6 +407,14 @@ class basic_db_inode_deleter {
 /// You have to know statically the target type, then call
 /// `node_ptr_var.ptr<target_type*>()` to get `target_type*`.
 ///
+/// A null `basic_node_ptr` is the all-zero tagged value.
+///
+/// \note The three `std::nullptr_t` members below spell that value as a literal
+/// `0` rather than as `reinterpret_cast<std::uintptr_t>(nullptr)`: a
+/// `reinterpret_cast` is not a core constant expression, so the cast would cost
+/// them their `constexpr`. The `static_assert`s at the node_ptr / olc_node_ptr
+/// alias definitions force compilers to constant-evaluate them.
+///
 /// \tparam Header Node header type
 template <class Header>
 class [[nodiscard]] basic_node_ptr {
@@ -421,13 +429,8 @@ class [[nodiscard]] basic_node_ptr {
   // cppcheck-suppress uninitMemberVar
   constexpr basic_node_ptr() noexcept = default;
 
-  UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
-
   /// Construct null pointer.
-  explicit basic_node_ptr(std::nullptr_t) noexcept
-      : tagged_ptr{reinterpret_cast<std::uintptr_t>(nullptr)} {}
-
-  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+  constexpr explicit basic_node_ptr(std::nullptr_t) noexcept : tagged_ptr{0} {}
 
   /// Construct from raw pointer and node type.
   ///
@@ -437,17 +440,13 @@ class [[nodiscard]] basic_node_ptr {
                  unodb::node_type type) noexcept
       : tagged_ptr{tag_ptr(ptr, type)} {}
 
-  UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
-
   /// Assign null pointer.
   ///
   /// \return Reference to this
-  basic_node_ptr<Header>& operator=(std::nullptr_t) noexcept {
-    tagged_ptr = reinterpret_cast<std::uintptr_t>(nullptr);
+  constexpr basic_node_ptr<Header>& operator=(std::nullptr_t) noexcept {
+    tagged_ptr = 0;
     return *this;
   }
-
-  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   /// Get node type from tag bits.
   ///
@@ -485,18 +484,19 @@ class [[nodiscard]] basic_node_ptr {
     return tagged_ptr == other.tagged_ptr;
   }
 
-  UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
-
   /// Compare with nullptr.
   ///
   /// \return True if this is a null pointer
-  [[nodiscard, gnu::pure]] bool operator==(std::nullptr_t) const noexcept {
-    return tagged_ptr == reinterpret_cast<std::uintptr_t>(nullptr);
+  [[nodiscard, gnu::pure]] constexpr bool operator==(
+      std::nullptr_t) const noexcept {
+    return tagged_ptr == 0;
   }
 
  private:
   /// Tagged pointer value with node type in low bits.
   std::uintptr_t tagged_ptr;
+
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26490)
 
   /// Create tagged pointer from raw pointer \a ptr_ and node type \a tag.
   ///
