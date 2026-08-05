@@ -1,4 +1,4 @@
-// Copyright 2021-2025 UnoDB contributors
+// Copyright 2021-2026 UnoDB contributors
 #ifndef UNODB_DETAIL_GTEST_UTILS_HPP
 #define UNODB_DETAIL_GTEST_UTILS_HPP
 
@@ -155,6 +155,16 @@
     ASSERT_THROW(statement, expected_exception);          \
     UNODB_DETAIL_RESTORE_MSVC_WARNINGS()                  \
     UNODB_DETAIL_RESTORE_MSVC_WARNINGS()                  \
+  } while (0)
+
+/// Wrapper for Google Test `ASSERT_NO_THROW` macro.
+#define UNODB_ASSERT_NO_THROW(statement)     \
+  do {                                       \
+    UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)  \
+    UNODB_DETAIL_DISABLE_MSVC_WARNING(26818) \
+    ASSERT_NO_THROW(statement);              \
+    UNODB_DETAIL_RESTORE_MSVC_WARNINGS()     \
+    UNODB_DETAIL_RESTORE_MSVC_WARNINGS()     \
   } while (0)
 
 /// Wrapper for Google Test `ASSERT_TRUE` macro.

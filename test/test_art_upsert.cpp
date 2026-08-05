@@ -8,7 +8,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <new>  // NOLINT(misc-include-cleaner)
 #include <random>
 #include <stdexcept>
 #include <tuple>
@@ -23,11 +22,11 @@
 #include "olc_art.hpp"  // NOLINT(misc-include-cleaner)
 #include "qsbr.hpp"
 #include "qsbr_test_utils.hpp"
-#include "test_heap.hpp"  // NOLINT(misc-include-cleaner)
 
 #ifndef NDEBUG
 #include "sync.hpp"
 #include "sync_point_test_utils.hpp"
+#include "test_utils.hpp"
 #include "thread_sync.hpp"
 #endif
 
@@ -1697,12 +1696,10 @@ UNODB_TYPED_TEST(UpsertOOMTest, InsertPathOom) {
   with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k0, v0)); });
 
   // Inject failure, upsert key 1 (insert path)
-  unodb::test::allocation_failure_injector::fail_on_nth_allocation(1);
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_THROW(std::ignore = db.upsert(k1, v1, keep_fn),
-                       std::bad_alloc);
-  });
-  unodb::test::allocation_failure_injector::reset();
+  UNODB_ASSERT_TRUE(with_qsbr<TypeParam>([&] {
+    return unodb::test::throws_bad_alloc(
+        1, [&] { std::ignore = db.upsert(k1, v1, keep_fn); });
+  }));
 
   // Verify key 1 absent, key 0 still present
   with_qsbr<TypeParam>(
@@ -1727,14 +1724,12 @@ UNODB_TYPED_TEST(UpsertOOMTest, EraseShrinkOom) {
   const auto k_erase = verifier.coerce_key(std::size_t{2});
 
   // Inject failure, upsert-erase key 2 (triggers shrink allocation)
-  unodb::test::allocation_failure_injector::fail_on_nth_allocation(1);
-  with_qsbr<TypeParam>([&] {
-    UNODB_ASSERT_THROW(
-        std::ignore = db.upsert(
-            k_erase, unodb::test::get_test_value<TypeParam>(2), erase_fn),
-        std::bad_alloc);
-  });
-  unodb::test::allocation_failure_injector::reset();
+  UNODB_ASSERT_TRUE(with_qsbr<TypeParam>([&] {
+    return unodb::test::throws_bad_alloc(1, [&] {
+      std::ignore = db.upsert(
+          k_erase, unodb::test::get_test_value<TypeParam>(2), erase_fn);
+    });
+  }));
 
   // Verify key 2 still present
   ASSERT_VALUE_FOR_KEY(TypeParam, db, k_erase,

@@ -1,4 +1,4 @@
-// Copyright 2022-2025 UnoDB contributors
+// Copyright 2022-2026 UnoDB contributors
 #ifndef UNODB_DETAIL_QSBR_GTEST_UTILS_HPP
 #define UNODB_DETAIL_QSBR_GTEST_UTILS_HPP
 
@@ -32,23 +32,19 @@ class QSBRTestBase : public ::testing::Test {
   }
 
   // QSBR operation wrappers
- private:
-  [[nodiscard]] static qsbr_state::type get_qsbr_state() noexcept {
-    return must_not_allocate(
-        []() noexcept { return unodb::qsbr::instance().get_state(); });
-  }
 
- protected:
   [[nodiscard]] static qsbr_thread_count_type get_qsbr_thread_count() noexcept {
     return must_not_allocate([]() noexcept {
-      return unodb::qsbr_state::get_thread_count(get_qsbr_state());
+      return unodb::qsbr_state::get_thread_count(
+          unodb::qsbr::instance().get_state());
     });
   }
 
   [[nodiscard]] static qsbr_thread_count_type
   get_qsbr_threads_in_previous_epoch() noexcept {
     return must_not_allocate([]() noexcept {
-      return unodb::qsbr_state::get_threads_in_previous_epoch(get_qsbr_state());
+      return unodb::qsbr_state::get_threads_in_previous_epoch(
+          unodb::qsbr::instance().get_state());
     });
   }
 
