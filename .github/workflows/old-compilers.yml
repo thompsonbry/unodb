@@ -19,6 +19,8 @@ permissions: {}
 jobs:
   build:
     runs-on: ubuntu-22.04
+    # Fail fast on toolchain hangs; the slowest legitimate job takes under 3h.
+    timeout-minutes: 240
 
     env:
       BUILD_TYPE: ${{matrix.BUILD_TYPE}}

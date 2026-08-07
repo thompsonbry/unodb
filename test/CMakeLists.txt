@@ -28,21 +28,21 @@ add_library(db_test_utils STATIC db_test_utils.hpp db_test_utils.cpp)
 common_target_properties(db_test_utils)
 target_link_libraries(db_test_utils
   PUBLIC unodb GTest::gtest_main GTest::gmock_main)
-set_clang_tidy_options(db_test_utils "${DO_CLANG_TIDY}")
+set_clang_tidy_options(db_test_utils "${DO_CLANG_TIDY_TESTS}")
 
 add_library(qsbr_test_utils STATIC qsbr_test_utils.hpp qsbr_test_utils.cpp
   qsbr_gtest_utils.hpp qsbr_gtest_utils.cpp)
 common_target_properties(qsbr_test_utils)
 target_link_libraries(qsbr_test_utils PUBLIC GTest::gtest_main)
 target_link_libraries(qsbr_test_utils PRIVATE unodb_qsbr)
-set_clang_tidy_options(qsbr_test_utils "${DO_CLANG_TIDY}")
+set_clang_tidy_options(qsbr_test_utils "${DO_CLANG_TIDY_TESTS}")
 
 function(ADD_TEST_TARGET TARGET)
   add_executable("${TARGET}" "${TARGET}.cpp")
   common_target_properties("${TARGET}")
   target_link_libraries("${TARGET}"
     PRIVATE unodb_qsbr unodb_test GTest::gtest_main)
-  set_clang_tidy_options("${TARGET}" "${DO_CLANG_TIDY}")
+  set_clang_tidy_options("${TARGET}" "${DO_CLANG_TIDY_TESTS}")
   add_sanitized_test(NAME "${TARGET}" COMMAND "${TARGET}")
 endfunction()
 
@@ -65,7 +65,7 @@ add_executable(test_fault_injection test_fault_injection.cpp)
 common_target_properties(test_fault_injection)
 target_link_libraries(test_fault_injection
   PRIVATE unodb_util Threads::Threads GTest::gtest_main ${Boost_LIBRARIES})
-set_clang_tidy_options(test_fault_injection "${DO_CLANG_TIDY}")
+set_clang_tidy_options(test_fault_injection "${DO_CLANG_TIDY_TESTS}")
 add_sanitized_test(NAME test_fault_injection COMMAND test_fault_injection)
 
 add_db_test_target(test_art)
