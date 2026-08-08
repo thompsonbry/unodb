@@ -1134,7 +1134,7 @@ class db_inode_qsbr_deleter
     static_assert(std::is_trivially_destructible_v<INode>);
 
     const auto& alloc = this->get_db().get_allocator();
-    alloc.defer_dealloc(inode_ptr, sizeof(INode), &default_destroy, alloc.ctx);
+    alloc.defer_dealloc(inode_ptr, sizeof(INode), alloc.dealloc, alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
     this->get_db().template decrement_inode_count<INode>();
@@ -1160,7 +1160,7 @@ class db_leaf_qsbr_deleter {
   void operator()(leaf_type* to_delete) const noexcept {
     const auto leaf_size = to_delete->get_size();
     const auto& alloc = db_instance.get_allocator();
-    alloc.defer_dealloc(to_delete, leaf_size, &default_destroy, alloc.ctx);
+    alloc.defer_dealloc(to_delete, leaf_size, alloc.dealloc, alloc.ctx);
 
 #ifdef UNODB_DETAIL_WITH_STATS
     db_instance.decrement_leaf_count(leaf_size);

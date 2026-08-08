@@ -20,8 +20,9 @@
 
 namespace unodb {
 
-/// Callback invoked when a deferred deallocation is safe to execute.
-using destroy_callback_type = void (*)(void* ptr, std::size_t size, void* ctx);
+/// Non-throwing callback invoked when deferred deallocation is safe to execute.
+using destroy_callback_type = void (*)(void* ptr, std::size_t size,
+                                       void* ctx) noexcept;
 
 /// Pluggable allocator for ART trees.
 ///
@@ -34,10 +35,14 @@ using destroy_callback_type = void (*)(void* ptr, std::size_t size, void* ctx);
 struct allocator_type {
   /// Allocate `size` bytes with the given `alignment`. May throw on failure.
   void* (*alloc)(std::size_t size, std::size_t alignment, void* ctx);
-  /// Free a previously allocated block of `size` bytes at `ptr`.
-  void (*dealloc)(void* ptr, std::size_t size, void* ctx);
+  /// Free a previously allocated block of `size` bytes at `ptr` without
+  /// throwing.
+  void (*dealloc)(void* ptr, std::size_t size, void* ctx) noexcept;
   /// Schedule deferred deallocation of `ptr` (`size` bytes). Calls
-  /// `destroy_callback` when reclamation is safe.
+  /// `destroy_callback` when reclamation is safe. `destroy_callback` is
+  /// \a dealloc, so the allocation is reclaimed through the same allocator;
+  /// it may run on another thread and after the deferring one has exited, so
+  /// \a dealloc and \a ctx must outlive all pending deferrals.
   void (*defer_dealloc)(void* ptr, std::size_t size,
                         destroy_callback_type destroy_callback, void* ctx);
   /// Opaque context forwarded to all callbacks.
@@ -56,12 +61,6 @@ inline void* default_alloc(std::size_t size, std::size_t alignment,
 inline void default_dealloc(void* ptr, std::size_t /*size*/,
                             void* /*ctx*/) noexcept {
   free_aligned(ptr);
-}
-
-/// Default destroy callback: frees via default_dealloc.
-/// Passed as the destroy_callback argument to defer_dealloc.
-inline void default_destroy(void* ptr, std::size_t size, void* ctx) noexcept {
-  default_dealloc(ptr, size, ctx);
 }
 
 /// The default allocator instance without deferred deallocation.
