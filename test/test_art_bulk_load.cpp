@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>  // NOLINT(misc-include-cleaner)
 
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "node_type.hpp"
@@ -31,6 +32,7 @@ namespace {
 #ifdef UNODB_DETAIL_WITH_STATS
 using unodb::as_i;
 using unodb::node_type;
+using unodb::test_data::decode;
 #endif
 using unodb::key_view;
 using unodb::value_view;
@@ -382,9 +384,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadLarge) {
   bool first = true;
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
   db.scan([&](auto& visitor) {
-    unodb::key_decoder dec{visitor.get_key()};
-    std::uint64_t k{};
-    dec.decode(k);
+    const auto k = decode(visitor.get_key());
     if (!first) {
       UNODB_DETAIL_DISABLE_MSVC_WARNING(6326)
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26818)
@@ -468,9 +468,7 @@ UNODB_TEST(BulkLoadStructural, BulkLoadScanOrder) {
   std::size_t count = 0;
   UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
   db.scan([&](auto& visitor) {
-    unodb::key_decoder dec{visitor.get_key()};
-    std::uint64_t k{};
-    dec.decode(k);
+    const auto k = decode(visitor.get_key());
     if (count > 0) {
       UNODB_EXPECT_GT(k, prev);
     }

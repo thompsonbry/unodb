@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "test_heap.hpp"
@@ -200,7 +201,7 @@ UNODB_TYPED_TEST(ARTOOMTest, SingleNodeTreeNonemptyValue) {
         verifier.assert_growing_inodes({0, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
       },
-      1, unodb::test::test_values[2],
+      1, unodb::test_data::test_values[2],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -217,13 +218,13 @@ UNODB_TYPED_TEST(ARTOOMTest, ExpandLeafToNode4) {
   oom_insert_test<TypeParam>(
       3,
       [](unodb::test::tree_verifier<TypeParam>& verifier) {
-        verifier.insert(0, unodb::test::test_values[1]);
+        verifier.insert(0, unodb::test_data::test_values[1]);
 #ifdef UNODB_DETAIL_WITH_STATS
         verifier.assert_node_counts({1, 0, 0, 0, 0});
         verifier.assert_growing_inodes({0, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
       },
-      1, unodb::test::test_values[2],
+      1, unodb::test_data::test_values[2],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -240,8 +241,8 @@ UNODB_TYPED_TEST(ARTOOMTest, TwoNode4) {
   oom_insert_test<TypeParam>(
       3,
       [](unodb::test::tree_verifier<TypeParam>& verifier) {
-        verifier.insert(1, unodb::test::test_values[0]);
-        verifier.insert(3, unodb::test::test_values[2]);
+        verifier.insert(1, unodb::test_data::test_values[0]);
+        verifier.insert(3, unodb::test_data::test_values[2]);
 #ifdef UNODB_DETAIL_WITH_STATS
         verifier.assert_growing_inodes({1, 0, 0, 0});
         verifier.assert_node_counts({2, 1, 0, 0, 0});
@@ -249,7 +250,7 @@ UNODB_TYPED_TEST(ARTOOMTest, TwoNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
       },
       // Insert a value that does not share full prefix with the current Node4
-      0xFF01, unodb::test::test_values[3],
+      0xFF01, unodb::test_data::test_values[3],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -267,10 +268,10 @@ UNODB_TYPED_TEST(ARTOOMTest, DbInsertNodeRecursion) {
   oom_insert_test<TypeParam>(
       3,
       [](unodb::test::tree_verifier<TypeParam>& verifier) {
-        verifier.insert(1, unodb::test::test_values[0]);
-        verifier.insert(3, unodb::test::test_values[2]);
+        verifier.insert(1, unodb::test_data::test_values[0]);
+        verifier.insert(3, unodb::test_data::test_values[2]);
         // Insert a value that does not share full prefix with the current Node4
-        verifier.insert(0xFF0001, unodb::test::test_values[3]);
+        verifier.insert(0xFF0001, unodb::test_data::test_values[3]);
 #ifdef UNODB_DETAIL_WITH_STATS
         verifier.assert_node_counts({3, 2, 0, 0, 0});
         verifier.assert_growing_inodes({2, 0, 0, 0});
@@ -279,7 +280,7 @@ UNODB_TYPED_TEST(ARTOOMTest, DbInsertNodeRecursion) {
       },
       // Then insert a value that shares full prefix with the above node and
       // will ask for a recursive insertion there
-      0xFF0101, unodb::test::test_values[1],
+      0xFF0101, unodb::test_data::test_values[1],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -302,7 +303,7 @@ UNODB_TYPED_TEST(ARTOOMTest, Node16) {
         verifier.assert_growing_inodes({1, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
       },
-      5, unodb::test::test_values[0],
+      5, unodb::test_data::test_values[0],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -327,7 +328,7 @@ UNODB_TYPED_TEST(ARTOOMTest, Node16KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
       },
       // Insert a value that does share full prefix with the current Node16
-      0x1020, unodb::test::test_values[0],
+      0x1020, unodb::test_data::test_values[0],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -351,7 +352,7 @@ UNODB_TYPED_TEST(ARTOOMTest, Node48) {
         verifier.assert_growing_inodes({1, 1, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
       },
-      16, unodb::test::test_values[0],
+      16, unodb::test_data::test_values[0],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -376,7 +377,7 @@ UNODB_TYPED_TEST(ARTOOMTest, Node48KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
       },
       // Insert a value that does share full prefix with the current Node48
-      0x100020, unodb::test::test_values[0],
+      0x100020, unodb::test_data::test_values[0],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -400,7 +401,7 @@ UNODB_TYPED_TEST(ARTOOMTest, Node256) {
         verifier.assert_growing_inodes({1, 1, 1, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
       },
-      49, unodb::test::test_values[0],
+      49, unodb::test_data::test_values[0],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -425,7 +426,7 @@ UNODB_TYPED_TEST(ARTOOMTest, Node256KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
       },
       // Insert a value that does share full prefix with the current Node48
-      0x100020, unodb::test::test_values[0],
+      0x100020, unodb::test_data::test_values[0],
       [](unodb::test::tree_verifier<TypeParam>&
 #ifdef UNODB_DETAIL_WITH_STATS
              verifier
@@ -574,12 +575,10 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainNonfull) {
   unodb::key_encoder enc2;
   unodb::key_encoder enc3;
   unodb::key_encoder enc_long;
-  const auto short1 = enc1.encode(std::uint8_t{1}).get_key_view();
-  const auto short2 = enc2.encode(std::uint8_t{2}).get_key_view();
-  const auto short3 = enc3.encode(std::uint8_t{3}).get_key_view();
-  const auto long_key = enc_long.encode(std::uint8_t{0x10})
-                            .encode(std::uint64_t{1})
-                            .get_key_view();
+  const auto short1 = unodb::test_data::make_short_key(enc1, 1);
+  const auto short2 = unodb::test_data::make_short_key(enc2, 2);
+  const auto short3 = unodb::test_data::make_short_key(enc3, 3);
+  const auto long_key = unodb::test_data::make_key(enc_long, 0x10, 1);
 
   oom_test<TypeParam>(
       chain_oom_limit<TypeParam>(1),
@@ -613,13 +612,11 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainGrow) {
   unodb::key_encoder enc3;
   unodb::key_encoder enc4;
   unodb::key_encoder enc_long;
-  const auto short1 = enc1.encode(std::uint8_t{1}).get_key_view();
-  const auto short2 = enc2.encode(std::uint8_t{2}).get_key_view();
-  const auto short3 = enc3.encode(std::uint8_t{3}).get_key_view();
-  const auto short4 = enc4.encode(std::uint8_t{4}).get_key_view();
-  const auto long_key = enc_long.encode(std::uint8_t{0x10})
-                            .encode(std::uint64_t{1})
-                            .get_key_view();
+  const auto short1 = unodb::test_data::make_short_key(enc1, 1);
+  const auto short2 = unodb::test_data::make_short_key(enc2, 2);
+  const auto short3 = unodb::test_data::make_short_key(enc3, 3);
+  const auto short4 = unodb::test_data::make_short_key(enc4, 4);
+  const auto long_key = unodb::test_data::make_key(enc_long, 0x10, 1);
 
   oom_test<TypeParam>(
       chain_oom_limit<TypeParam>(2),
@@ -651,13 +648,11 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainPrefixSplit) {
 
   unodb::key_encoder enc1;
   unodb::key_encoder enc2;
-  const auto key1 =
-      enc1.encode(std::uint8_t{0x42}).encode(std::uint64_t{1}).get_key_view();
+  const auto key1 = unodb::test_data::make_key(enc1, 0x42, 1);
   // uint64 value with high bit set → first encoded byte is 0x80, diverges
   // at byte 1 from key1's 0x00.
-  const auto key2 = enc2.encode(std::uint8_t{0x42})
-                        .encode(std::uint64_t{0x8000000000000001ULL})
-                        .get_key_view();
+  const auto key2 =
+      unodb::test_data::make_key(enc2, 0x42, 0x8000000000000001ULL);
 
   oom_test<TypeParam>(
       chain_oom_limit<TypeParam>(2),
@@ -685,9 +680,9 @@ UNODB_TYPED_TEST(ARTKeyViewOOMTest, BuildChainMultiNode) {
   unodb::key_encoder enc2;
   unodb::key_encoder enc3;
   unodb::key_encoder enc_long;
-  const auto short1 = enc1.encode(std::uint8_t{1}).get_key_view();
-  const auto short2 = enc2.encode(std::uint8_t{2}).get_key_view();
-  const auto short3 = enc3.encode(std::uint8_t{3}).get_key_view();
+  const auto short1 = unodb::test_data::make_short_key(enc1, 1);
+  const auto short2 = unodb::test_data::make_short_key(enc2, 2);
+  const auto short3 = unodb::test_data::make_short_key(enc3, 3);
   const auto long_key = enc_long.encode(std::uint8_t{0x10})
                             .encode(std::uint64_t{1})
                             .encode(std::uint64_t{2})
@@ -743,7 +738,7 @@ void bulk_load_oom_test(
 
 // Small tree (single leaf → one allocation)
 UNODB_TYPED_TEST(ARTOOMTest, BulkLoadSingleKey) {
-  constexpr auto val = unodb::test::test_values[0];
+  constexpr auto val = unodb::test_data::test_values[0];
   const std::vector<std::pair<std::uint64_t, unodb::value_view>> kv{{42, val}};
   bulk_load_oom_test<TypeParam>(5, kv);
 }

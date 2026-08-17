@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "olc_art.hpp"  // NOLINT(misc-include-cleaner)
@@ -448,7 +449,7 @@ UNODB_TYPED_TEST(UpsertTest, TypeCoverageKeyViewValueView) {
     unodb::test::tree_verifier<TypeParam> verifier;
     auto& db = verifier.get_db();
     const auto k = verifier.coerce_key(3);
-    const auto v = unodb::test::test_values[2];
+    const auto v = unodb::test_data::test_values[2];
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v)); });
     // keep
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, keep_fn)); });
@@ -471,7 +472,7 @@ UNODB_TYPED_TEST(UpsertTest, TypeCoverageU64ValueView) {
     unodb::test::tree_verifier<TypeParam> verifier;
     auto& db = verifier.get_db();
     const auto k = verifier.coerce_key(10);
-    const auto v = unodb::test::test_values[3];
+    const auto v = unodb::test_data::test_values[3];
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_TRUE(db.insert(k, v)); });
     // keep
     with_qsbr<TypeParam>([&] { UNODB_ASSERT_FALSE(db.upsert(k, v, keep_fn)); });
@@ -826,7 +827,7 @@ UNODB_TYPED_TEST(UpsertConcurrencyTest, OlcRestart) {
     unodb::test::detail::assert_value_eq<TypeParam>(result, v0);
   } else {
     const auto expected = static_cast<typename TypeParam::value_type>(
-        unodb::test::test_values_u64[0] + 1);
+        unodb::test_data::test_values_u64[0] + 1);
     unodb::test::detail::assert_value_eq<TypeParam>(result, expected);
   }
 }

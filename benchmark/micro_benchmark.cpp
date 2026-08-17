@@ -1,4 +1,4 @@
-// Copyright 2019-2025 UnoDB contributors
+// Copyright 2019-2026 UnoDB contributors
 
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
@@ -15,11 +15,14 @@
 
 #include "art_common.hpp"
 #include "art_internal.hpp"  // IWYU pragma: keep
+#include "art_test_data.hpp"
 #include "micro_benchmark_node_utils.hpp"
 #include "micro_benchmark_utils.hpp"
 #include "node_type.hpp"
 
 namespace {
+
+using unodb::test_data::decode;
 
 template <class Db>
 void dense_insert(benchmark::State& state) {
@@ -115,14 +118,6 @@ void dense_full_scan(benchmark::State& state) {
 #ifdef UNODB_DETAIL_WITH_STATS
   unodb::benchmark::set_size_counter(state, "size", tree_size);
 #endif  // UNODB_DETAIL_WITH_STATS
-}
-
-// decode a uint64_t key.
-[[nodiscard]] std::uint64_t decode(unodb::key_view akey) noexcept {
-  unodb::key_decoder dec{akey};
-  std::uint64_t k;
-  dec.decode(k);
-  return k;
 }
 
 // inserts keys and a constant value and then scans all entries in the

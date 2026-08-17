@@ -21,6 +21,7 @@
 
 #include "art.hpp"
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #ifndef NDEBUG
 #include "assert.hpp"
 #endif
@@ -339,15 +340,11 @@ class key_view_set {
     ks.views_.reserve(n);
     unodb::key_encoder enc;
     for (std::size_t i = 0; i < n; ++i) {
-      const auto kv = enc.reset()
-                          .encode(tag)
-                          .encode(static_cast<std::uint64_t>(i))
-                          .get_key_view();
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26459)
+      const auto kv =
+          unodb::test_data::make_key(enc, tag, static_cast<std::uint64_t>(i));
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
-      std::copy(kv.begin(), kv.end(), ks.buf_.data() + i * 9);
-      ks.views_.emplace_back(ks.buf_.data() + i * 9, 9);
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+      ks.views_.push_back(
+          unodb::test_data::copy_key(kv, {ks.buf_.data() + i * 9, 9}));
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     return ks;
@@ -366,13 +363,13 @@ class key_view_set {
     for (std::size_t i = 0; i < n; ++i) {
       const auto kv = enc.reset()
                           .encode(tag)
-                          .encode(std::uint64_t{0x4242424242424242ULL})
+                          .encode(unodb::test_data::chain_key_filler)
                           .encode(static_cast<std::uint8_t>(i & 0xFF))
                           .encode(static_cast<std::uint64_t>(i))
                           .get_key_view();
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
-      std::ranges::copy(kv, ks.buf_.data() + i * 18);
-      ks.views_.emplace_back(ks.buf_.data() + i * 18, 18);
+      ks.views_.push_back(
+          unodb::test_data::copy_key(kv, {ks.buf_.data() + i * 18, 18}));
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     return ks;
@@ -393,15 +390,11 @@ class key_view_set {
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26493)
       const auto tag = static_cast<std::uint8_t>(1 + (i % tag_count));
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
-      UNODB_DETAIL_DISABLE_MSVC_WARNING(26493)
-      const auto kv = enc.reset()
-                          .encode(tag)
-                          .encode(std::uint64_t{i / tag_count})
-                          .get_key_view();
-      UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+      const auto kv = unodb::test_data::make_key(
+          enc, tag, static_cast<std::uint64_t>(i / tag_count));
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
-      std::ranges::copy(kv, ks.buf_.data() + i * 9);
-      ks.views_.emplace_back(ks.buf_.data() + i * 9, 9);
+      ks.views_.push_back(
+          unodb::test_data::copy_key(kv, {ks.buf_.data() + i * 9, 9}));
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     return ks;
@@ -452,8 +445,8 @@ class key_view_set {
       const auto kv =
           enc.reset().encode(static_cast<std::uint64_t>(i)).get_key_view();
       UNODB_DETAIL_DISABLE_MSVC_WARNING(26481)
-      std::ranges::copy(kv, ks.buf_.data() + i * 8);
-      ks.views_.emplace_back(ks.buf_.data() + i * 8, 8);
+      ks.views_.push_back(
+          unodb::test_data::copy_key(kv, {ks.buf_.data() + i * 8, 8}));
       UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
     }
     return ks;
