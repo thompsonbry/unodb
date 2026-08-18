@@ -4866,6 +4866,7 @@ auto olc_db<Key, Value, PolicyTag>::iterator::get_val() const noexcept
 }
 
 template <typename Key, typename Value, typename PolicyTag>
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
 int olc_db<Key, Value, PolicyTag>::iterator::cmp(
     const art_key_type& akey) noexcept {
   UNODB_DETAIL_ASSERT(!stack_.empty());
@@ -4885,6 +4886,7 @@ int olc_db<Key, Value, PolicyTag>::iterator::cmp(
     return unodb::detail::compare(leaf->get_key_view(), akey.get_key_view());
   }
 }
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
 ///
 /// OLC scan implementation
