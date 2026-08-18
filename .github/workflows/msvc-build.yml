@@ -71,30 +71,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          vcpkg install boost-accumulators boost-stacktrace:x64-windows-static `
-              gtest benchmark
-
-      - name: Configure CMake (examples)
-        working-directory: examples
-        run: |
-          # Ensure that we use clang-cl from MSVC, not LLVM
-          $env:path = $env:path `
-              -split ';' -notmatch 'C:\\Program Files\\LLVM\\bin' -join ';'
-          cmake --preset "${{matrix.preset}}"
-        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
-
-      - name: Build (examples)
-        working-directory: examples
-        run: |
-          cmake --build --preset "${{matrix.preset}}" -- -k 0
-        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
-
-      - name: Run examples
-        working-directory: examples
-        run: |
-          cmake --build --preset "${{matrix.preset}}" --target examples `
-              -- -k 0
-        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
+          vcpkg install boost-accumulators boost-stacktrace:x64-windows-static
 
       - name: Populate git submodules and configure CMake
         run: |
@@ -129,3 +106,33 @@ jobs:
           $Env:P = "${{matrix.preset}}"
           cmake --build --preset "$env:P" --target quick_benchmarks
         if: "!contains(env.STATIC_ANALYSIS_PRESETS, matrix.preset)"
+
+      # Install the vcpkg test frameworks only after the main build is done:
+      # their headers shadow the 3rd_party/ submodule copies through the vcpkg
+      # toolchain include path, breaking the main build when versions diverge.
+      - name: Install dependencies (examples)
+        run: |
+          vcpkg install gtest benchmark
+        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
+
+      - name: Configure CMake (examples)
+        working-directory: examples
+        run: |
+          # Ensure that we use clang-cl from MSVC, not LLVM
+          $env:path = $env:path `
+              -split ';' -notmatch 'C:\\Program Files\\LLVM\\bin' -join ';'
+          cmake --preset "${{matrix.preset}}"
+        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
+
+      - name: Build (examples)
+        working-directory: examples
+        run: |
+          cmake --build --preset "${{matrix.preset}}" -- -k 0
+        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
+
+      - name: Run examples
+        working-directory: examples
+        run: |
+          cmake --build --preset "${{matrix.preset}}" --target examples `
+              -- -k 0
+        if: contains(env.EXAMPLE_PRESETS, matrix.preset)
