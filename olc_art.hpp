@@ -4871,6 +4871,7 @@ auto olc_db<Key, Value, PolicyTag>::iterator::get_val() const noexcept
   }
 }
 
+UNODB_DETAIL_DISABLE_GCC_WARNING("-Wsuggest-attribute=pure")
 template <typename Key, typename Value, typename PolicyTag>
 UNODB_DETAIL_DISABLE_MSVC_WARNING(26440)
 int olc_db<Key, Value, PolicyTag>::iterator::cmp(
@@ -4893,6 +4894,7 @@ int olc_db<Key, Value, PolicyTag>::iterator::cmp(
   }
 }
 UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
+UNODB_DETAIL_RESTORE_GCC_WARNINGS()
 
 ///
 /// OLC scan implementation
