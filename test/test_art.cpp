@@ -3,19 +3,17 @@
 // Should be the first include
 #include "global.hpp"  // IWYU pragma: keep
 
-// IWYU pragma: no_include <__cstddef/byte.h>
 // IWYU pragma: no_include <array>
 // IWYU pragma: no_include <string>
 
-#include <cstddef>  // IWYU pragma: keep
 #include <cstdint>
-#include <limits>
 #include <stdexcept>
 #include <tuple>
 
 #include <gtest/gtest.h>
 
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "test_utils.hpp"
@@ -23,7 +21,7 @@
 
 namespace {
 using unodb::detail::thread_syncs;
-using unodb::test::test_values;
+using unodb::test_data::test_values;
 /// For key_view types, build_chain creates 1 chain I4 per 8-byte key.
 /// These are counter adjustment values (0 or 1), not booleans.
 template <class Db>
@@ -71,7 +69,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeEmptyValue) {
 
 UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeNonemptyValue) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.insert(1, unodb::test::test_values[2]);
+  verifier.insert(1, test_values[2]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({0, 2});
@@ -84,15 +82,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeNonemptyValue) {
 }
 
 UNODB_TYPED_TEST(ARTCorrectnessTest, TooLongValue) {
-  constexpr std::byte fake_val{0x00};
-  const unodb::value_view too_long{
-      &fake_val,
-      static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) +
-          1U};
-
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  UNODB_ASSERT_THROW(std::ignore = verifier.try_insert(1, too_long),
+  UNODB_ASSERT_THROW(std::ignore = verifier.try_insert(
+                         1, unodb::test_data::too_long_value_view()),
                      std::length_error);
 
   verifier.check_absent_keys({1});
@@ -106,7 +99,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TooLongValue) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, ExpandLeafToNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(0, unodb::test::test_values[1]);
+  verifier.insert(0, test_values[1]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -114,7 +107,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, ExpandLeafToNode4) {
   verifier.assert_growing_inodes({ci4, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  verifier.insert(1, unodb::test::test_values[2]);
+  verifier.insert(1, test_values[2]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({2});
@@ -128,7 +121,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, ExpandLeafToNode4) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, DuplicateKey) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(0, unodb::test::test_values[0]);
+  verifier.insert(0, test_values[0]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -138,7 +131,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, DuplicateKey) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   unodb::test::must_not_allocate([&verifier] {
-    UNODB_ASSERT_FALSE(verifier.try_insert(0, unodb::test::test_values[3]));
+    UNODB_ASSERT_FALSE(verifier.try_insert(0, test_values[3]));
   });
 
   verifier.check_present_values();
@@ -182,8 +175,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4InsertFFByte) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, TwoNode4) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(1, unodb::test::test_values[0]);
-  verifier.insert(3, unodb::test::test_values[2]);
+  verifier.insert(1, test_values[0]);
+  verifier.insert(3, test_values[2]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -191,7 +184,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TwoNode4) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // Insert a value that does not share full prefix with the current Node4
-  verifier.insert(0xFF01, unodb::test::test_values[3]);
+  verifier.insert(0xFF01, test_values[3]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({0xFF00, 2});
@@ -206,10 +199,10 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TwoNode4) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, DbInsertNodeRecursion) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(1, unodb::test::test_values[0]);
-  verifier.insert(3, unodb::test::test_values[2]);
+  verifier.insert(1, test_values[0]);
+  verifier.insert(3, test_values[2]);
   // Insert a value that does not share full prefix with the current Node4
-  verifier.insert(0xFF0001, unodb::test::test_values[3]);
+  verifier.insert(0xFF0001, test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -219,7 +212,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, DbInsertNodeRecursion) {
 
   // Then insert a value that shares full prefix with the above node and will
   // ask for a recursive insertion there
-  verifier.insert(0xFF0101, unodb::test::test_values[1]);
+  verifier.insert(0xFF0101, test_values[1]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({0xFF0100, 0xFF0000, 2});
@@ -237,7 +230,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16) {
 
   verifier.insert_key_range(0, 4);
   verifier.check_present_values();
-  verifier.insert(5, unodb::test::test_values[0]);
+  verifier.insert(5, test_values[0]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({6ULL, 0x0100ULL, 0xFFFFFFFFFFFFFFFFULL});
@@ -268,7 +261,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyPrefixSplit) {
   verifier.insert_key_range(10, 5);
 
   // Insert a value that does share full prefix with the current Node16
-  verifier.insert(0x1020, unodb::test::test_values[0]);
+  verifier.insert(0x1020, test_values[0]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({9, 0x10FF});
@@ -284,12 +277,12 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyPrefixSplit) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyInsertOrderDescending) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(5, unodb::test::test_values[0]);
-  verifier.insert(4, unodb::test::test_values[1]);
-  verifier.insert(3, unodb::test::test_values[2]);
-  verifier.insert(2, unodb::test::test_values[3]);
-  verifier.insert(1, unodb::test::test_values[4]);
-  verifier.insert(0, unodb::test::test_values[0]);
+  verifier.insert(5, test_values[0]);
+  verifier.insert(4, test_values[1]);
+  verifier.insert(3, test_values[2]);
+  verifier.insert(2, test_values[3]);
+  verifier.insert(1, test_values[4]);
+  verifier.insert(0, test_values[0]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({6});
@@ -308,7 +301,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16ConstructWithFFKeyByte) {
   verifier.assert_node_counts({4, 1, 0, 0, 0});
 #endif  // UNODB_DETAIL_WITH_STATS
 
-  verifier.insert(0xFF, unodb::test::test_values[0]);
+  verifier.insert(0xFF, test_values[0]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({0, 0xFA});
@@ -360,7 +353,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // Insert a value that does share full prefix with the current Node48
-  verifier.insert(0x100020, unodb::test::test_values[0]);
+  verifier.insert(0x100020, test_values[0]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({9, 27, 0x100019, 0x100100, 0x110000});
@@ -413,7 +406,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixSplit) {
 #endif  // UNODB_DETAIL_WITH_STATS
 
   // Insert a value that does share full prefix with the current Node256
-  verifier.insert(0x100020, unodb::test::test_values[0]);
+  verifier.insert(0x100020, test_values[0]);
 
   verifier.check_present_values();
   verifier.check_absent_keys({19, 69, 0x100019, 0x100100, 0x110000});
@@ -438,7 +431,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TryDeleteFromEmpty) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeDelete) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(1, unodb::test::test_values[0]);
+  verifier.insert(1, test_values[0]);
 
   unodb::test::must_not_allocate([&verifier] { verifier.remove(1); });
 
@@ -451,7 +444,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeDelete) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, SingleNodeTreeAttemptDeleteAbsent) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(2, unodb::test::test_values[1]);
+  verifier.insert(2, test_values[1]);
 
   unodb::test::must_not_allocate(
       [&verifier] { verifier.attempt_remove_missing_keys({1, 3, 0xFF02}); });
@@ -551,7 +544,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteLowerNode) {
 
   verifier.insert_key_range(0, 2);
   // Insert a value that does not share full prefix with the current Node4
-  verifier.insert(0xFF00, unodb::test::test_values[3]);
+  verifier.insert(0xFF00, test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -577,7 +570,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteKeyPrefixMerge) {
 
   verifier.insert_key_range(0x8001, 2);
   // Insert a value that does not share full prefix with the current Node4
-  verifier.insert(0x90AA, unodb::test::test_values[3]);
+  verifier.insert(0x90AA, test_values[3]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -602,9 +595,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteKeyPrefixMerge) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, Node4DeleteKeyPrefixMerge2) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(0x0000000003020102, unodb::test::test_values[0]);
-  verifier.insert(0x0000000003030302, unodb::test::test_values[1]);
-  verifier.insert(0x0000000100010102, unodb::test::test_values[2]);
+  verifier.insert(0x0000000003020102, test_values[0]);
+  verifier.insert(0x0000000003030302, test_values[1]);
+  verifier.insert(0x0000000100010102, test_values[2]);
 
   unodb::test::must_not_allocate([&verifier] {
     verifier.remove(0x0000000100010102);
@@ -698,7 +691,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node16KeyPrefixMerge) {
 
   verifier.insert_key_range(10, 5);
   // Insert a value that does not share full prefix with the current Node16
-  verifier.insert(0x1020, unodb::test::test_values[0]);
+  verifier.insert(0x1020, test_values[0]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -805,7 +798,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node48KeyPrefixMerge) {
 
   verifier.insert_key_range(10, 17);
   // Insert a value that does not share full prefix with the current Node48
-  verifier.insert(0x2010, unodb::test::test_values[1]);
+  verifier.insert(0x2010, test_values[1]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -913,7 +906,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixMerge) {
 
   verifier.insert_key_range(10, 49);
   // Insert a value that does not share full prefix with the current Node256
-  verifier.insert(0x2010, unodb::test::test_values[1]);
+  verifier.insert(0x2010, test_values[1]);
 
 #ifdef UNODB_DETAIL_WITH_STATS
   constexpr auto ci4 = chain_i4_per_key<TypeParam>;
@@ -938,9 +931,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, Node256KeyPrefixMerge) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, MissingKeyWithPresentPrefix) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(0x010000, unodb::test::test_values[0]);
-  verifier.insert(0x000001, unodb::test::test_values[1]);
-  verifier.insert(0x010001, unodb::test::test_values[2]);
+  verifier.insert(0x010000, test_values[0]);
+  verifier.insert(0x000001, test_values[1]);
+  verifier.insert(0x010001, test_values[2]);
 
   unodb::test::must_not_allocate([&verifier] {
     verifier.attempt_remove_missing_keys({0x000002, 0x010100, 0x010002});
@@ -950,8 +943,8 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, MissingKeyWithPresentPrefix) {
 UNODB_TYPED_TEST(ARTCorrectnessTest, MissingKeyMatchingInodePath) {
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  verifier.insert(0x0100, unodb::test::test_values[0]);
-  verifier.insert(0x0200, unodb::test::test_values[1]);
+  verifier.insert(0x0100, test_values[0]);
+  verifier.insert(0x0200, test_values[1]);
 
   unodb::test::must_not_allocate(
       [&verifier] { verifier.attempt_remove_missing_keys({0x0101, 0x0202}); });
@@ -961,9 +954,9 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, MissingKeyMatchingInodePath) {
 
 UNODB_TYPED_TEST(ARTCorrectnessTest, MemoryAccountingDuplicateKeyInsert) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.insert(0, unodb::test::test_values[0]);
+  verifier.insert(0, test_values[0]);
   unodb::test::must_not_allocate([&verifier] {
-    UNODB_ASSERT_FALSE(verifier.try_insert(0, unodb::test::test_values[1]));
+    UNODB_ASSERT_FALSE(verifier.try_insert(0, test_values[1]));
   });
   verifier.remove(0);
   UNODB_ASSERT_EQ(verifier.get_db().get_current_memory_use(), 0);
@@ -973,7 +966,7 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, MemoryAccountingDuplicateKeyInsert) {
 
 UNODB_TYPED_TEST(ARTCorrectnessTest, Node48InsertIntoDeletedSlot) {
   unodb::test::tree_verifier<TypeParam> verifier;
-  verifier.insert(16865361447928765957ULL, unodb::test::test_values[0]);
+  verifier.insert(16865361447928765957ULL, test_values[0]);
   verifier.insert(7551546784238320931ULL, test_values[1]);
   verifier.insert(10913915230368519832ULL, test_values[2]);
   verifier.insert(3754602112003529886ULL, test_values[3]);
@@ -1036,14 +1029,14 @@ UNODB_TYPED_TEST(ARTCorrectnessTest, TwoInstances) {
     thread_syncs[0].notify();
     thread_syncs[1].wait();
 
-    v2.insert(0, unodb::test::test_values[0]);
+    v2.insert(0, test_values[0]);
     v2.check_present_values();
   });
 
   thread_syncs[0].wait();
   thread_syncs[1].notify();
 
-  v1.insert(0, unodb::test::test_values[1]);
+  v1.insert(0, test_values[1]);
   v1.check_present_values();
 
   second_thread.join();

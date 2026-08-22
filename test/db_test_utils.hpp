@@ -31,6 +31,7 @@
 #include "art.hpp"
 #include "art_common.hpp"
 #include "art_internal.hpp"
+#include "art_test_data.hpp"
 #include "assert.hpp"
 #include "gtest_utils.hpp"
 #include "mutex_art.hpp"
@@ -73,32 +74,11 @@ template <class TestDb>
 using thread = typename std::conditional_t<is_olc_db<TestDb>,
                                            unodb::qsbr_thread, std::thread>;
 
-constexpr auto test_value_1 = std::array<std::byte, 1>{std::byte{0x00}};
-constexpr auto test_value_2 =
-    std::array<std::byte, 2>{std::byte{0x00}, std::byte{0x02}};
-constexpr auto test_value_3 =
-    std::array<std::byte, 3>{std::byte{0x03}, std::byte{0x00}, std::byte{0x01}};
-constexpr auto test_value_4 = std::array<std::byte, 4>{
-    std::byte{0x04}, std::byte{0x01}, std::byte{0x00}, std::byte{0x02}};
-constexpr auto test_value_5 =
-    std::array<std::byte, 5>{std::byte{0x05}, std::byte{0xF4}, std::byte{0xFF},
-                             std::byte{0x00}, std::byte{0x01}};
-constexpr auto empty_test_value = std::array<std::byte, 0>{};
-
-constexpr std::array<unodb::value_view, 6> test_values = {
-    unodb::value_view{test_value_1},     // [0] { 00              }
-    unodb::value_view{test_value_2},     // [1] { 00 02           }
-    unodb::value_view{test_value_3},     // [2] { 03 00 01        }
-    unodb::value_view{test_value_4},     // [3] { 04 01 00 02     }
-    unodb::value_view{test_value_5},     // [4] { 05 F4 FF 00 01  }
-    unodb::value_view{empty_test_value}  // [5] {                 }
-};
-
-constexpr std::array<std::uint64_t, 6> test_values_u64 = {0, 1, 2, 3, 4, 5};
-
 /// Return a test value appropriate for the db's value type.
 template <class Db>
 constexpr typename Db::value_type get_test_value(std::size_t i) {
+  using unodb::test_data::test_values;
+  using unodb::test_data::test_values_u64;
   if constexpr (std::is_same_v<typename Db::value_type, unodb::value_view>)
     return test_values[i % test_values.size()];
   else
@@ -459,10 +439,7 @@ class [[nodiscard]] tree_verifier final {
   void insert_key_range_internal(key_type start_key, std::size_t count,
                                  bool bypass_verifier = false) {
     if constexpr (std::is_same_v<key_type, key_view>) {
-      // decode to figure out the start key for the loop.
-      unodb::key_decoder dec(start_key);
-      std::uint64_t start_key_dec;
-      dec.decode(start_key_dec);
+      const auto start_key_dec = unodb::test_data::decode(start_key);
       unodb::key_encoder enc;
       for (auto key = start_key_dec; key < start_key_dec + count; ++key) {
         insert(enc.reset().encode(key).get_key_view(), get_test_value<Db>(key),
@@ -514,9 +491,7 @@ class [[nodiscard]] tree_verifier final {
   void preinsert_key_range_to_verifier_only(T start_key1, std::size_t count) {
     const auto start_key{coerce_key(start_key1)};
     if constexpr (std::is_same_v<key_type, key_view>) {
-      unodb::key_decoder dec(start_key);
-      std::uint64_t start_key_dec;
-      dec.decode(start_key_dec);
+      const auto start_key_dec = unodb::test_data::decode(start_key);
       unodb::key_encoder enc;
       for (auto key = start_key_dec; key < start_key_dec + count; ++key) {
         auto tmp = to_ikey(enc.reset().encode(key).get_key_view());
@@ -539,9 +514,7 @@ class [[nodiscard]] tree_verifier final {
   void insert_preinserted_key_range(T start_key1, std::size_t count) {
     const auto start_key{coerce_key(start_key1)};
     if constexpr (std::is_same_v<key_type, key_view>) {
-      unodb::key_decoder dec(start_key);
-      std::uint64_t start_key_dec;
-      dec.decode(start_key_dec);
+      const auto start_key_dec = unodb::test_data::decode(start_key);
       unodb::key_encoder enc;
       for (auto key = start_key_dec; key < start_key_dec + count; ++key) {
         do_insert(enc.reset().encode(key).get_key_view(),

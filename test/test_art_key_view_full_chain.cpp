@@ -21,7 +21,6 @@
 #include <array>
 #include <cstddef>  // IWYU pragma: keep
 #include <cstdint>
-#include <limits>
 #include <random>
 #include <stdexcept>
 #include <tuple>
@@ -30,9 +29,21 @@
 #include <gtest/gtest.h>
 
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
 #include "node_type.hpp"
+
+// Each `copy_key(make_*(enc, ...), buf)` region below is wrapped in a 26815
+// suppression.  MSVC's analyzer sees the `key_view` returned by the `make_*`
+// builder die at the end of the full expression and concludes the result
+// dangles; it does not model that `copy_key` copies those bytes into `buf` and
+// returns a view over `buf`, severing the dependency on its `kv` argument -
+// which is exactly why `kv` is left unannotated while `buf` carries
+// UNODB_DETAIL_LIFETIMEBOUND.  The suppressions are per-region rather than
+// file-scope so that a genuine dangling `key_view` elsewhere in this file -
+// the one place where such views most often alias a reused encoder - is still
+// diagnosed.
 
 namespace {
 
@@ -60,15 +71,10 @@ UNODB_TYPED_TEST_SUITE(ARTKeyViewFullChainTest, ARTTypes)
 /// Unit test of correct rejection of a key which is too large to be
 /// stored in the tree.
 UNODB_TYPED_TEST(ARTKeyViewFullChainTest, TooLongKey) {
-  constexpr std::byte fake_val{0x00};
-  const unodb::key_view too_long{
-      &fake_val,
-      static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) +
-          1U};
-
   unodb::test::tree_verifier<TypeParam> verifier;
 
-  UNODB_ASSERT_THROW(std::ignore = verifier.get_db().insert(too_long, {}),
+  UNODB_ASSERT_THROW(std::ignore = verifier.get_db().insert(
+                         unodb::test_data::too_long_key_view(), {}),
                      std::length_error);
 
   verifier.assert_empty();
@@ -96,14 +102,8 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, EncodedTextKeys) {
   unodb::test::tree_verifier<TypeParam> verifier;
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
-  verifier.insert(enc.reset().encode_text("").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("a").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("abba").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("banana").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("camel").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("yellow").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("ostritch").get_key_view(), val);
-  verifier.insert(enc.reset().encode_text("zebra").get_key_view(), val);
+  for (const auto word : unodb::test_data::encoded_text_keys)
+    verifier.insert(enc.reset().encode_text(word).get_key_view(), val);
   verifier.check_present_values();
 }
 
@@ -139,31 +139,13 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, EncodedTextKeys) {
 //     6e. Multi-level chain — 17-byte keys, 2 chain levels
 // ===================================================================
 
-// Helper: encode a 9-byte key (uint8 + uint64).
-// Same tag byte → 8 shared bytes when uint64 values are small.
-inline unodb::key_view make_key(unodb::key_encoder& enc, std::uint8_t tag,
-                                std::uint64_t v) {
-  return enc.reset().encode(tag).encode(v).get_key_view();
-}
-
-// Helper: encode a 1-byte key (uint8 only).
-// Diverges at byte 0 from any key with a different first byte.
-// Used in cascade tests where we need direct-leaf children of the root
-// alongside a chain subtree.
-[[maybe_unused]] inline unodb::key_view make_short_key(unodb::key_encoder& enc,
-                                                       std::uint8_t tag) {
-  return enc.reset().encode(tag).get_key_view();
-}
-
-// Helper: encode a 10-byte key (uint8 + uint64 + uint8).
-// When used with the same tag and v as make_key, the 9-byte key is a
-// prefix of this 10-byte key — which ART does not support.  Use
-// different v values to avoid prefix relationships.
-// Both lengths (9 and 10) exceed key_prefix_capacity + 1 = 8.
-inline unodb::key_view make_long_key(unodb::key_encoder& enc, std::uint8_t tag,
-                                     std::uint64_t v, std::uint8_t suffix) {
-  return enc.reset().encode(tag).encode(v).encode(suffix).get_key_view();
-}
+// Key construction helpers shared with the other test executables; see
+// art_test_data.hpp for the encoded key shapes.
+using unodb::test_data::make_key;
+using unodb::test_data::make_key_17;
+using unodb::test_data::make_key_17_byte10;
+using unodb::test_data::make_long_key;
+using unodb::test_data::make_short_key;
 
 // -------------------------------------------------------------------
 // Group 0: Original bug reproduction tests
@@ -244,14 +226,8 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, MultiLevelChain) {
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
   // 17 bytes: 0xAA × 16, then 0x01 vs 0x02.
-  auto make17 = [&](std::uint8_t last) {
-    enc.reset();
-    for (unsigned i = 0; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
-    enc.encode(last);
-    return enc.get_key_view();
-  };
-  verifier.insert(make17(0x01), val);
-  verifier.insert(make17(0x02), val);
+  verifier.insert(make_key_17(enc, 0x01), val);
+  verifier.insert(make_key_17(enc, 0x02), val);
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
   // 2 chain I4s (depth 0→8, 8→16) + bottom I4 (2 children) + 2 leaves
@@ -268,19 +244,11 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest,
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make17 = [&](std::uint8_t byte10, std::uint8_t last) {
-    enc.reset();
-    for (unsigned i = 0; i < 10; ++i) enc.encode(std::uint8_t{0xAA});
-    enc.encode(byte10);
-    for (unsigned i = 11; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
-    enc.encode(last);
-    return enc.get_key_view();
-  };
   // A and B share 16 bytes (byte10=0xAA), differ at byte 16.
-  verifier.insert(make17(0xAA, 0x01), val);
-  verifier.insert(make17(0xAA, 0x02), val);
+  verifier.insert(make_key_17_byte10(enc, 0xAA, 0x01), val);
+  verifier.insert(make_key_17_byte10(enc, 0xAA, 0x02), val);
   // C diverges at byte 10 — splits the second chain node.
-  verifier.insert(make17(0xBB, 0x03), val);
+  verifier.insert(make_key_17_byte10(enc, 0xBB, 0x03), val);
   verifier.check_present_values();
 #ifdef UNODB_DETAIL_WITH_STATS
   // chain I4 (bytes 0-7) + split I4 (at byte 10) + chain I4 (bytes 11-15)
@@ -632,6 +600,13 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, CompoundKeyGetMissing) {
 
 #ifdef UNODB_DETAIL_WITH_STATS
 
+// Key helpers used only by the stats tests below.
+using unodb::test_data::copy_key;
+using unodb::test_data::make_key_11;
+using unodb::test_data::make_key_18;
+using unodb::test_data::make_key_26;
+using unodb::test_data::make_key_34;
+
 // ===================================================================
 // Group 6: Stats verification — node counts at intermediate states
 //
@@ -899,21 +874,15 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, MultiLevelChainRemoveAll) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make17 = [&](std::uint8_t last) {
-    enc.reset();
-    for (unsigned i = 0; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
-    enc.encode(last);
-    return enc.get_key_view();
-  };
-  verifier.insert(make17(0x01), val);
-  verifier.insert(make17(0x02), val);
+  verifier.insert(make_key_17(enc, 0x01), val);
+  verifier.insert(make_key_17(enc, 0x02), val);
   verifier.assert_node_counts({TestFixture::leaf_count(2), 3, 0, 0, 0});
 
-  verifier.remove(make17(0x01));
+  verifier.remove(make_key_17(enc, 0x01));
   // Keyless leaf prevents collapse.  Three chain I4s remain.
   verifier.assert_node_counts({TestFixture::leaf_count(1), 3, 0, 0, 0});
 
-  verifier.remove(make17(0x02));
+  verifier.remove(make_key_17(enc, 0x02));
   verifier.assert_empty();
 }
 
@@ -1019,26 +988,20 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, MultiLevelChainFatBottom) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make17 = [&](std::uint8_t last) {
-    enc.reset();
-    for (unsigned i = 0; i < 16; ++i) enc.encode(std::uint8_t{0xAA});
-    enc.encode(last);
-    return enc.get_key_view();
-  };
-
-  for (std::uint8_t i = 1; i <= 5; ++i) verifier.insert(make17(i), val);
+  for (std::uint8_t i = 1; i <= 5; ++i)
+    verifier.insert(make_key_17(enc, i), val);
   verifier.check_present_values();
   // 2 chain-I4s + bottom I16(5) + 5 leaves
   verifier.assert_node_counts({TestFixture::leaf_count(5), 2, 1, 0, 0});
   verifier.assert_growing_inodes({3, 1, 0, 0});
 
   // Remove 1 → I16 at min_size → shrink to I4.
-  verifier.remove(make17(1));
+  verifier.remove(make_key_17(enc, 1));
   verifier.assert_node_counts({TestFixture::leaf_count(4), 3, 0, 0, 0});
   verifier.assert_shrinking_inodes({0, 1, 0, 0});
 
   // Remove remaining → chains collapse.
-  for (std::uint8_t i = 2; i <= 5; ++i) verifier.remove(make17(i));
+  for (std::uint8_t i = 2; i <= 5; ++i) verifier.remove(make_key_17(enc, i));
   verifier.assert_empty();
 }
 
@@ -1060,19 +1023,11 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, MidLevelInodeGrowth) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(std::uint64_t{0})
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // 5 mid groups × 2 bottom keys = 10 keys.
   // Mid-inode at depth 8 grows to I16(5).
   for (std::uint8_t m = 1; m <= 5; ++m)
-    for (std::uint8_t b = 1; b <= 2; ++b) verifier.insert(make18(m, b), val);
+    for (std::uint8_t b = 1; b <= 2; ++b)
+      verifier.insert(make_key_18(enc, m, b), val);
   verifier.check_present_values();
   // chain(0) → mid-I16(5) → 5×(chain(9) → bottom-I4(2) → 2 leaves)
   // I4: 1 top-chain + 5 depth-9-chains + 5 bottoms = 11
@@ -1085,24 +1040,16 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, MidLevelInodeShrink) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(std::uint64_t{0})
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // 5 mid groups × 2 bottom keys = 10 keys → mid I16(5).
   for (std::uint8_t m = 1; m <= 5; ++m)
-    for (std::uint8_t b = 1; b <= 2; ++b) verifier.insert(make18(m, b), val);
+    for (std::uint8_t b = 1; b <= 2; ++b)
+      verifier.insert(make_key_18(enc, m, b), val);
 
   // Remove both keys for mid=1 → bottom-I4(2) collapses (I4 shrink),
   // chain(9) collapses (I4 shrink), mid-I16(5) at min_size → I4(4)
   // (I16 shrink).
-  verifier.remove(make18(1, 1));
-  verifier.remove(make18(1, 2));
+  verifier.remove(make_key_18(enc, 1, 1));
+  verifier.remove(make_key_18(enc, 1, 2));
   verifier.check_present_values();
   // chain(0) → mid-I4(4) → 4×(chain(9) → bottom-I4(2) → 2 leaves)
   // I4: 1 top-chain + 4 depth-9-chains + 4 bottoms + 1 mid = 10
@@ -1171,36 +1118,27 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1CollapseToLeaf) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // A and B share tag + 8 bytes → chain at depth 0, chain at depth 8.
   // C has different tag → sibling at root.
-  verifier.insert(make18(0x01, 0x00, 0x01), val);  // A
-  verifier.insert(make18(0x01, 0x00, 0x02), val);  // B
-  verifier.insert(make18(0x02, 0x00, 0x01), val);  // C
+  verifier.insert(make_key_11(enc, 0x01, 0x01), val);  // A
+  verifier.insert(make_key_11(enc, 0x01, 0x02), val);  // B
+  verifier.insert(make_key_11(enc, 0x02, 0x01), val);  // C
   verifier.check_present_values();
 
   // Remove B: bottom I4(2→1), chain extends.
-  verifier.remove(make18(0x01, 0x00, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
   verifier.check_present_values();
 
   // Remove A: chain cut (CD=1). Root I4(2→1).
   // Surviving child is chain-I4 with 7-byte prefix.  Merge would be
   // 0 + 1 + 7 = 8 > 7 → prefix overflow, no collapse.
   // Tree: root-I4(1) → chain-I4 → leaf(C).
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
   verifier.assert_node_counts({TestFixture::leaf_count(1), 2, 0, 0, 0});
 
   // Remove C: tree empty.
-  verifier.remove(make18(0x02, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x02, 0x01));
   verifier.assert_empty();
 }
 
@@ -1248,31 +1186,22 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1CollapseToInode) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // A,B share tag=0x01 + 8 bytes → depth-1 chain → I4(2: A, B).
   // D,E have tag=0x02 → I4(2: D, E) subtree.
   // Root: I4(2: 0x01→chain→chain→I4(A,B), 0x02→chain→I4(D,E))
-  verifier.insert(make18(0x01, 0x00, 0x01), val);  // A
-  verifier.insert(make18(0x01, 0x00, 0x02), val);  // B
-  verifier.insert(make18(0x02, 0x00, 0x01), val);  // D
-  verifier.insert(make18(0x02, 0x00, 0x02), val);  // E
+  verifier.insert(make_key_11(enc, 0x01, 0x01), val);  // A
+  verifier.insert(make_key_11(enc, 0x01, 0x02), val);  // B
+  verifier.insert(make_key_11(enc, 0x02, 0x01), val);  // D
+  verifier.insert(make_key_11(enc, 0x02, 0x02), val);  // E
   verifier.check_present_values();
 
   // Remove B: bottom I4(2→1) under tag=0x01, chain extends.
-  verifier.remove(make18(0x01, 0x00, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
   verifier.check_present_values();
 
   // Remove A: chain cut (CD=1). Root I4(2→1) collapses.
   // Remaining child is the tag=0x02 subtree — prefix merge needed.
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
 }
 
@@ -1282,26 +1211,17 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1RemoveFromI4) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // 3 tag groups: 0x01 (chain target), 0x02, 0x03.
   // Root: I4(3: chain→...A, leaf(D), leaf(E))
-  verifier.insert(make18(0x01, 0x00, 0x01), val);  // A
-  verifier.insert(make18(0x01, 0x00, 0x02), val);  // B
-  verifier.insert(make18(0x02, 0x00, 0x01), val);  // D
-  verifier.insert(make18(0x03, 0x00, 0x01), val);  // E
+  verifier.insert(make_key_11(enc, 0x01, 0x01), val);  // A
+  verifier.insert(make_key_11(enc, 0x01, 0x02), val);  // B
+  verifier.insert(make_key_11(enc, 0x02, 0x01), val);  // D
+  verifier.insert(make_key_11(enc, 0x03, 0x01), val);  // E
   verifier.check_present_values();
 
   // Remove B, then A: chain cut from I4(3→2).
-  verifier.remove(make18(0x01, 0x00, 0x02));
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
 }
 
@@ -1314,18 +1234,9 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest,
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
-  // A,B: tag=0x01, 18-byte keys → depth-1 chain → I4(2: A, B).
-  verifier.insert(make18(0x01, 0x00, 0x01), val);  // A
-  verifier.insert(make18(0x01, 0x00, 0x02), val);  // B
+  // A,B: tag=0x01, 11-byte keys → depth-1 chain → I4(2: A, B).
+  verifier.insert(make_key_11(enc, 0x01, 0x01), val);  // A
+  verifier.insert(make_key_11(enc, 0x01, 0x02), val);  // B
   // C,D: tag=0x02, 2-byte keys → I4(2: C, D) with empty prefix.
   verifier.insert(enc.reset()
                       .encode(std::uint8_t{0x02})
@@ -1340,13 +1251,13 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest,
   verifier.check_present_values();
 
   // Remove B: bottom I4(2→1) under tag=0x01, chain extends.
-  verifier.remove(make18(0x01, 0x00, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
   verifier.check_present_values();
 
   // Remove A: chain cut (CD=1). Root I4(2→1) collapses.
   // Remaining child is I4(C,D) with empty prefix.
   // Merge: root prefix(0) + dispatch(0x02) + child prefix(0) = 1 ≤ 7.
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
 }
 
@@ -1358,25 +1269,15 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD2CollapseToLeaf) {
 
   // 26-byte keys: tag + uint64 + uint64 + uint64 + uint8.
   // Two keys sharing 25 bytes → 3 chain levels (depth 0,8,16).
-  auto make26 = [&](std::uint8_t tag, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(std::uint64_t{0})
-        .encode(bottom)
-        .get_key_view();
-  };
-
-  verifier.insert(make26(0x01, 0x01), val);  // A
-  verifier.insert(make26(0x01, 0x02), val);  // B
-  verifier.insert(make26(0x02, 0x01), val);  // sibling
+  verifier.insert(make_key_26(enc, 0x01, 0x01), val);  // A
+  verifier.insert(make_key_26(enc, 0x01, 0x02), val);  // B
+  verifier.insert(make_key_26(enc, 0x02, 0x01), val);  // sibling
   verifier.check_present_values();
 
   // Remove B → chain extends. Remove A → CD=2 chain cut.
-  verifier.remove(make26(0x01, 0x02));
+  verifier.remove(make_key_26(enc, 0x01, 0x02));
   verifier.check_present_values();
-  verifier.remove(make26(0x01, 0x01));
+  verifier.remove(make_key_26(enc, 0x01, 0x01));
   verifier.check_present_values();
 
   // Sibling subtree remains: chain(depth 0)→chain(depth 8)→chain(depth 16)
@@ -1385,7 +1286,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD2CollapseToLeaf) {
   // Prefix overflow prevents collapse at each level.
 
   // Remove sibling → empty.
-  verifier.remove(make26(0x02, 0x01));
+  verifier.remove(make_key_26(enc, 0x02, 0x01));
   verifier.assert_empty();
 }
 
@@ -1426,33 +1327,24 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1PrefixOverflow) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // tag=0x01: 2 keys sharing 10 bytes → CD=1 chain.
   // tag=0x02: 2 keys → chain with 7-byte prefix.
   // Root I4 has empty prefix. 0x02 child has 7-byte prefix.
   // Collapse: 0 + 1 + 7 = 8 → overflow.
-  verifier.insert(make18(0x01, 0x00, 0x01), val);
-  verifier.insert(make18(0x01, 0x00, 0x02), val);
-  verifier.insert(make18(0x02, 0x00, 0x01), val);
-  verifier.insert(make18(0x02, 0x00, 0x02), val);
+  verifier.insert(make_key_11(enc, 0x01, 0x01), val);
+  verifier.insert(make_key_11(enc, 0x01, 0x02), val);
+  verifier.insert(make_key_11(enc, 0x02, 0x01), val);
+  verifier.insert(make_key_11(enc, 0x02, 0x02), val);
   verifier.check_present_values();
 
   // Remove both under tag=0x01 → CD=1 chain cut.
-  verifier.remove(make18(0x01, 0x00, 0x02));
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
 
   // tag=0x02 keys still accessible.
-  verifier.remove(make18(0x02, 0x00, 0x01));
-  verifier.remove(make18(0x02, 0x00, 0x02));
+  verifier.remove(make_key_11(enc, 0x02, 0x01));
+  verifier.remove(make_key_11(enc, 0x02, 0x02));
   verifier.assert_empty();
 }
 
@@ -1462,25 +1354,16 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1ShrinkI16) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // 5 tag groups → I16(5) at root level (after chain at depth 0).
   // Under tag=0x01: 2 keys → CD=1 chain.
   for (std::uint8_t t = 1; t <= 5; ++t)
     for (std::uint8_t b = 1; b <= 2; ++b)
-      verifier.insert(make18(t, 0x00, b), val);
+      verifier.insert(make_key_11(enc, t, b), val);
   verifier.check_present_values();
 
   // Remove both under tag=0x01 → CD=1 chain cut from I16(5→4) → I4.
-  verifier.remove(make18(0x01, 0x00, 0x02));
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
   // 8 leaves, 4 tag groups each with chain(depth 0)→chain(depth 8)→I4(2).
   // Top-level I4(4) + 4×(chain + bottom-I4) = 1 + 8 = 9 I4s.
@@ -1494,24 +1377,15 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1ShrinkI48) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // 17 tag groups → I48(17).
   for (std::uint8_t t = 1; t <= 17; ++t)
     for (std::uint8_t b = 1; b <= 2; ++b)
-      verifier.insert(make18(t, 0x00, b), val);
+      verifier.insert(make_key_11(enc, t, b), val);
   verifier.check_present_values();
 
   // Remove both under tag=0x01 → CD=1 chain cut from I48(17→16) → I16.
-  verifier.remove(make18(0x01, 0x00, 0x02));
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
   // 32 leaves, 16 tag groups each with chain→chain→I4(2).
   // Top-level I16(16) + 16×(chain + bottom-I4) = 0 + 32 = 32 I4s.
@@ -1525,24 +1399,15 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ChainCutCD1ShrinkI256) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make18 = [&](std::uint8_t tag, std::uint8_t mid, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(mid)
-        .encode(bottom)
-        .get_key_view();
-  };
-
   // 49 tag groups → I256(49).
   for (std::uint8_t t = 1; t <= 49; ++t)
     for (std::uint8_t b = 1; b <= 2; ++b)
-      verifier.insert(make18(t, 0x00, b), val);
+      verifier.insert(make_key_11(enc, t, b), val);
   verifier.check_present_values();
 
   // Remove both under tag=0x01 → CD=1 chain cut from I256(49→48) → I48.
-  verifier.remove(make18(0x01, 0x00, 0x02));
-  verifier.remove(make18(0x01, 0x00, 0x01));
+  verifier.remove(make_key_11(enc, 0x01, 0x02));
+  verifier.remove(make_key_11(enc, 0x01, 0x01));
   verifier.check_present_values();
   // 96 leaves, 48 tag groups each with chain→chain→I4(2).
   // Top-level I48(48) + 48×(chain + bottom-I4) = 0 + 96 = 96 I4s.
@@ -1572,12 +1437,10 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, KeylessLeafNoCollapseGuard) {
   // Two 1-byte keys with different dispatch bytes.
   std::array<std::byte, 1> buf_a{};
   std::array<std::byte, 1> buf_b{};
-  auto kv = enc.reset().encode(std::uint8_t{0x01}).get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_a.begin());
-  kv = enc.reset().encode(std::uint8_t{0x02}).get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_b.begin());
-  const auto key_a = unodb::key_view{buf_a.data(), buf_a.size()};
-  const auto key_b = unodb::key_view{buf_b.data(), buf_b.size()};
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+  const auto key_a = copy_key(make_short_key(enc, 0x01), buf_a);
+  const auto key_b = copy_key(make_short_key(enc, 0x02), buf_b);
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   verifier.insert(key_a, val);
   verifier.insert(key_b, val);
@@ -1612,24 +1475,11 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, CollapseToInodeAllowed) {
   std::array<std::byte, 9> buf_a{};
   std::array<std::byte, 9> buf_b{};
   std::array<std::byte, 9> buf_c{};
-  auto kv = enc.reset()
-                .encode(std::uint8_t{0x01})
-                .encode(std::uint64_t{0})
-                .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_a.begin());
-  kv = enc.reset()
-           .encode(std::uint8_t{0x02})
-           .encode(std::uint64_t{0})
-           .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_b.begin());
-  kv = enc.reset()
-           .encode(std::uint8_t{0x02})
-           .encode(std::uint64_t{1})
-           .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_c.begin());
-  const auto key_a = unodb::key_view{buf_a.data(), buf_a.size()};
-  const auto key_b = unodb::key_view{buf_b.data(), buf_b.size()};
-  const auto key_c = unodb::key_view{buf_c.data(), buf_c.size()};
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+  const auto key_a = copy_key(make_key(enc, 0x01, 0), buf_a);
+  const auto key_b = copy_key(make_key(enc, 0x02, 0), buf_b);
+  const auto key_c = copy_key(make_key(enc, 0x02, 1), buf_c);
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   verifier.insert(key_a, val);
   verifier.insert(key_b, val);
@@ -1662,29 +1512,19 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ConcurrentTestTree26Byte) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  auto make26 = [&](std::uint8_t tag, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(std::uint64_t{0})
-        .encode(std::uint64_t{0})
-        .encode(bottom)
-        .get_key_view();
-  };
-
-  verifier.insert(make26(0x10, 0x01), val);  // A
-  verifier.insert(make26(0x10, 0x02), val);  // B
-  verifier.insert(make26(0x20, 0x01), val);  // sib
+  verifier.insert(make_key_26(enc, 0x10, 0x01), val);  // A
+  verifier.insert(make_key_26(enc, 0x10, 0x02), val);  // B
+  verifier.insert(make_key_26(enc, 0x20, 0x01), val);  // sib
   verifier.check_present_values();
 
-  verifier.remove(make26(0x10, 0x02));  // remove B
+  verifier.remove(make_key_26(enc, 0x10, 0x02));  // remove B
   verifier.check_present_values();
 
-  verifier.remove(make26(0x10, 0x01));  // remove A (chain cut)
+  verifier.remove(make_key_26(enc, 0x10, 0x01));  // remove A (chain cut)
   verifier.check_present_values();
 
   // Insert a new key at root level (what CT1's T2 does).
-  verifier.insert(make26(0x30, 0x01), val);
+  verifier.insert(make_key_26(enc, 0x30, 0x01), val);
   verifier.check_present_values();
 }
 
@@ -1695,34 +1535,23 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ConcurrentTestTree34Byte) {
   unodb::key_encoder enc;
   constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
 
-  constexpr auto X = std::uint64_t{0x4242424242424242ULL};
-  constexpr auto Z = std::uint64_t{0x4343434343434343ULL};
+  constexpr auto X = unodb::test_data::chain_key_filler;
+  constexpr auto Z = unodb::test_data::chain_key_filler_alt;
 
-  auto make34 = [&](std::uint8_t tag, std::uint64_t v1, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(v1)
-        .encode(X)
-        .encode(X)
-        .encode(X)
-        .encode(bottom)
-        .get_key_view();
-  };
-
-  verifier.insert(make34(0x10, X, 0x01), val);  // A
-  verifier.insert(make34(0x10, X, 0x02), val);  // B
-  verifier.insert(make34(0x20, X, 0x01), val);  // sib
+  verifier.insert(make_key_34(enc, 0x10, X, 0x01), val);  // A
+  verifier.insert(make_key_34(enc, 0x10, X, 0x02), val);  // B
+  verifier.insert(make_key_34(enc, 0x20, X, 0x01), val);  // sib
   verifier.check_present_values();
 
-  verifier.remove(make34(0x10, X, 0x02));  // remove B
+  verifier.remove(make_key_34(enc, 0x10, X, 0x02));  // remove B
   verifier.check_present_values();
 
   // Insert T2's key (diverges at chain[0] level, different v1).
-  verifier.insert(make34(0x10, Z, 0x01), val);
+  verifier.insert(make_key_34(enc, 0x10, Z, 0x01), val);
   verifier.check_present_values();
 
   // Remove A (chain cut with T2's key already in tree).
-  verifier.remove(make34(0x10, X, 0x01));
+  verifier.remove(make_key_34(enc, 0x10, X, 0x01));
   verifier.check_present_values();
 }
 
@@ -1812,19 +1641,10 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, StackStructureTwoChainKeys) {
 
   std::array<std::byte, 9> buf_a{};
   std::array<std::byte, 9> buf_b{};
-  auto kv = enc.reset()
-                .encode(std::uint8_t{0x01})
-                .encode(std::uint64_t{100})
-                .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_a.begin());
-  kv = enc.reset()
-           .encode(std::uint8_t{0x01})
-           .encode(std::uint64_t{200})
-           .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_b.begin());
-
-  const auto key_a = unodb::key_view{buf_a.data(), buf_a.size()};
-  const auto key_b = unodb::key_view{buf_b.data(), buf_b.size()};
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+  const auto key_a = copy_key(make_key(enc, 0x01, 100), buf_a);
+  const auto key_b = copy_key(make_key(enc, 0x01, 200), buf_b);
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   std::ignore = db.insert(key_a, val);
   std::ignore = db.insert(key_b, val);
@@ -1845,16 +1665,11 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, StackStructureWideNode) {
   std::array<std::byte, 1> ba{};
   std::array<std::byte, 1> bb{};
   std::array<std::byte, 1> bc{};
-  auto kv = enc.reset().encode(std::uint8_t{0x10}).get_key_view();
-  std::ignore = std::ranges::copy(kv, ba.begin());
-  kv = enc.reset().encode(std::uint8_t{0x20}).get_key_view();
-  std::ignore = std::ranges::copy(kv, bb.begin());
-  kv = enc.reset().encode(std::uint8_t{0x30}).get_key_view();
-  std::ignore = std::ranges::copy(kv, bc.begin());
-
-  const auto ka = unodb::key_view{ba.data(), ba.size()};
-  const auto kb = unodb::key_view{bb.data(), bb.size()};
-  const auto kc = unodb::key_view{bc.data(), bc.size()};
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+  const auto ka = copy_key(make_short_key(enc, 0x10), ba);
+  const auto kb = copy_key(make_short_key(enc, 0x20), bb);
+  const auto kc = copy_key(make_short_key(enc, 0x30), bc);
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   std::ignore = db.insert(ka, val);
   std::ignore = db.insert(kb, val);
@@ -1873,19 +1688,10 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, StackStructureSecondInsertChain) {
 
   std::array<std::byte, 9> buf_a{};
   std::array<std::byte, 9> buf_b{};
-  auto kv = enc.reset()
-                .encode(std::uint8_t{0x01})
-                .encode(std::uint64_t{0})
-                .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_a.begin());
-  kv = enc.reset()
-           .encode(std::uint8_t{0x02})
-           .encode(std::uint64_t{0})
-           .get_key_view();
-  std::ignore = std::ranges::copy(kv, buf_b.begin());
-
-  const auto ka = unodb::key_view{buf_a.data(), buf_a.size()};
-  const auto kb = unodb::key_view{buf_b.data(), buf_b.size()};
+  UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+  const auto ka = copy_key(make_key(enc, 0x01, 0), buf_a);
+  const auto kb = copy_key(make_key(enc, 0x02, 0), buf_b);
+  UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 
   std::ignore = db.insert(ka, val);
   std::ignore = db.insert(kb, val);
@@ -1910,7 +1716,7 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, StackStructureFullScan) {
   };
   auto make = [&](std::uint8_t tag, std::uint64_t v) {
     kh h;
-    auto k = enc.reset().encode(tag).encode(v).get_key_view();
+    const auto k = make_key(enc, tag, v);
     std::ignore = std::ranges::copy(k, h.buf.begin());
     h.len = k.size();
     UNODB_DETAIL_DISABLE_CLANG_21_WARNING("-Wnrvo")

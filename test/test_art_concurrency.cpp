@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include "art_common.hpp"
+#include "art_test_data.hpp"
 #include "assert.hpp"
 #include "db_test_utils.hpp"
 #include "gtest_utils.hpp"
@@ -32,11 +33,26 @@
 using unodb::test::sync_point_guard;
 #endif
 
+// MSVC C26815 false positive on every `copy_key(make_*(enc, ...), buf)` call
+// below, including inside `make_chain_key`: the analyzer sees the `key_view`
+// returned by the `make_*` builder die at the end of the full expression and
+// concludes the result dangles.  It does not model that `copy_key` copies those
+// bytes into `buf` and returns a view over `buf`, severing the dependency on
+// its `kv` argument - which is exactly why `kv` is left unannotated while `buf`
+// carries UNODB_DETAIL_LIFETIMEBOUND.
+UNODB_DETAIL_DISABLE_MSVC_WARNING(26815)
+
 namespace {
 
 [[nodiscard]] constexpr bool odd(std::uint64_t x) noexcept {
   return static_cast<bool>(x % 2);
 }
+
+using unodb::test_data::copy_key;
+using unodb::test_data::decode;
+using unodb::test_data::make_key;
+using unodb::test_data::make_short_key;
+using unodb::test_data::test_values;
 
 template <class Db>
 class ARTConcurrencyTest : public ::testing::Test {
@@ -99,14 +115,6 @@ class ARTConcurrencyTest : public ::testing::Test {
     }
   }
 
-  // decode a uint64_t key.
-  [[nodiscard]] static std::uint64_t decode(unodb::key_view akey) noexcept {
-    unodb::key_decoder dec{akey};
-    std::uint64_t k;
-    dec.decode(k);
-    return k;
-  }
-
   // test helper for scan() verification.
   static void do_scan_verification(unodb::test::tree_verifier<Db>* verifier,
                                    std::uint64_t key) {
@@ -124,7 +132,7 @@ class ARTConcurrencyTest : public ::testing::Test {
       const auto& akey = decode(v.get_key());  // actual visited key.
       sum += akey;
       const auto expected =  // Note: same value formula as insert().
-          unodb::test::test_values[akey % unodb::test::test_values.size()];
+          test_values[akey % test_values.size()];
       const auto actual = v.get_value();
       // LCOV_EXCL_START
       UNODB_EXPECT_TRUE(std::ranges::equal(actual, expected));
@@ -167,9 +175,7 @@ class ARTConcurrencyTest : public ::testing::Test {
     for (decltype(ops_per_thread) i = 0; i < ops_per_thread; ++i) {
       switch (thread_i % ntasks) {
         case 0: /* insert (same value formula as insert_key_range!) */
-          verifier->try_insert(
-              key,
-              unodb::test::test_values[key % unodb::test::test_values.size()]);
+          verifier->try_insert(key, test_values[key % test_values.size()]);
           break;
         case 1: /* remove */
           verifier->try_remove(key);
@@ -200,9 +206,7 @@ class ARTConcurrencyTest : public ::testing::Test {
       const auto key{key_generator(gen)};
       switch (thread_i % ntasks) {
         case 0: /* insert (same value formula as insert_key_range!) */
-          verifier->try_insert(
-              key,
-              unodb::test::test_values[key % unodb::test::test_values.size()]);
+          verifier->try_insert(key, test_values[key % test_values.size()]);
           break;
         case 1: /* remove */
           verifier->try_remove(key);
@@ -359,12 +363,10 @@ UNODB_TYPED_TEST(ARTConcurrencyTest,
 
 // Helper: encode a 9-byte chain-triggering key into a caller-owned buffer.
 // The returned key_view is valid for the lifetime of `buf`.
-inline unodb::key_view make_chain_key(unodb::key_encoder& enc, std::uint8_t tag,
-                                      std::uint64_t v,
-                                      std::array<std::byte, 9>& buf) {
-  auto kv = enc.reset().encode(tag).encode(v).get_key_view();
-  std::ranges::copy(kv, buf.begin());
-  return {buf.data(), buf.size()};
+[[nodiscard]] inline unodb::key_view make_chain_key(
+    unodb::key_encoder& enc, std::uint8_t tag, std::uint64_t v,
+    std::array<std::byte, 9>& buf UNODB_DETAIL_LIFETIMEBOUND) {
+  return copy_key(make_key(enc, tag, v), buf);
 }
 
 // Chain concurrency tests reuse ARTConcurrencyTest for QSBR setup and
@@ -380,8 +382,7 @@ class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
     unodb::key_encoder enc;
     std::array<std::byte, 9> buf{};
     constexpr auto tag = static_cast<std::uint8_t>(0x42);
-    const auto val =
-        unodb::test::test_values[thread_i % unodb::test::test_values.size()];
+    const auto val = test_values[thread_i % test_values.size()];
     for (std::size_t i = 0; i < ops_per_thread; ++i) {
       const auto v = i;
       const auto key = make_chain_key(enc, tag, v, buf);
@@ -414,8 +415,7 @@ class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
     for (std::size_t i = 0; i < ops_per_thread; ++i) {
       const auto v = key_gen(gen);
       const auto key = make_chain_key(enc, tag, v, buf);
-      const auto val =
-          unodb::test::test_values[v % unodb::test::test_values.size()];
+      const auto val = test_values[v % test_values.size()];
       switch (thread_i % ntasks) {
         case 0:
           std::ignore = db.insert(key, val);
@@ -459,8 +459,7 @@ class ARTChainConcurrencyTest : public ARTConcurrencyTest<Db> {
     for (std::size_t i = 0; i < ops_per_thread; ++i) {
       const auto v = key_gen(gen);
       const auto key = make_chain_key(enc, tag, v, buf);
-      const auto val =
-          unodb::test::test_values[v % unodb::test::test_values.size()];
+      const auto val = test_values[v % test_values.size()];
       switch (i % 3) {
         case 0:
           std::ignore = db.insert(key, val);
@@ -547,6 +546,13 @@ UNODB_TYPED_TEST(ARTChainConcurrencyTest, DISABLED_ChainStressTest) {
 
 #ifndef NDEBUG
 
+// Key construction helpers whose every use is debug-only; see
+// art_test_data.hpp for the encoded key shapes. They sit inside this guard so
+// that NDEBUG builds do not trip clang-tidy's misc-unused-using-decls; the
+// helpers also used unconditionally are declared with the group above.
+using unodb::test_data::make_key_26;
+using unodb::test_data::make_key_34;
+
 // ===================================================================
 // Concurrent chain cut tests with explicit interleavings.
 // Uses thread_syncs (condition variables) for coordination.
@@ -579,28 +585,14 @@ UNODB_TEST(OLCChainCutInterleaved, ConcurrentInsertIntoCutPointParent) {
 
   // 26-byte keys: tag(1) + 3×uint64(24) + bottom(1).
   // A,B share 25 bytes → 3 chain levels after removing B.
-  auto make26 = [&](std::uint8_t tag, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(std::uint64_t{0})
-        .encode(std::uint64_t{0})
-        .encode(bottom)
-        .get_key_view();
-  };
-
   std::array<std::byte, 26> buf_a{};
   std::array<std::byte, 26> buf_b{};
   std::array<std::byte, 26> buf_sib{};
   std::array<std::byte, 26> buf_new{};
-  auto copy_key = [](const unodb::key_view kv, auto& buf) {
-    std::ranges::copy(kv, buf.begin());
-    return unodb::key_view{buf.data(), buf.size()};
-  };
-  const auto key_a = copy_key(make26(0x10, 0x01), buf_a);
-  const auto key_b = copy_key(make26(0x10, 0x02), buf_b);
-  const auto sib = copy_key(make26(0x20, 0x01), buf_sib);
-  const auto new_key = copy_key(make26(0x30, 0x01), buf_new);
+  const auto key_a = copy_key(make_key_26(enc, 0x10, 0x01), buf_a);
+  const auto key_b = copy_key(make_key_26(enc, 0x10, 0x02), buf_b);
+  const auto sib = copy_key(make_key_26(enc, 0x20, 0x01), buf_sib);
+  const auto new_key = copy_key(make_key_26(enc, 0x30, 0x01), buf_new);
 
   UNODB_ASSERT_TRUE(db.insert(key_a, val));
   UNODB_ASSERT_TRUE(db.insert(key_b, val));
@@ -660,32 +652,17 @@ UNODB_TEST(OLCChainCutInterleaved, ConcurrentInsertIntoMidChain) {
   // At SP2: T1 holds chain[2] (stk[3]) + chain_bottom + leaf.
   // chain[0], chain[1], Root-I4 are all unlocked.
   // T2 targets chain[0] (different v1) — only needs Root-I4 + chain[0].
-  constexpr auto X = std::uint64_t{0x4242424242424242ULL};
-  constexpr auto Z = std::uint64_t{0x4343434343434343ULL};
-
-  auto make34 = [&](std::uint8_t tag, std::uint64_t v1, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(v1)
-        .encode(X)
-        .encode(X)
-        .encode(X)
-        .encode(bottom)
-        .get_key_view();
-  };
+  constexpr auto X = unodb::test_data::chain_key_filler;
+  constexpr auto Z = unodb::test_data::chain_key_filler_alt;
 
   std::array<std::byte, 34> buf_a{};
   std::array<std::byte, 34> buf_b{};
   std::array<std::byte, 34> buf_sib{};
   std::array<std::byte, 34> buf_t2{};
-  auto copy_key = [](const unodb::key_view kv, auto& buf) {
-    std::ranges::copy(kv, buf.begin());
-    return unodb::key_view{buf.data(), buf.size()};
-  };
-  const auto key_a = copy_key(make34(0x10, X, 0x01), buf_a);
-  const auto key_b = copy_key(make34(0x10, X, 0x02), buf_b);
-  const auto sib = copy_key(make34(0x20, X, 0x01), buf_sib);
-  const auto t2_key = copy_key(make34(0x10, Z, 0x01), buf_t2);
+  const auto key_a = copy_key(make_key_34(enc, 0x10, X, 0x01), buf_a);
+  const auto key_b = copy_key(make_key_34(enc, 0x10, X, 0x02), buf_b);
+  const auto sib = copy_key(make_key_34(enc, 0x20, X, 0x01), buf_sib);
+  const auto t2_key = copy_key(make_key_34(enc, 0x10, Z, 0x01), buf_t2);
 
   UNODB_ASSERT_TRUE(db.insert(key_a, val));
   UNODB_ASSERT_TRUE(db.insert(key_b, val));
@@ -737,30 +714,15 @@ UNODB_TEST(OLCChainCutInterleaved, ConcurrentRemoveOfSibling) {
   db_type db;
   unodb::key_encoder enc;
 
-  auto make26 = [&](std::uint8_t tag, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(std::uint64_t{0x4242424242424242ULL})
-        .encode(std::uint64_t{0})
-        .encode(std::uint64_t{0})
-        .encode(bottom)
-        .get_key_view();
-  };
-
   std::array<std::byte, 26> buf_a{};
   std::array<std::byte, 26> buf_b{};
-  auto copy_key = [](const unodb::key_view kv, auto& buf) {
-    std::ranges::copy(kv, buf.begin());
-    return unodb::key_view{buf.data(), buf.size()};
-  };
-  const auto key_a = copy_key(make26(0x10, 0x01), buf_a);
-  const auto key_b = copy_key(make26(0x10, 0x02), buf_b);
+  const auto key_a = copy_key(make_key_26(enc, 0x10, 0x01), buf_a);
+  const auto key_b = copy_key(make_key_26(enc, 0x10, 0x02), buf_b);
   // Use a short (1-byte) sibling so that when T2 removes it, the
   // Root-I4 goes to 1 child but prefix merge overflows (0+1+7 > 7),
   // preventing collapse.  Root-I4 stays alive with a new version.
   std::array<std::byte, 1> buf_sib{};
-  const auto sib =
-      copy_key(enc.reset().encode(std::uint8_t{0x20}).get_key_view(), buf_sib);
+  const auto sib = copy_key(make_short_key(enc, 0x20), buf_sib);
 
   UNODB_ASSERT_TRUE(db.insert(key_a, val));
   UNODB_ASSERT_TRUE(db.insert(key_b, val));
@@ -812,32 +774,17 @@ UNODB_TEST(OLCChainCutInterleaved, ABAOnChainNode) {
   db_type db;
   unodb::key_encoder enc;
 
-  constexpr auto X = std::uint64_t{0x4242424242424242ULL};
-  constexpr auto Z = std::uint64_t{0x4343434343434343ULL};
-
-  auto make34 = [&](std::uint8_t tag, std::uint64_t v1, std::uint8_t bottom) {
-    return enc.reset()
-        .encode(tag)
-        .encode(v1)
-        .encode(X)
-        .encode(X)
-        .encode(X)
-        .encode(bottom)
-        .get_key_view();
-  };
+  constexpr auto X = unodb::test_data::chain_key_filler;
+  constexpr auto Z = unodb::test_data::chain_key_filler_alt;
 
   std::array<std::byte, 34> buf_a{};
   std::array<std::byte, 34> buf_b{};
   std::array<std::byte, 34> buf_sib{};
   std::array<std::byte, 34> buf_t2{};
-  auto copy_key = [](const unodb::key_view kv, auto& buf) {
-    std::ranges::copy(kv, buf.begin());
-    return unodb::key_view{buf.data(), buf.size()};
-  };
-  const auto key_a = copy_key(make34(0x10, X, 0x01), buf_a);
-  const auto key_b = copy_key(make34(0x10, X, 0x02), buf_b);
-  const auto sib = copy_key(make34(0x20, X, 0x01), buf_sib);
-  const auto t2_key = copy_key(make34(0x10, Z, 0x01), buf_t2);
+  const auto key_a = copy_key(make_key_34(enc, 0x10, X, 0x01), buf_a);
+  const auto key_b = copy_key(make_key_34(enc, 0x10, X, 0x02), buf_b);
+  const auto sib = copy_key(make_key_34(enc, 0x20, X, 0x01), buf_sib);
+  const auto t2_key = copy_key(make_key_34(enc, 0x10, Z, 0x01), buf_t2);
 
   UNODB_ASSERT_TRUE(db.insert(key_a, val));
   UNODB_ASSERT_TRUE(db.insert(key_b, val));
@@ -1021,20 +968,18 @@ void deep_chain_stress(int n_threads, int ops_per_thread, int iterations) {
   constexpr std::size_t short_key_len = 1;
 
   auto make_deep_key = [](unodb::key_encoder& enc, std::uint8_t variant,
-                          std::array<std::byte, chain_key_len>& buf) {
+                          std::array<std::byte, chain_key_len>& buf
+                          UNODB_DETAIL_LIFETIMEBOUND) {
     enc.reset().encode(std::uint8_t{0x42});
     for (int d = 0; d < chain_depth; ++d) enc.encode(std::uint64_t{0});
     enc.encode(variant);
-    auto kv = enc.get_key_view();
-    std::ranges::copy(kv, buf.begin());
-    return unodb::key_view{buf.data(), buf.size()};
+    return copy_key(enc.get_key_view(), buf);
   };
 
   auto make_short = [](unodb::key_encoder& enc, std::uint8_t tag,
-                       std::array<std::byte, short_key_len>& buf) {
-    auto kv = enc.reset().encode(tag).get_key_view();
-    std::ranges::copy(kv, buf.begin());
-    return unodb::key_view{buf.data(), buf.size()};
+                       std::array<std::byte, short_key_len>& buf
+                       UNODB_DETAIL_LIFETIMEBOUND) {
+    return copy_key(make_short_key(enc, tag), buf);
   };
 
   for (int iter = 0; iter < iterations; ++iter) {
@@ -1463,21 +1408,21 @@ UNODB_TEST(OLCNonfullChainRestart, ConcurrentRemoveDuringChainInsert) {
   using db_type = unodb::olc_db<unodb::key_view, std::uint64_t>;
   db_type db;
   unodb::key_encoder enc;
-  unodb::key_encoder enc2;  // separate encoder for T2
+  // k_seed1 and k_seed2 stay live to the end of the test, and each key view
+  // aliases its encoder's buffer, so each needs its own encoder that is never
+  // re-driven afterwards.
+  unodb::key_encoder enc2;
   constexpr std::uint64_t val = 42;
 
   // Seed: two keys with different first bytes → root I4 with 2 children.
-  const auto k_seed1 = enc.reset().encode(std::uint8_t{0x10}).get_key_view();
+  const auto k_seed1 = make_short_key(enc, 0x10);
   std::ignore = db.insert(k_seed1, val);
-  const auto k_seed2 = enc2.reset().encode(std::uint8_t{0x20}).get_key_view();
+  const auto k_seed2 = make_short_key(enc2, 0x20);
   std::ignore = db.insert(k_seed2, val);
 
   // T1 will insert a long key under 0x30 → add_to_nonfull builds a chain.
   unodb::key_encoder enc_t1;
-  auto t1_key = enc_t1.reset()
-                    .encode(std::uint8_t{0x30})
-                    .encode(std::uint64_t{1})
-                    .get_key_view();
+  const auto t1_key = make_key(enc_t1, 0x30, 1);
 
   const sync_point_guard guard{unodb::detail::sync_before_nonfull_chain_guard};
   unodb::detail::sync_before_nonfull_chain_guard.arm([&]() {
@@ -1493,8 +1438,7 @@ UNODB_TEST(OLCNonfullChainRestart, ConcurrentRemoveDuringChainInsert) {
   auto t2 = unodb::qsbr_thread([&] {
     const unodb::quiescent_state_on_scope_exit q{};
     unodb::detail::thread_syncs[0].wait();
-    std::ignore =
-        db.remove(enc2.reset().encode(std::uint8_t{0x20}).get_key_view());
+    std::ignore = db.remove(k_seed2);
     unodb::detail::thread_syncs[1].notify();
   });
 
@@ -1521,3 +1465,5 @@ UNODB_DETAIL_RESTORE_MSVC_WARNINGS()
 #endif  // NDEBUG
 
 }  // namespace
+
+UNODB_DETAIL_RESTORE_MSVC_WARNINGS()

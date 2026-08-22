@@ -26,3 +26,8 @@
 /// Namespace for the UnoDB internal test support code.
 /// \ingroup test-internals
 /// It is not part of the public API, and it may change at any time.
+
+/// \namespace unodb::test_data
+/// Namespace for the shared ART test data and key encoding helpers.
+/// \ingroup test-internals
+/// It is not part of the public API, and it may change at any time.
