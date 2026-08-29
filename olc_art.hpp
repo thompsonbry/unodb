@@ -117,6 +117,17 @@ using olc_node_ptr = basic_node_ptr<olc_node_header>;
 
 static_assert(sizeof(olc_node_ptr) == sizeof(void*));
 
+static_assert(olc_node_ptr{nullptr} == nullptr,
+              "the nullptr constructor and comparison must be "
+              "constant-evaluable");
+static_assert((olc_node_ptr{nullptr} = nullptr) == nullptr,
+              "the nullptr assignment must be constant-evaluable");
+static_assert(olc_node_ptr{nullptr}.raw_val() == 0,
+              "the null must be the all-zero tagged value that "
+              "basic_inode_48's free-slot scan compares against");
+static_assert(olc_node_ptr{} == nullptr,
+              "value-initialization must produce the null olc_node_ptr");
+
 template <typename, typename, class>
 class db_inode_qsbr_deleter;  // IWYU pragma: keep
 
