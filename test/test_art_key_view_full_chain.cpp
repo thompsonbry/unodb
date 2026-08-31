@@ -2329,6 +2329,95 @@ UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanFromBacktrackToVIS) {
   }
 }
 
+/// Seek climbing the stack to a VIS sibling.  The seek key descends into
+/// the 0x20 chain but is outside its key-byte range, so gte/lte_key_byte
+/// fails there and seek pops back to the root, where the adjacent child in
+/// the seek direction is a value in a slot: the climb must take the
+/// push_leaf() path instead of descending under an inode sibling.
+UNODB_TYPED_TEST(ARTKeyViewFullChainTest, SeekClimbToVISSibling) {
+  TypeParam db;
+  unodb::key_encoder enc;
+  constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
+
+  // VIS at 0x10, chain at 0x20 (last key bytes 1 and 2), VIS at 0x30.
+  UNODB_ASSERT_TRUE(db.insert(make_short_key(enc, 0x10), val));
+  UNODB_ASSERT_TRUE(db.insert(make_key(enc, 0x20, 1), val));
+  UNODB_ASSERT_TRUE(db.insert(make_key(enc, 0x20, 2), val));
+  UNODB_ASSERT_TRUE(db.insert(make_short_key(enc, 0x30), val));
+
+  // Forward: [0x20, 200] is above the chain's key-byte range; the climb
+  // lands on the VIS child 0x30.
+  {
+    int count = 0;
+    db.scan_from(
+        make_key(enc, 0x20, 200),
+        [&count](const auto& /*v*/) {
+          ++count;
+          return false;
+        },
+        /*fwd=*/true);
+    UNODB_EXPECT_EQ(count, 1);  // 0x30
+  }
+
+  // Reverse: [0x20, 0] is below the chain's key-byte range; the climb
+  // lands on the VIS child 0x10.
+  {
+    int count = 0;
+    db.scan_from(
+        make_key(enc, 0x20, 0),
+        [&count](const auto& /*v*/) {
+          ++count;
+          return false;
+        },
+        /*fwd=*/false);
+    UNODB_EXPECT_EQ(count, 1);  // 0x10
+  }
+}
+
+/// Seek climbing the stack to an inode sibling.  As SeekClimbToVISSibling,
+/// but the adjacent root children are chains, so the climb pushes the
+/// sibling and continues with a left-most (forward) or right-most (reverse)
+/// descent under it.
+UNODB_TYPED_TEST(ARTKeyViewFullChainTest, SeekClimbToChainSibling) {
+  TypeParam db;
+  unodb::key_encoder enc;
+  constexpr auto val = unodb::test::get_test_value<TypeParam>(0);
+
+  // Chains at 0x10 and 0x20, two keys each.
+  UNODB_ASSERT_TRUE(db.insert(make_key(enc, 0x10, 1), val));
+  UNODB_ASSERT_TRUE(db.insert(make_key(enc, 0x10, 2), val));
+  UNODB_ASSERT_TRUE(db.insert(make_key(enc, 0x20, 1), val));
+  UNODB_ASSERT_TRUE(db.insert(make_key(enc, 0x20, 2), val));
+
+  // Reverse: [0x20, 0] fails in the 0x20 chain; the climb does a
+  // right-most descent under 0x10, landing on [0x10, 2].
+  {
+    int count = 0;
+    db.scan_from(
+        make_key(enc, 0x20, 0),
+        [&count](const auto& /*v*/) {
+          ++count;
+          return false;
+        },
+        /*fwd=*/false);
+    UNODB_EXPECT_EQ(count, 2);  // [0x10, 2], [0x10, 1]
+  }
+
+  // Forward: [0x10, 200] fails in the 0x10 chain; the climb does a
+  // left-most descent under 0x20, landing on [0x20, 1].
+  {
+    int count = 0;
+    db.scan_from(
+        make_key(enc, 0x10, 200),
+        [&count](const auto& /*v*/) {
+          ++count;
+          return false;
+        },
+        /*fwd=*/true);
+    UNODB_EXPECT_EQ(count, 2);  // [0x20, 1], [0x20, 2]
+  }
+}
+
 // scan_from where the search key is a proper prefix of all stored keys.
 // Exercises the remaining_key exhaustion guard after prefix matching.
 UNODB_TYPED_TEST(ARTKeyViewFullChainTest, ScanFromKeyIsPrefixOfStored) {
